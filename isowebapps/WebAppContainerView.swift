@@ -4,12 +4,19 @@
 //
 //  Created on 23/08/2026.
 //
+//  Description:
+//  The active isolated web container view. Embeds `IsolatedWebViewRepresentable`,
+//  handles back/forward navigation state via `WebViewNavigationState`, manages
+//  the platform-specific bottom navigation bars (solid native toolbar on macOS,
+//  floating Liquid Glass on iOS), URL expansion/search, and immediate dismiss teardown.
+//
 
 import SwiftUI
 import WebKit
 import SwiftData
 import Combine
 
+/// Observable navigation state passed between SwiftUI toolbars and the WKWebView coordinator
 class WebViewNavigationState: ObservableObject {
     @Published var currentURLString: String = ""
     @Published var canGoBack: Bool = false

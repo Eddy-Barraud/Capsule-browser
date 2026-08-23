@@ -4,6 +4,11 @@
 //
 //  Created by Eddy Barraud on 23/08/2026.
 //
+//  Description:
+//  The Home Screen view of the application. Displays the grid of pinned web applications
+//  with high-resolution icons, titles, and context menus for per-app data clearing.
+//  Hosts toolbar buttons for adding new web apps and accessing uBlock Origin Lite settings.
+//
 
 import SwiftUI
 import SwiftData
@@ -26,6 +31,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if let activeApp = selectedWebApp {
+                // Active Isolated Web App Container View
                 WebAppContainerView(
                     appItem: activeApp,
                     onDismiss: {
@@ -36,6 +42,7 @@ struct ContentView: View {
                 )
                 .transition(.asymmetric(insertion: .scale(scale: 0.95).combined(with: .opacity), removal: .opacity))
             } else {
+                // Home Screen Grid
                 homeScreenView
                     .transition(.opacity)
             }

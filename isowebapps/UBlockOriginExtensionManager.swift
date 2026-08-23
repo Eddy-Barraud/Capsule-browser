@@ -4,6 +4,12 @@
 //
 //  Created on 23/08/2026.
 //
+//  Description:
+//  Core engine orchestrating uBlock Origin Lite declarativeNetRequest rules,
+//  scriptlet defusers, and cosmetic CSS filters. Manages parallel compilation of
+//  independent `WKContentRuleList` instances, dynamic re-compilation on preference
+//  updates, and injection into `WKWebViewConfiguration`.
+//
 
 import Foundation
 import WebKit
@@ -13,27 +19,31 @@ import WebKit
 public final class UBlockOriginExtensionManager {
     public static let shared = UBlockOriginExtensionManager()
     
+    /// Array of actively compiled WebKit native rule lists
     private var compiledRuleLists: [WKContentRuleList] = []
+    
+    /// Injected user scripts for DOM cosmetic hiding and scriptlet defusers
     private var cosmeticUserScripts: [WKUserScript] = []
+    
     private var isInitialized = false
     public private(set) var activeRulesCount: Int = 0
     public private(set) var activeListsCount: Int = 0
     
     private init() {}
     
-    /// Prepares content blocking rule lists and user scripts asynchronously
+    /// Prepares content blocking rule lists and user scripts asynchronously during app startup
     public func prepare() async {
         guard !isInitialized else { return }
         await loadRulesAndScriptsAsync()
         isInitialized = true
     }
     
-    /// Recompiles rule list based on updated user settings
+    /// Recompiles rule lists dynamically based on updated user settings from the settings view
     public func recompile() async {
         await loadRulesAndScriptsAsync()
     }
     
-    /// Applies uBlock Origin rules and scripts to a WKWebViewConfiguration
+    /// Applies active uBlock Origin rules and scripts to a `WKWebViewConfiguration`
     public func applyToConfiguration(_ config: WKWebViewConfiguration) {
         for ruleList in compiledRuleLists {
             config.userContentController.add(ruleList)
@@ -44,6 +54,7 @@ public final class UBlockOriginExtensionManager {
         }
     }
     
+    /// Loads enabled rulesets from bundle/symlinks, converts them, and compiles them in parallel
     private func loadRulesAndScriptsAsync() async {
         let defaults = UserDefaults.standard
         
@@ -177,6 +188,7 @@ public final class UBlockOriginExtensionManager {
         self.cosmeticUserScripts = scripts
     }
     
+    /// Compiles a single rule list into a `WKContentRuleList`, running chunked fallback if needed
     private func compileSingleList(identifier: String, rules: [[String: Any]]) async -> WKContentRuleList? {
         guard !rules.isEmpty else { return nil }
         
@@ -247,6 +259,7 @@ public final class UBlockOriginExtensionManager {
         return nil
     }
     
+    /// Locates ruleset JSON files across app bundles, submodules, and symlinks
     private func locateRulesetJSONFiles(
         includeUblockFilters: Bool,
         includeUblockBadware: Bool,
@@ -317,6 +330,7 @@ public final class UBlockOriginExtensionManager {
         return urls
     }
     
+    /// Built-in fallback rule set used if no external ruleset files are available
     private func defaultFallbackAdblockRules() -> [[String: Any]] {
         return [
             [

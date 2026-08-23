@@ -4,15 +4,20 @@
 //
 //  Created on 23/08/2026.
 //
+//  Description:
+//  Provides customizable "Liquid Glass" visual styling modifiers for SwiftUI views.
+//  Combines ultra-thin materials, specular highlight gradient borders, and multi-layer
+//  drop shadows for a modern translucent aesthetic across iOS and macOS.
+//
 
 import SwiftUI
 
-/// Liquid Glass visual effects for buttons, cards, and floating toolbars
-public struct LiquidGlassCardModifier: ViewModifier {
+/// Liquid Glass visual card modifier for tiles, panels, and containers
+struct LiquidGlassCardModifier: ViewModifier {
     @Environment(\.colorScheme) var colorScheme
     var cornerRadius: CGFloat = 20
     
-    public func body(content: Content) -> some View {
+    func body(content: Content) -> some View {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -49,11 +54,12 @@ public struct LiquidGlassCardModifier: ViewModifier {
     }
 }
 
-public struct LiquidGlassButtonModifier: ViewModifier {
+/// Liquid Glass button modifier for floating navigation and toolbar buttons
+struct LiquidGlassButtonModifier: ViewModifier {
     @Environment(\.colorScheme) var colorScheme
     var cornerRadius: CGFloat = 14
     
-    public func body(content: Content) -> some View {
+    func body(content: Content) -> some View {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -91,12 +97,15 @@ public struct LiquidGlassButtonModifier: ViewModifier {
     }
 }
 
-public extension View {
+extension View {
+    /// Applies the Liquid Glass translucent card style
     func liquidGlassCard(cornerRadius: CGFloat = 20) -> some View {
         modifier(LiquidGlassCardModifier(cornerRadius: cornerRadius))
     }
     
+    /// Applies the Liquid Glass button style with interactive shape bounds
     func liquidGlassButton(cornerRadius: CGFloat = 14) -> some View {
         modifier(LiquidGlassButtonModifier(cornerRadius: cornerRadius))
     }
+}
 }

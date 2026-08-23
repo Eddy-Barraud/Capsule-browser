@@ -4,12 +4,18 @@
 //
 //  Created by Eddy Barraud on 23/08/2026.
 //
+//  Description:
+//  The main application entry point for both macOS and iOS platforms.
+//  Initializes SwiftData with CloudKit synchronization for `WebAppItem` models,
+//  and presents the root `ContentView`.
+//
 
 import SwiftUI
 import SwiftData
 
 @main
 struct isowebappsApp: App {
+    /// Shared SwiftData model container configured for multi-device sync
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             WebAppItem.self,

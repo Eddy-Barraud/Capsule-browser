@@ -4,10 +4,17 @@
 //
 //  Created on 23/08/2026.
 //
+//  Description:
+//  Preferences interface for managing uBlock Origin Lite content blocking rules.
+//  Enables users to select filtering modes (Optimal, Complete, Basic), toggle individual
+//  rulesets (EasyList, EasyPrivacy, Malware, Annoyances, LAN protection), enable cosmetic
+//  element hiding and scriptlets, and monitor total compiled active rules.
+//
 
 import SwiftUI
 import SafariServices
 
+/// Defines the broad filtering aggression level for content blocking
 public enum BlockingMode: String, CaseIterable, Identifiable {
     case optimal = "Optimal"
     case complete = "Complete"
@@ -27,9 +34,11 @@ public enum BlockingMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// uBlock Origin Lite configuration and statistics view
 struct UBlockSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     
+    // Persistent Filter List & Mode Preferences in UserDefaults
     @AppStorage("ublock_blocking_mode") private var blockingMode: BlockingMode = .optimal
     @AppStorage("ublock_filter_ublock_filters") private var filterUblockFilters = true
     @AppStorage("ublock_filter_ublock_badware") private var filterUblockBadware = true
@@ -49,6 +58,7 @@ struct UBlockSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Header Banner
                 Section {
                     HStack(spacing: 16) {
                         Image(systemName: "shield.checkered")
@@ -66,6 +76,7 @@ struct UBlockSettingsView: View {
                     .padding(.vertical, 4)
                 }
                 
+                // Live Metric Status
                 Section(header: Text("Protection Status")) {
                     HStack {
                         Label("Active Rules", systemImage: "bolt.shield.fill")
@@ -82,6 +93,7 @@ struct UBlockSettingsView: View {
                     }
                 }
                 
+                // Mode Selection
                 Section(header: Text("Filtering Level")) {
                     Picker("Mode", selection: $blockingMode) {
                         ForEach(BlockingMode.allCases) { mode in
@@ -95,6 +107,7 @@ struct UBlockSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 
+                // Submodule Ruleset Toggles
                 Section(header: Text("Filter Lists")) {
                     Toggle("uBlock filters (Built-in)", isOn: $filterUblockFilters)
                     Toggle("uBlock Badware & Malware Risks", isOn: $filterUblockBadware)
@@ -105,11 +118,13 @@ struct UBlockSettingsView: View {
                     Toggle("Block Local Network / LAN Probing", isOn: $filterBlockLAN)
                 }
                 
+                // Scriptlets and Cosmetic DOM Cleanup
                 Section(header: Text("Page Cleanup & Defusers")) {
                     Toggle("Cosmetic Element Hiding (Collapse Ad Banners)", isOn: $cosmeticHiding)
                     Toggle("Scriptlet Defusers (Neutralize Anti-Adblock)", isOn: $scriptletDefusers)
                 }
                 
+                // Manual Recompilation Trigger
                 Section {
                     Button {
                         recompileRules()
@@ -150,6 +165,7 @@ struct UBlockSettingsView: View {
         #endif
     }
     
+    /// Triggers background compilation and updates metric counters
     private func recompileRules() {
         isRecompiling = true
         recompileSuccess = false

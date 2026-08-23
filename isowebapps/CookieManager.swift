@@ -4,6 +4,12 @@
 //
 //  Created on 23/08/2026.
 //
+//  Description:
+//  Manages cookie isolation per web application. Handles extracting cookies from
+//  non-persistent WKWebsiteDataStore cookie containers, converting them into
+//  `SerializableCookie` structures for SwiftData/CloudKit persistence, restoring
+//  them on launch, and selectively clearing site cache/storage.
+//
 
 import Foundation
 import WebKit
@@ -16,7 +22,7 @@ final class IsolatedCookieManager {
     
     private init() {}
     
-    /// Restores cookies from SwiftData item into the WKHTTPCookieStore
+    /// Restores cookies from a SwiftData `WebAppItem` into the target `WKHTTPCookieStore`
     func restoreCookies(for item: WebAppItem, into cookieStore: WKHTTPCookieStore) async {
         guard let data = item.isolatedCookiesData,
               let serializableCookies = try? JSONDecoder().decode([SerializableCookie].self, from: data) else {
@@ -37,7 +43,7 @@ final class IsolatedCookieManager {
         }
     }
     
-    /// Saves current cookies from WKHTTPCookieStore back into SwiftData item for CloudKit sync
+    /// Extracts active cookies from `WKHTTPCookieStore` and persists them into SwiftData for CloudKit sync
     func persistCookies(for item: WebAppItem, from cookieStore: WKHTTPCookieStore, context: ModelContext) async {
         let cookies = await cookieStore.allCookies()
         let serializable = cookies.map { SerializableCookie(from: $0) }
@@ -52,17 +58,17 @@ final class IsolatedCookieManager {
         }
     }
     
-    /// Clears cookies, cache, local storage, and website data for a specific webapp
+    /// Selectively wipes all cookies, cache, local storage, and website data for a specific webapp
     func clearData(for item: WebAppItem, dataStore: WKWebsiteDataStore, context: ModelContext) async {
         #if DEBUG
         print("[IsolatedCookieManager] Clearing all data for \(item.name)...")
         #endif
         
-        // Clear isolated SwiftData cookies
+        // 1. Clear isolated SwiftData cookies
         item.isolatedCookiesData = nil
         try? context.save()
         
-        // Remove from WKWebsiteDataStore
+        // 2. Remove all related records from WKWebsiteDataStore
         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
         let records = await dataStore.dataRecords(ofTypes: dataTypes)
         

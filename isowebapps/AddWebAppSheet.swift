@@ -4,6 +4,11 @@
 //
 //  Created on 23/08/2026.
 //
+//  Description:
+//  Modal presentation form for adding a new web application to the Home Screen.
+//  Collects the app's name and URL, fetches its high-resolution favicon once,
+//  and inserts the new `WebAppItem` into the SwiftData model context.
+//
 
 import SwiftUI
 import SwiftData
@@ -79,6 +84,7 @@ struct AddWebAppSheet: View {
         #endif
     }
     
+    /// Normalizes URL, fetches favicon metadata asynchronously, and inserts `WebAppItem`
     private func saveWebApp() {
         var formattedURL = urlString.trimmingCharacters(in: .whitespaces)
         if !formattedURL.lowercased().hasPrefix("http://") && !formattedURL.lowercased().hasPrefix("https://") {
@@ -94,10 +100,23 @@ struct AddWebAppSheet: View {
         errorMessage = nil
         
         Task {
-            // Fetch web app icon once
+            // Fetch web app icon once upon creation
             let iconData = await FaviconFetcher.fetchIcon(for: url)
             
             await MainActor.run {
+                let newApp = WebAppItem(
+                    name: name.trimmingCharacters(in: .whitespaces),
+                    urlString: formattedURL,
+                    iconData: iconData
+                )
+                modelContext.insert(newApp)
+                try? modelContext.save()
+                isFetching = false
+                dismiss()
+            }
+        }
+    }
+}
                 let newApp = WebAppItem(
                     name: name.trimmingCharacters(in: .whitespaces),
                     urlString: formattedURL,
