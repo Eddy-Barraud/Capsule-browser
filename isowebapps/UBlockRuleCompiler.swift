@@ -4,6 +4,11 @@
 //
 //  Created on 23/08/2026.
 //
+//  Description:
+//  Converts uBlock Origin Lite declarativeNetRequest (DNR) rules into WebKit native
+//  `WKContentRuleList` JSON formatting. Handles character-by-character regex sanitization,
+//  splitting multi-domain triggers, and stripping unsupported WebKit regex tokens.
+//
 
 import Foundation
 import WebKit

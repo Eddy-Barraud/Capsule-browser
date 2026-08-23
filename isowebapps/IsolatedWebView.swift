@@ -4,6 +4,11 @@
 //
 //  Created on 23/08/2026.
 //
+//  Description:
+//  UIKit/AppKit representable wrapping a dedicated `WKWebView` instance per app.
+//  Configures non-persistent cookie stores, desktop/media settings, HTML5 fullscreen,
+//  and attaches live KVO / delegate observers to track history and URL mutations.
+//
 
 import SwiftUI
 import WebKit
@@ -254,6 +259,15 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         navigationState.isLoading = true
+        if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
+            navigationState.currentURLString = urlString
+        }
+    }
+    
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
+            navigationState.currentURLString = urlString
+        }
     }
     
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

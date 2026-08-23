@@ -73,6 +73,11 @@ struct WebAppContainerView: View {
             navigationState.currentURLString = appItem.urlString
             editableURLString = appItem.urlString
         }
+        .onChange(of: navigationState.currentURLString) { newURL in
+            if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
+                editableURLString = newURL
+            }
+        }
         .onDisappear {
             navigationState.onStopLoading?()
         }
@@ -118,6 +123,11 @@ struct WebAppContainerView: View {
         .onAppear {
             navigationState.currentURLString = appItem.urlString
             editableURLString = appItem.urlString
+        }
+        .onChange(of: navigationState.currentURLString) { newURL in
+            if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
+                editableURLString = newURL
+            }
         }
         .onDisappear {
             navigationState.onStopLoading?()
