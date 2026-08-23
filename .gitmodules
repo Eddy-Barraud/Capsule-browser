@@ -1,0 +1,3 @@
+[submodule "shared/uBOL-home"]
+	path = shared/uBOL-home
+	url = https://github.com/uBlockOrigin/uBOL-home.git
