@@ -118,12 +118,8 @@ extension IsolatedWebViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
+        webView.customUserAgent = "\(appUserAgent)"
         
-        #if os(macOS)
-        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \(appUserAgent)"
-        #else
-        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) \(appUserAgent)"
-        #endif
         
         context.coordinator.setup(webView: webView)
         

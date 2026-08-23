@@ -83,13 +83,13 @@ struct WebAppContainerView: View {
         }
         #else
         ZStack(alignment: .bottom) {
-            // Web View Content
+            // Web View Content (ignores bottom safe area for full-bleed feel, respects top safe area for notch/Dynamic Island)
             IsolatedWebViewRepresentable(
                 appItem: appItem,
                 navigationState: navigationState,
                 modelContext: modelContext
             )
-            .ignoresSafeArea()
+            .ignoresSafeArea(edges: .bottom)
             .onTapGesture {
                 if isURLExpanded {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {

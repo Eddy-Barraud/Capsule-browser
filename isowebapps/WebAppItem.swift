@@ -17,20 +17,20 @@ import SwiftData
 /// Holds configuration, cached icon graphics, metadata, and per-app isolated cookies.
 @Model
 final class WebAppItem {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var urlString: String
-    var iconData: Data?
-    var createdAt: Date
-    var lastVisited: Date?
+    var id: UUID = UUID()
+    var name: String = ""
+    var urlString: String = "https://"
+    var iconData: Data? = nil
+    var createdAt: Date = Date()
+    var lastVisited: Date? = nil
     
     /// Encoded `[SerializableCookie]` array stored in SwiftData and synced via CloudKit
-    var isolatedCookiesData: Data?
+    var isolatedCookiesData: Data? = nil
 
     init(
         id: UUID = UUID(),
-        name: String,
-        urlString: String,
+        name: String = "",
+        urlString: String = "https://",
         iconData: Data? = nil,
         createdAt: Date = Date(),
         lastVisited: Date? = nil,
