@@ -117,16 +117,3 @@ struct AddWebAppSheet: View {
         }
     }
 }
-                let newApp = WebAppItem(
-                    name: name.trimmingCharacters(in: .whitespaces),
-                    urlString: formattedURL,
-                    iconData: iconData
-                )
-                modelContext.insert(newApp)
-                try? modelContext.save()
-                isFetching = false
-                dismiss()
-            }
-        }
-    }
-}
