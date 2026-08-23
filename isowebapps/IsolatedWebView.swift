@@ -108,15 +108,21 @@ extension IsolatedWebViewRepresentable {
         // 3. Load uBlock Origin rules and cosmetic scripts
         UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
         
+        // 4. Configure Application User Agent with Name and Version
+        // Using an unknown custom User-Agent without standard Safari/Chrome tokens
+        // causes platforms like YouTube to skip client ad injection pipelines.
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let appUserAgent = "isowebapps/\(appVersion)"
+        configuration.applicationNameForUserAgent = appUserAgent
+        
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         
-        // Set standard Safari User-Agent so YouTube & media sites enable Full HD / 4K DASH MSE streaming
         #if os(macOS)
-        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15"
+        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \(appUserAgent)"
         #else
-        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1"
+        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) \(appUserAgent)"
         #endif
         
         context.coordinator.setup(webView: webView)
