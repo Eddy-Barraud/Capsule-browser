@@ -22,12 +22,14 @@ class WebViewNavigationState: ObservableObject {
     @Published var canGoBack: Bool = false
     @Published var canGoForward: Bool = false
     @Published var isLoading: Bool = false
+    @Published var isUBlockEnabled: Bool = true
     
     var onGoBack: (() -> Void)?
     var onGoForward: (() -> Void)?
     var onReload: (() -> Void)?
     var onLoadURL: ((URL) -> Void)?
     var onStopLoading: (() -> Void)?
+    var onToggleUBlock: ((Bool) -> Void)?
 }
 
 struct WebAppContainerView: View {
@@ -43,6 +45,16 @@ struct WebAppContainerView: View {
     var body: some View {
         #if os(macOS)
         VStack(spacing: 0) {
+            // Top Bar with Shield toggle (left) and Tiles/Home button (right)
+            TopControlsBar(
+                appItem: appItem,
+                navigationState: navigationState,
+                onDismiss: handleDismiss,
+                onToggleShield: toggleUBlockProtection
+            )
+            
+            Divider()
+            
             // Web View Content
             IsolatedWebViewRepresentable(
                 appItem: appItem,
@@ -60,18 +72,20 @@ struct WebAppContainerView: View {
             
             Divider()
             
-            // Solid Bottom Bar on macOS
+            // Solid Bottom Bar on macOS (Home button navigates to configured home URL)
             MacOSSolidBottomBar(
                 navigationState: navigationState,
                 isURLExpanded: $isURLExpanded,
                 editableURLString: $editableURLString,
-                onDismiss: handleDismiss,
+                onGoHome: navigateToConfiguredHome,
                 onShare: shareCurrentURL
             )
         }
         .onAppear {
-            navigationState.currentURLString = appItem.urlString
-            editableURLString = appItem.urlString
+            navigationState.isUBlockEnabled = appItem.isUBlockEnabled
+            let initialURL = appItem.lastOpenedURLString ?? appItem.urlString
+            navigationState.currentURLString = initialURL
+            editableURLString = initialURL
         }
         .onChange(of: navigationState.currentURLString) { newURL in
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
@@ -83,6 +97,16 @@ struct WebAppContainerView: View {
         }
         #else
         VStack(spacing: 0) {
+            // Top Bar with Shield toggle (left) and Tiles/Home button (right)
+            TopControlsBar(
+                appItem: appItem,
+                navigationState: navigationState,
+                onDismiss: handleDismiss,
+                onToggleShield: toggleUBlockProtection
+            )
+            
+            Divider()
+            
             // Web View Content (no longer overlaid by bottom bar)
             IsolatedWebViewRepresentable(
                 appItem: appItem,
@@ -100,18 +124,20 @@ struct WebAppContainerView: View {
             
             Divider()
             
-            // Solid non-transparent Bottom Bar on iOS
+            // Solid non-transparent Bottom Bar on iOS (Home button navigates to configured home URL)
             IOSSolidBottomBar(
                 navigationState: navigationState,
                 isURLExpanded: $isURLExpanded,
                 editableURLString: $editableURLString,
-                onDismiss: handleDismiss,
+                onGoHome: navigateToConfiguredHome,
                 onShare: shareCurrentURL
             )
         }
         .onAppear {
-            navigationState.currentURLString = appItem.urlString
-            editableURLString = appItem.urlString
+            navigationState.isUBlockEnabled = appItem.isUBlockEnabled
+            let initialURL = appItem.lastOpenedURLString ?? appItem.urlString
+            navigationState.currentURLString = initialURL
+            editableURLString = initialURL
         }
         .onChange(of: navigationState.currentURLString) { newURL in
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
@@ -131,10 +157,27 @@ struct WebAppContainerView: View {
     
     private func handleDismiss() {
         #if DEBUG
-        print("[WebAppContainerView] Immediately closing webview on Home click")
+        print("[WebAppContainerView] Exiting web app back to Home Screen")
         #endif
         navigationState.onStopLoading?()
         onDismiss()
+    }
+    
+    private func navigateToConfiguredHome() {
+        #if DEBUG
+        print("[WebAppContainerView] Navigating to configured home URL: \(appItem.urlString)")
+        #endif
+        if let homeURL = URL(string: appItem.urlString) {
+            navigationState.onLoadURL?(homeURL)
+        }
+    }
+    
+    private func toggleUBlockProtection() {
+        let newState = !navigationState.isUBlockEnabled
+        navigationState.isUBlockEnabled = newState
+        appItem.isUBlockEnabled = newState
+        try? modelContext.save()
+        navigationState.onToggleUBlock?(newState)
     }
     
     private func shareCurrentURL() {
@@ -152,13 +195,84 @@ struct WebAppContainerView: View {
     }
 }
 
+// MARK: - Top Controls Bar (Shield & Tiles)
+
+/// Top Controls Bar for both iOS and macOS:
+/// - Top Left: Shield button to toggle uBlock Origin Lite protection for the active isolated app
+/// - Top Right: Tiles/Grid button to navigate back to the global app Home Screen
+struct TopControlsBar: View {
+    let appItem: WebAppItem
+    @ObservedObject var navigationState: WebViewNavigationState
+    let onDismiss: () -> Void
+    let onToggleShield: () -> Void
+    
+    private var isYouTube: Bool {
+        appItem.urlString.lowercased().contains("youtube.com")
+    }
+    
+    var body: some View {
+        HStack {
+            // Shield Button (Top Left)
+            Button(action: onToggleShield) {
+                HStack(spacing: 6) {
+                    Image(systemName: isYouTube ? "play.rectangle.fill" : (navigationState.isUBlockEnabled ? "shield.fill" : "shield.slash.fill"))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(isYouTube ? .red : (navigationState.isUBlockEnabled ? .blue : .secondary))
+                    
+                    Text(isYouTube ? "Ad-Free" : (navigationState.isUBlockEnabled ? "uBlock ON" : "uBlock OFF"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(isYouTube ? .primary : (navigationState.isUBlockEnabled ? .primary : .secondary))
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 32)
+                .liquidGlassButton(cornerRadius: 10)
+            }
+            .buttonStyle(.plain)
+            .disabled(isYouTube)
+            .help(isYouTube ? "YouTube ad-blocking active" : "Toggle uBlock Origin protection")
+            
+            Spacer()
+            
+            // App Title in Center
+            Text(appItem.name)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            
+            Spacer()
+            
+            // Tiles / Grid Home Button (Top Right)
+            Button(action: onDismiss) {
+                HStack(spacing: 5) {
+                    Image(systemName: "square.grid.2x2.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Apps")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 32)
+                .liquidGlassButton(cornerRadius: 10)
+            }
+            .buttonStyle(.plain)
+            .help("Back to Apps Home Screen")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        #if os(iOS)
+        .background(Color(uiColor: .systemBackground))
+        #else
+        .background(Color(nsColor: .windowBackgroundColor))
+        #endif
+    }
+}
+
 // Solid Bottom Bar specifically for macOS
 #if os(macOS)
 struct MacOSSolidBottomBar: View {
     @ObservedObject var navigationState: WebViewNavigationState
     @Binding var isURLExpanded: Bool
     @Binding var editableURLString: String
-    let onDismiss: () -> Void
+    let onGoHome: () -> Void
     let onShare: () -> Void
     
     var body: some View {
@@ -231,8 +345,8 @@ struct MacOSSolidBottomBar: View {
             .buttonStyle(.bordered)
             .controlSize(.regular)
             
-            // Home Button
-            Button(action: onDismiss) {
+            // Home Button (Navigates to configured website home URL)
+            Button(action: onGoHome) {
                 HStack(spacing: 4) {
                     Image(systemName: "house.fill")
                     Text("Home")
@@ -270,7 +384,7 @@ struct IOSSolidBottomBar: View {
     @ObservedObject var navigationState: WebViewNavigationState
     @Binding var isURLExpanded: Bool
     @Binding var editableURLString: String
-    let onDismiss: () -> Void
+    let onGoHome: () -> Void
     let onShare: () -> Void
     
     var body: some View {
@@ -367,8 +481,8 @@ struct IOSSolidBottomBar: View {
                 .liquidGlassButton(cornerRadius: 12)
                 .buttonStyle(.plain)
                 
-                // Home Button to go back to Home Screen
-                Button(action: onDismiss) {
+                // Home Button (Navigates to configured website home URL)
+                Button(action: onGoHome) {
                     Image(systemName: "house.fill")
                         .font(.system(size: 15, weight: .semibold))
                         .frame(width: 38, height: 38)

@@ -468,8 +468,8 @@ extension IsolatedWebViewRepresentable {
             )
             configuration.userContentController.addUserScript(ytNativeControlsUserScript)
             #endif
-        } else {
-            // For all other websites: load standard uBlock Origin rules and cosmetic scripts
+        } else if appItem.isUBlockEnabled {
+            // For other websites: load standard uBlock Origin rules and cosmetic scripts if enabled
             UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
         }
         
@@ -522,13 +522,27 @@ extension IsolatedWebViewRepresentable {
             webView?.stopLoading()
             webView?.loadHTMLString("", baseURL: nil)
         }
+        navigationState.onToggleUBlock = { [weak webView, weak contextCoordinator = context.coordinator] isEnabled in
+            guard let webView = webView, let coordinator = contextCoordinator else { return }
+            let config = webView.configuration
+            let isYT = coordinator.appItem.urlString.lowercased().contains("youtube.com")
+            guard !isYT else { return }
+            
+            if isEnabled {
+                UBlockOriginExtensionManager.shared.applyToConfiguration(config)
+            } else {
+                UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
+            }
+            webView.reload()
+        }
         
-        // 3. Restore isolated cookies asynchronously
+        // 3. Restore isolated cookies and load start page (last opened URL or configured home URL)
         Task { @MainActor in
             await IsolatedCookieManager.shared.restoreCookies(for: appItem, into: dataStore.httpCookieStore)
-            if let url = URL(string: appItem.urlString) {
+            let startURLString = appItem.lastOpenedURLString ?? appItem.urlString
+            if let url = URL(string: startURLString) {
                 #if DEBUG
-                print("[IsolatedWebView] Starting initial load for: \(url)")
+                print("[IsolatedWebView] Starting initial load for: \(url) (configured home: \(appItem.urlString))")
                 #endif
                 let request = URLRequest(url: url)
                 webView.load(request)
@@ -645,6 +659,10 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         navigationState.canGoForward = webView.canGoForward
         if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
             navigationState.currentURLString = urlString
+            // Persist the last opened URL for this web app
+            appItem.lastOpenedURLString = urlString
+            appItem.lastVisited = Date()
+            try? modelContext.save()
         }
         
         // Persist cookies after navigation completes

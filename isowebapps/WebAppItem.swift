@@ -20,9 +20,11 @@ final class WebAppItem {
     var id: UUID = UUID()
     var name: String = ""
     var urlString: String = "https://"
+    var lastOpenedURLString: String? = nil
     var iconData: Data? = nil
     var createdAt: Date = Date()
     var lastVisited: Date? = nil
+    var isUBlockEnabled: Bool = true
     
     /// Encoded `[SerializableCookie]` array stored in SwiftData and synced via CloudKit
     var isolatedCookiesData: Data? = nil
@@ -31,17 +33,21 @@ final class WebAppItem {
         id: UUID = UUID(),
         name: String = "",
         urlString: String = "https://",
+        lastOpenedURLString: String? = nil,
         iconData: Data? = nil,
         createdAt: Date = Date(),
         lastVisited: Date? = nil,
+        isUBlockEnabled: Bool = true,
         isolatedCookiesData: Data? = nil
     ) {
         self.id = id
         self.name = name
         self.urlString = urlString
+        self.lastOpenedURLString = lastOpenedURLString
         self.iconData = iconData
         self.createdAt = createdAt
         self.lastVisited = lastVisited
+        self.isUBlockEnabled = isUBlockEnabled
         self.isolatedCookiesData = isolatedCookiesData
     }
 }

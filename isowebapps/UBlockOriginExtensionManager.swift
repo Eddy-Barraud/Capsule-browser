@@ -54,6 +54,14 @@ public final class UBlockOriginExtensionManager {
         }
     }
     
+    /// Removes compiled uBlock Origin rules and cosmetic user scripts from a `WKWebViewConfiguration`
+    public func removeFromConfiguration(_ config: WKWebViewConfiguration) {
+        for ruleList in compiledRuleLists {
+            config.userContentController.remove(ruleList)
+        }
+        config.userContentController.removeAllUserScripts()
+    }
+    
     /// Loads enabled rulesets from bundle/symlinks, converts them, and compiles them in parallel
     private func loadRulesAndScriptsAsync() async {
         let defaults = UserDefaults.standard
