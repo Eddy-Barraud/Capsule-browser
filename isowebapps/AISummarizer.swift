@@ -78,11 +78,10 @@ public final class AISummarizer: ObservableObject {
         }
         
         let instructions = """
-        You are an expert, concise AI web assistant.
-        Provide a clear, accurate, and factual summary of the provided web page content.
-        Requirement: The summary MUST be at most 5 sentences.
-        Do not repeat instructions or add meta-commentary.
-        Respond in the predominant language of the page content.
+        Tu es un assistant web expert, concis et précis.
+        Fournis un résumé clair, précis et factuel du contenu de la page web fournie.
+        Exigence : Le résumé DOIT comporter au maximum 4 phrases.
+        Ne répète pas les instructions ni ne fais de méta-commentaire.
         """
         
         // Bound text to ensure it stays well within context limits
@@ -90,12 +89,11 @@ public final class AISummarizer: ObservableObject {
         
         let prompt = """
         Web Page Title: \(title.isEmpty ? "Web Page" : title)
-        URL: \(url.isEmpty ? "N/A" : url)
 
-        Content from First Page of Rendered Page:
+        Contenu de la première page:
         \(truncatedContent)
 
-        Write a clear and concise summary of this content in at most 5 sentences.
+        Fournis un résumé clair et concis de ce contenu en un maximum de 4 phrases.
         """
         
         do {

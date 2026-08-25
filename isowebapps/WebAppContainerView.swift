@@ -421,7 +421,7 @@ struct SummaryDropdownView: View {
                 Text("Page Summary")
                     .font(.system(size: 13, weight: .bold))
                 
-                Text("(1st page • 5 sentences max)")
+                Text("(1st page • 4 sentences max)")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 
@@ -487,12 +487,12 @@ struct SummaryDropdownView: View {
             } else {
                 ScrollView {
                     Text(summaryText)
-                        .font(.system(size: 13, weight: .regular))
+                        .font(.system(size: 16, weight: .regular))
                         .lineSpacing(3)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxHeight: 180)
+                .frame(maxHeight: 250)
             }
         }
         .padding(12)
