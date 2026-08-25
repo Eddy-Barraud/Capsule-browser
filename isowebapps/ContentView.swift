@@ -23,6 +23,8 @@ struct ContentView: View {
     @State private var isShowingUBlockSettings = false
     @State private var itemToClearData: WebAppItem?
     @State private var isShowingClearConfirmation = false
+    @State private var itemToDelete: WebAppItem?
+    @State private var isShowingDeleteConfirmation = false
     
     let columns = [
         GridItem(.adaptive(minimum: 100, maximum: 130), spacing: 20)
@@ -61,22 +63,34 @@ struct ContentView: View {
             isPresented: $isShowingClearConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Clear Cookies, Cache & Storage", role: .destructive) {
+            Button("Clear Cookies & Storage", role: .destructive) {
                 if let item = itemToClearData {
                     clearAppData(item)
+                    itemToClearData = nil
                 }
             }
-            Button("Delete Web App", role: .destructive) {
-                if let item = itemToClearData {
-                    withAnimation {
-                        modelContext.delete(item)
-                        try? modelContext.save()
-                    }
-                }
+            Button("Cancel", role: .cancel) {
+                itemToClearData = nil
             }
-            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will wipe all locally stored cache, isolated cookies, and website storage for this web application.")
+            Text("This will wipe all locally stored cookies, session cache, and website storage for this web application.")
+        }
+        .confirmationDialog(
+            "Delete \(itemToDelete?.name ?? "Web App")?",
+            isPresented: $isShowingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Web App", role: .destructive) {
+                if let item = itemToDelete {
+                    deleteApp(item)
+                    itemToDelete = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                itemToDelete = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete this web app? This action will remove it from all synced devices.")
         }
     }
     
@@ -90,14 +104,22 @@ struct ContentView: View {
                     } else {
                         LazyVGrid(columns: columns, spacing: 24) {
                             ForEach(webApps) { app in
-                                WebAppTileView(app: app) {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        selectedWebApp = app
+                                WebAppTileView(
+                                    app: app,
+                                    onOpen: {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                            selectedWebApp = app
+                                        }
+                                    },
+                                    onClearData: {
+                                        itemToClearData = app
+                                        isShowingClearConfirmation = true
+                                    },
+                                    onDelete: {
+                                        itemToDelete = app
+                                        isShowingDeleteConfirmation = true
                                     }
-                                } onOptionMenu: {
-                                    itemToClearData = app
-                                    isShowingClearConfirmation = true
-                                }
+                                )
                             }
                         }
                         .padding(.horizontal, 20)
@@ -192,13 +214,27 @@ struct ContentView: View {
             await IsolatedCookieManager.shared.clearData(for: item, dataStore: dataStore, context: modelContext)
         }
     }
+    
+    private func deleteApp(_ item: WebAppItem) {
+        withAnimation {
+            modelContext.delete(item)
+            do {
+                try modelContext.save()
+            } catch {
+                #if DEBUG
+                print("[ContentView] Failed to save context after delete: \(error)")
+                #endif
+            }
+        }
+    }
 }
 
 // Tile View for Each Web App with Liquid Glass Design
 struct WebAppTileView: View {
     let app: WebAppItem
     let onOpen: () -> Void
-    let onOptionMenu: () -> Void
+    let onClearData: () -> Void
+    let onDelete: () -> Void
     
     var body: some View {
         Button(action: onOpen) {
@@ -231,10 +267,10 @@ struct WebAppTileView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button(role: .destructive, action: onOptionMenu) {
-                Label("Clear Cookies & Cache...", systemImage: "trash")
+            Button(action: onClearData) {
+                Label("Clear Cookies & Cache...", systemImage: "arrow.clockwise.circle")
             }
-            Button(role: .destructive, action: onOptionMenu) {
+            Button(role: .destructive, action: onDelete) {
                 Label("Delete Web App", systemImage: "trash.fill")
             }
         }
