@@ -448,27 +448,32 @@ extension IsolatedWebViewRepresentable {
         configuration.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
         #endif
         
-        // 3. Load uBlock Origin rules and cosmetic scripts
-        UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
+        // 3. Conditional Content Blocking & YouTube Scripts
+        let isYouTube = appItem.urlString.lowercased().contains("youtube.com")
         
-        // 4. Injected scripts for YouTube ad-blocking and native player controls (from Youtube Free)
-        let ytPlaceholderScript = WKUserScript(
-            source: ytPlaceholderAndAdBlockScript,
-            injectionTime: .atDocumentEnd,
-            forMainFrameOnly: true
-        )
-        configuration.userContentController.addUserScript(ytPlaceholderScript)
+        if isYouTube {
+            // For YouTube: use dedicated lightweight script & native player controls instead of uBlock
+            let ytPlaceholderScript = WKUserScript(
+                source: ytPlaceholderAndAdBlockScript,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            )
+            configuration.userContentController.addUserScript(ytPlaceholderScript)
 
-        #if os(macOS)
-        let ytNativeControlsUserScript = WKUserScript(
-            source: ytNativeControlsScript,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true
-        )
-        configuration.userContentController.addUserScript(ytNativeControlsUserScript)
-        #endif
+            #if os(macOS)
+            let ytNativeControlsUserScript = WKUserScript(
+                source: ytNativeControlsScript,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+            configuration.userContentController.addUserScript(ytNativeControlsUserScript)
+            #endif
+        } else {
+            // For all other websites: load standard uBlock Origin rules and cosmetic scripts
+            UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
+        }
         
-        // 5. Configure Application User Agent with Name and Version
+        // 4. Configure Application User Agent with Name and Version
         // Setting applicationNameForUserAgent appends 'isowebapps/<version>' to the authentic
         // Safari/Mobile Safari User-Agent without overriding mobile/desktop platform tokens.
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
