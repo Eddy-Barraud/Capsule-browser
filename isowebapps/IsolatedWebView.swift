@@ -13,6 +13,7 @@
 import SwiftUI
 import WebKit
 import SwiftData
+import PDFKit
 
 // MARK: - YouTube Ad Blocking & Native Player Enhancement Scripts
 
@@ -534,6 +535,37 @@ extension IsolatedWebViewRepresentable {
                 UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
             }
             webView.reload()
+        }
+        navigationState.onCaptureFirstPagePDFText = { [weak webView] in
+            guard let webView = webView else {
+                throw WebPageSummaryError.webViewUnavailable
+            }
+            
+            let title = webView.title ?? ""
+            let urlString = webView.url?.absoluteString ?? ""
+            
+            // 1. Generate PDF of the rendered web page
+            let pdfConfig = WKPDFConfiguration()
+            let pdfData: Data = try await withCheckedThrowingContinuation { continuation in
+                webView.createPDF(configuration: pdfConfig) { result in
+                    continuation.resume(with: result)
+                }
+            }
+            
+            // 2. Extract content from the first page only
+            guard let document = PDFDocument(data: pdfData),
+                  let firstPage = document.page(at: 0) else {
+                throw WebPageSummaryError.pdfExtractionFailed
+            }
+            
+            var pageText = firstPage.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if pageText.isEmpty {
+                // Fallback: If PDF text layer is empty or rasterized, extract DOM innerText
+                let evaluated = try? await webView.evaluateJavaScript("document.body.innerText") as? String
+                pageText = evaluated?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            }
+            
+            return (title: title, url: urlString, text: pageText)
         }
         
         // 3. Restore isolated cookies and load start page (last opened URL or configured home URL)

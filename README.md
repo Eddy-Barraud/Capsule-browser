@@ -57,6 +57,7 @@ The project expects the ruleset resource link at `isowebapps/rulesets`, pointing
 - `FaviconFetcher.swift`: downloads and decodes website icon data.
 - `PlatformAdapters.swift`: shared image and activity-sharing abstractions for UIKit and AppKit.
 - `LiquidGlassStyles.swift`: reusable Liquid Glass card and button styling.
+- `AISummarizer.swift`: provides on-device Apple Foundation Models web page summarization from rendered first-page PDF text.
 - `UBlockRuleCompiler.swift`: converts uBlock declarative network request rules into WebKit content blocker rules.
 - `UBlockOriginExtensionManager.swift`: locates filter lists, compiles independent `WKContentRuleList` instances, and injects cosmetic scripts.
 - `UBlockSettingsView.swift`: filter and scriptlet preferences plus active rule/list diagnostics.
