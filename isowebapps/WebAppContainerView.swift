@@ -82,14 +82,14 @@ struct WebAppContainerView: View {
             navigationState.onStopLoading?()
         }
         #else
-        ZStack(alignment: .bottom) {
-            // Web View Content (ignores bottom safe area for full-bleed feel, respects top safe area for notch/Dynamic Island)
+        VStack(spacing: 0) {
+            // Web View Content (no longer overlaid by bottom bar)
             IsolatedWebViewRepresentable(
                 appItem: appItem,
                 navigationState: navigationState,
                 modelContext: modelContext
             )
-            .ignoresSafeArea(edges: .bottom)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onTapGesture {
                 if isURLExpanded {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -98,27 +98,16 @@ struct WebAppContainerView: View {
                 }
             }
             
-            // Floating Liquid Glass Bottom Bar (no container background, purely floating buttons)
-            VStack(spacing: 8) {
-                if navigationState.isLoading {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle())
-                        .scaleEffect(0.8)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .liquidGlassCard(cornerRadius: 12)
-                }
-                
-                LiquidGlassBottomBar(
-                    navigationState: navigationState,
-                    isURLExpanded: $isURLExpanded,
-                    editableURLString: $editableURLString,
-                    onDismiss: handleDismiss,
-                    onShare: shareCurrentURL
-                )
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 20)
+            Divider()
+            
+            // Solid non-transparent Bottom Bar on iOS
+            IOSSolidBottomBar(
+                navigationState: navigationState,
+                isURLExpanded: $isURLExpanded,
+                editableURLString: $editableURLString,
+                onDismiss: handleDismiss,
+                onShare: shareCurrentURL
+            )
         }
         .onAppear {
             navigationState.currentURLString = appItem.urlString
@@ -275,8 +264,9 @@ struct MacOSSolidBottomBar: View {
 }
 #endif
 
-// Floating Liquid Glass Bottom Bar (Purely floating liquid glass elements without parent box background)
-struct LiquidGlassBottomBar: View {
+#if os(iOS)
+/// Solid Bottom Bar for iOS (non-transparent, does not overlay web content)
+struct IOSSolidBottomBar: View {
     @ObservedObject var navigationState: WebViewNavigationState
     @Binding var isURLExpanded: Bool
     @Binding var editableURLString: String
@@ -284,20 +274,20 @@ struct LiquidGlassBottomBar: View {
     let onShare: () -> Void
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             if !isURLExpanded {
                 // Navigation Buttons (Back & Forward)
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Button {
                         navigationState.onGoBack?()
                     } label: {
                         Image(systemName: "chevron.backward")
                             .font(.system(size: 15, weight: .semibold))
-                            .frame(width: 42, height: 42)
+                            .frame(width: 38, height: 38)
                     }
                     .disabled(!navigationState.canGoBack)
-                    .opacity(navigationState.canGoBack ? 1.0 : 0.4)
-                    .liquidGlassButton(cornerRadius: 14)
+                    .opacity(navigationState.canGoBack ? 1.0 : 0.35)
+                    .liquidGlassButton(cornerRadius: 12)
                     .buttonStyle(.plain)
                     
                     if navigationState.canGoForward {
@@ -306,16 +296,16 @@ struct LiquidGlassBottomBar: View {
                         } label: {
                             Image(systemName: "chevron.forward")
                                 .font(.system(size: 15, weight: .semibold))
-                                .frame(width: 42, height: 42)
+                                .frame(width: 38, height: 38)
                         }
-                        .liquidGlassButton(cornerRadius: 14)
+                        .liquidGlassButton(cornerRadius: 12)
                         .buttonStyle(.plain)
                     }
                 }
             }
             
-            // Current Page URL (Expands to full width when clicked)
-            HStack {
+            // Current Page URL (Expands to full width when tapped)
+            HStack(spacing: 6) {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -324,6 +314,9 @@ struct LiquidGlassBottomBar: View {
                     TextField("Search or enter website", text: $editableURLString)
                         .textFieldStyle(.plain)
                         .font(.system(size: 14))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
                         .onSubmit {
                             submitURL()
                         }
@@ -343,11 +336,17 @@ struct LiquidGlassBottomBar: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .center)
+                    
+                    if navigationState.isLoading {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 16, height: 16)
+                    }
                 }
             }
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .liquidGlassButton(cornerRadius: 14)
+            .padding(.horizontal, 10)
+            .frame(height: 38)
+            .liquidGlassButton(cornerRadius: 12)
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -363,21 +362,25 @@ struct LiquidGlassBottomBar: View {
                 Button(action: onShare) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 42, height: 42)
+                        .frame(width: 38, height: 38)
                 }
-                .liquidGlassButton(cornerRadius: 14)
+                .liquidGlassButton(cornerRadius: 12)
                 .buttonStyle(.plain)
                 
                 // Home Button to go back to Home Screen
                 Button(action: onDismiss) {
                     Image(systemName: "house.fill")
                         .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 42, height: 42)
+                        .frame(width: 38, height: 38)
                 }
-                .liquidGlassButton(cornerRadius: 14)
+                .liquidGlassButton(cornerRadius: 12)
                 .buttonStyle(.plain)
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+        .background(Color(uiColor: .systemBackground))
     }
     
     private func submitURL() {
@@ -404,6 +407,7 @@ struct LiquidGlassBottomBar: View {
         return url.host ?? urlString
     }
 }
+#endif
 
 #if os(iOS)
 struct ShareSheet: UIViewControllerRepresentable {
