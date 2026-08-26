@@ -34,13 +34,13 @@ public final class UBlockOriginExtensionManager {
     /// Prepares content blocking rule lists and user scripts asynchronously during app startup
     public func prepare() async {
         guard !isInitialized else { return }
-        await loadRulesAndScriptsAsync()
+        await loadRulesAndScriptsAsync(forceRecompile: false)
         isInitialized = true
     }
     
     /// Recompiles rule lists dynamically based on updated user settings from the settings view
     public func recompile() async {
-        await loadRulesAndScriptsAsync()
+        await loadRulesAndScriptsAsync(forceRecompile: true)
     }
     
     /// Applies active uBlock Origin rules and scripts to a `WKWebViewConfiguration`
@@ -63,7 +63,7 @@ public final class UBlockOriginExtensionManager {
     }
     
     /// Loads enabled rulesets from bundle/symlinks, converts them, and compiles them in parallel
-    private func loadRulesAndScriptsAsync() async {
+    private func loadRulesAndScriptsAsync(forceRecompile: Bool = false) async {
         let defaults = UserDefaults.standard
         
         let ublockFilters = defaults.object(forKey: "ublock_filter_ublock_filters") as? Bool ?? true
@@ -98,23 +98,57 @@ public final class UBlockOriginExtensionManager {
         var totalRuleCount = 0
         
         for url in rulesetURLs {
-            if let data = try? Data(contentsOf: url),
-               let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
-                let wkRules = UBlockRuleCompiler.shared.convertDNRToWebKitRuleList(dnrRules: json)
-                let listIdentifier = "uBlock_" + url.deletingPathExtension().lastPathComponent
-                
-                #if DEBUG
-                print("[UBlockOriginExtensionManager] \(url.lastPathComponent): converted \(json.count) DNR rules to \(wkRules.count) WebKit rules")
-                #endif
-                
-                if let compiled = await compileSingleList(identifier: listIdentifier, rules: wkRules) {
-                    newCompiledLists.append(compiled)
-                    totalRuleCount += wkRules.count
+            let listIdentifier = "uBlock_" + url.deletingPathExtension().lastPathComponent
+            
+            let existingList: WKContentRuleList? = try? await withCheckedThrowingContinuation { continuation in
+                WKContentRuleListStore.default().lookUpContentRuleList(forIdentifier: listIdentifier) { list, error in
+                    if let list = list {
+                        continuation.resume(returning: list)
+                    } else if let error = error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: nil)
+                    }
                 }
-            } else {
+            }
+            
+            if !forceRecompile, existingList != nil {
                 #if DEBUG
-                print("[UBlockOriginExtensionManager] Warning: failed to parse JSON from \(url.path)")
+                print("[UBlockOriginExtensionManager] Loaded existing compiled ruleset: \(listIdentifier)")
                 #endif
+                newCompiledLists.append(existingList!)
+                totalRuleCount += defaults.integer(forKey: "ublock_rulecount_\(listIdentifier)")
+            } else {
+                if forceRecompile {
+                    _ = try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                        WKContentRuleListStore.default().removeContentRuleList(forIdentifier: listIdentifier) { error in
+                            if let error = error {
+                                continuation.resume(throwing: error)
+                            } else {
+                                continuation.resume(returning: ())
+                            }
+                        }
+                    }
+                }
+                
+                if let data = try? Data(contentsOf: url),
+                   let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
+                    let wkRules = UBlockRuleCompiler.shared.convertDNRToWebKitRuleList(dnrRules: json)
+                    
+                    #if DEBUG
+                    print("[UBlockOriginExtensionManager] \(url.lastPathComponent): converted \(json.count) DNR rules to \(wkRules.count) WebKit rules")
+                    #endif
+                    
+                    if let compiled = await compileSingleList(identifier: listIdentifier, rules: wkRules) {
+                        newCompiledLists.append(compiled)
+                        totalRuleCount += wkRules.count
+                        defaults.set(wkRules.count, forKey: "ublock_rulecount_\(listIdentifier)")
+                    }
+                } else {
+                    #if DEBUG
+                    print("[UBlockOriginExtensionManager] Warning: failed to parse JSON from \(url.path)")
+                    #endif
+                }
             }
         }
         
