@@ -52,63 +52,70 @@ struct WebAppContainerView: View {
     
     var body: some View {
         #if os(macOS)
-        VStack(spacing: 0) {
-            // Top Bar with Shield toggle, Summarize button, and Tiles/Home button
-            TopControlsBar(
-                appItem: appItem,
-                navigationState: navigationState,
-                isGeneratingSummary: isGeneratingSummary,
-                onDismiss: handleDismiss,
-                onToggleShield: toggleUBlockProtection,
-                onSummarize: handleSummarizeTap
-            )
-            
-            // Dropdown AI Summary section directly below top bar
-            if isShowingSummary {
-                SummaryDropdownView(
-                    isGenerating: isGeneratingSummary,
-                    summaryText: summaryText,
-                    errorMessage: summaryErrorMessage,
-                    onClose: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            isShowingSummary = false
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                if isShowingSummary {
+                    SummaryDropdownView(
+                        isGenerating: isGeneratingSummary,
+                        summaryText: summaryText,
+                        errorMessage: summaryErrorMessage,
+                        onClose: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isShowingSummary = false
+                            }
+                        },
+                        onRegenerate: {
+                            startSummarization()
                         }
-                    },
-                    onRegenerate: {
-                        startSummarization()
-                    }
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .zIndex(10)
-            }
-            
-            Divider()
-            
-            // Web View Content
-            IsolatedWebViewRepresentable(
-                appItem: appItem,
-                navigationState: navigationState,
-                modelContext: modelContext
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onTapGesture {
-                if isURLExpanded {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        isURLExpanded = false
-                    }
+                    )
+                    .frame(width: max(300, min(400, geo.size.width * 0.25)))
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .zIndex(10)
+                    
+                    Divider()
                 }
+                
+                VStack(spacing: 0) {
+                    // Top Bar with Shield toggle, Summarize button, and Tiles/Home button
+                    TopControlsBar(
+                        appItem: appItem,
+                        navigationState: navigationState,
+                        isGeneratingSummary: isGeneratingSummary,
+                        onDismiss: handleDismiss,
+                        onToggleShield: toggleUBlockProtection,
+                        onSummarize: handleSummarizeTap
+                    )
+                    
+                    Divider()
+                    
+                    // Web View Content
+                    IsolatedWebViewRepresentable(
+                        appItem: appItem,
+                        navigationState: navigationState,
+                        modelContext: modelContext
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onTapGesture {
+                        if isURLExpanded {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isURLExpanded = false
+                            }
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    // Solid Bottom Bar on macOS (Home button navigates to configured home URL)
+                    MacOSSolidBottomBar(
+                        navigationState: navigationState,
+                        isURLExpanded: $isURLExpanded,
+                        editableURLString: $editableURLString,
+                        onGoHome: navigateToConfiguredHome,
+                        onShare: shareCurrentURL
+                    )
+                }
+                .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
             }
-            
-            Divider()
-            
-            // Solid Bottom Bar on macOS (Home button navigates to configured home URL)
-            MacOSSolidBottomBar(
-                navigationState: navigationState,
-                isURLExpanded: $isURLExpanded,
-                editableURLString: $editableURLString,
-                onGoHome: navigateToConfiguredHome,
-                onShare: shareCurrentURL
-            )
         }
         .onAppear {
             navigationState.isUBlockEnabled = appItem.isUBlockEnabled
@@ -340,26 +347,7 @@ struct TopControlsBar: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            // Shield Button (Top Left)
-            Button(action: onToggleShield) {
-                HStack(spacing: 5) {
-                    Image(systemName: isYouTube ? "play.rectangle.fill" : (navigationState.isUBlockEnabled ? "shield.fill" : "shield.slash.fill"))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(isYouTube ? .red : (navigationState.isUBlockEnabled ? .blue : .secondary))
-                    
-                    Text(isYouTube ? "Ad-Free" : (navigationState.isUBlockEnabled ? "uBlock ON" : "uBlock OFF"))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(isYouTube ? .primary : (navigationState.isUBlockEnabled ? .primary : .secondary))
-                }
-                .padding(.horizontal, 9)
-                .frame(height: 32)
-                .liquidGlassButton(cornerRadius: 10)
-            }
-            .buttonStyle(.plain)
-            .disabled(isYouTube)
-            .help(isYouTube ? "YouTube ad-blocking active" : "Toggle uBlock Origin protection")
-            
-            // Summarize Button (Next to uBlock Button)
+            // Summarize Button (Top Left)
             Button(action: onSummarize) {
                 HStack(spacing: 4) {
                     if isGeneratingSummary {
@@ -380,6 +368,25 @@ struct TopControlsBar: View {
             }
             .buttonStyle(.plain)
             .help("Summarize the currently shown web page using Foundation Models")
+            
+            // Shield Button (Next to Summarize Button)
+            Button(action: onToggleShield) {
+                HStack(spacing: 5) {
+                    Image(systemName: isYouTube ? "play.rectangle.fill" : (navigationState.isUBlockEnabled ? "shield.fill" : "shield.slash.fill"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(isYouTube ? .red : (navigationState.isUBlockEnabled ? .blue : .secondary))
+                    
+                    Text(isYouTube ? "Ad-Free" : (navigationState.isUBlockEnabled ? "uBlock ON" : "uBlock OFF"))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(isYouTube ? .primary : (navigationState.isUBlockEnabled ? .primary : .secondary))
+                }
+                .padding(.horizontal, 9)
+                .frame(height: 32)
+                .liquidGlassButton(cornerRadius: 10)
+            }
+            .buttonStyle(.plain)
+            .disabled(isYouTube)
+            .help(isYouTube ? "YouTube ad-blocking active" : "Toggle uBlock Origin protection")
             
             Spacer()
             
@@ -439,10 +446,6 @@ struct SummaryDropdownView: View {
                 Text("Page Summary")
                     .font(.system(size: 13, weight: .bold))
                 
-                Text("(1st page • 4 sentences max)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                
                 Spacer()
                 
                 if !summaryText.isEmpty && !isGenerating {
@@ -455,7 +458,6 @@ struct SummaryDropdownView: View {
                     } label: {
                         HStack(spacing: 3) {
                             Image(systemName: hasCopied ? "checkmark" : "doc.on.doc")
-                            Text(hasCopied ? "Copied" : "Copy")
                         }
                         .font(.system(size: 11, weight: .medium))
                         .padding(.horizontal, 8)
@@ -510,7 +512,11 @@ struct SummaryDropdownView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                #if os(macOS)
+                .frame(maxHeight: .infinity)
+                #else
                 .frame(maxHeight: 250)
+                #endif
             }
         }
         .padding(12)
