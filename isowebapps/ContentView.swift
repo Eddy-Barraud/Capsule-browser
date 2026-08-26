@@ -26,9 +26,15 @@ struct ContentView: View {
     @State private var itemToDelete: WebAppItem?
     @State private var isShowingDeleteConfirmation = false
     
+    #if os(iOS)
     let columns = [
-        GridItem(.adaptive(minimum: 100, maximum: 130), spacing: 20)
+        GridItem(.flexible(), spacing: 20)
     ]
+    #else
+    let columns = [
+        GridItem(.adaptive(minimum: 300, maximum: 350), spacing: 20)
+    ]
+    #endif
     
     var body: some View {
         Group {
@@ -106,7 +112,14 @@ struct ContentView: View {
                             ForEach(webApps) { app in
                                 WebAppTileView(
                                     app: app,
-                                    onOpen: {
+                                    onStart: {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                            app.lastOpenedURLString = nil
+                                            try? modelContext.save()
+                                            selectedWebApp = app
+                                        }
+                                    },
+                                    onResume: {
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                             selectedWebApp = app
                                         }
@@ -232,40 +245,98 @@ struct ContentView: View {
 // Tile View for Each Web App with Liquid Glass Design
 struct WebAppTileView: View {
     let app: WebAppItem
-    let onOpen: () -> Void
+    let onStart: () -> Void
+    let onResume: () -> Void
     let onClearData: () -> Void
     let onDelete: () -> Void
     
     var body: some View {
-        Button(action: onOpen) {
-            VStack(spacing: 10) {
+        HStack(spacing: 16) {
+            // Left Column: App Logo (Clickable for Start)
+            Button(action: onStart) {
                 ZStack {
                     if let iconData = app.iconData,
                        let platformImage = PlatformImage(data: iconData) {
                         Image(platformImage: platformImage)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(width: 52, height: 52)
+                            .frame(width: 60, height: 60)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     } else {
                         Image(systemName: "globe")
-                            .font(.system(size: 30))
+                            .font(.system(size: 34))
                             .foregroundStyle(.primary)
                     }
                 }
-                .frame(width: 76, height: 76)
+                .frame(width: 80, height: 80)
                 .liquidGlassCard(cornerRadius: 20)
-                
-                Text(app.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.primary)
             }
-            .frame(width: 96)
+            .buttonStyle(.plain)
+            
+            // Right Column: Title, Gear, and Buttons
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    Text(app.name)
+                        .font(.system(size: 16, weight: .bold))
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    Menu {
+                        Button(action: onClearData) {
+                            Label("Clear Cookies & Cache...", systemImage: "arrow.clockwise.circle")
+                        }
+                        Button(role: .destructive, action: onDelete) {
+                            Label("Delete Web App", systemImage: "trash.fill")
+                        }
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                            .frame(width: 30, height: 30) // Ensure large enough tappable area
+                            .background(Color.primary.opacity(0.1))
+                            .clipShape(Circle())
+                    }
+                    .menuStyle(.borderlessButton)
+                }
+                
+                HStack(spacing: 12) {
+                    Button(action: onStart) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill")
+                            Text("Start")
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, minHeight: 44) // iOS accessibility size
+                        .liquidGlassButton(cornerRadius: 12)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Button(action: onResume) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.uturn.forward")
+                            Text("Resume")
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, minHeight: 44) // iOS accessibility size
+                        .liquidGlassButton(cornerRadius: 12)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
-        .buttonStyle(.plain)
+        .padding(16)
+        .liquidGlassCard(cornerRadius: 24)
         .contextMenu {
             Button(action: onClearData) {
                 Label("Clear Cookies & Cache...", systemImage: "arrow.clockwise.circle")
