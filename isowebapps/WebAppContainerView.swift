@@ -120,6 +120,15 @@ struct WebAppContainerView: View {
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
                 editableURLString = newURL
             }
+            if isShowingSummary {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isShowingSummary = false
+                }
+                summaryText = ""
+                summaryErrorMessage = nil
+                isGeneratingSummary = false
+                summaryTask?.cancel()
+            }
         }
         .onDisappear {
             summaryTask?.cancel()
@@ -193,6 +202,15 @@ struct WebAppContainerView: View {
         .onChange(of: navigationState.currentURLString) { newURL in
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
                 editableURLString = newURL
+            }
+            if isShowingSummary {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isShowingSummary = false
+                }
+                summaryText = ""
+                summaryErrorMessage = nil
+                isGeneratingSummary = false
+                summaryTask?.cancel()
             }
         }
         .onDisappear {
