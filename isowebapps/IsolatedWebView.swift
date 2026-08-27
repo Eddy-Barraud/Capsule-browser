@@ -684,6 +684,13 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        // Defer handling of target="_blank" (new window) links to createWebViewWith
+        // to prevent the WKWebView from going blank when we cancel the navigation.
+        if navigationAction.targetFrame == nil {
+            decisionHandler(.allow)
+            return
+        }
+        
         if appItem.openLinksInSafariReaderMode, navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
             decisionHandler(.cancel)
             openInSafariReader(url: url)
@@ -743,7 +750,11 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     // Handle target="_blank" and popup windows inside the same isolated webview
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil {
-            webView.load(navigationAction.request)
+            if appItem.openLinksInSafariReaderMode, let url = navigationAction.request.url {
+                openInSafariReader(url: url)
+            } else {
+                webView.load(navigationAction.request)
+            }
         }
         return nil
     }
