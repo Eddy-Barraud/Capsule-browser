@@ -100,7 +100,8 @@ public final class AISummarizer: ObservableObject {
             let session = LanguageModelSession(instructions: instructions)
             let options = GenerationOptions(
                 temperature: 0.3,
-                maximumResponseTokens: 400
+                maximumResponseTokens: 400,
+                allowsUnsafeContent: true
             )
             
             if let onPartialUpdate = onPartialUpdate {
