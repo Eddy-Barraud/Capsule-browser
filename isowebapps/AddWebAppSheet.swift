@@ -21,6 +21,7 @@ struct AddWebAppSheet: View {
     @State private var urlString: String = "https://"
     @State private var isFetching: Bool = false
     @State private var fetchedIconData: Data? = nil
+    @State private var openLinksInSafariReaderMode: Bool = false
     @State private var errorMessage: String? = nil
     
     var body: some View {
@@ -35,6 +36,10 @@ struct AddWebAppSheet: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         #endif
+                }
+                
+                Section(header: Text("Options")) {
+                    Toggle("Open links in Safari Reader mode", isOn: $openLinksInSafariReaderMode)
                 }
                 
                 if let iconData = fetchedIconData,
@@ -107,7 +112,8 @@ struct AddWebAppSheet: View {
                 let newApp = WebAppItem(
                     name: name.trimmingCharacters(in: .whitespaces),
                     urlString: formattedURL,
-                    iconData: iconData
+                    iconData: iconData,
+                    openLinksInSafariReaderMode: openLinksInSafariReaderMode
                 )
                 modelContext.insert(newApp)
                 try? modelContext.save()

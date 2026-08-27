@@ -25,6 +25,7 @@ final class WebAppItem {
     var createdAt: Date = Date()
     var lastVisited: Date? = nil
     var isUBlockEnabled: Bool = true
+    var openLinksInSafariReaderMode: Bool = false
     
     /// Encoded `[SerializableCookie]` array stored in SwiftData and synced via CloudKit
     var isolatedCookiesData: Data? = nil
@@ -38,6 +39,7 @@ final class WebAppItem {
         createdAt: Date = Date(),
         lastVisited: Date? = nil,
         isUBlockEnabled: Bool = true,
+        openLinksInSafariReaderMode: Bool = false,
         isolatedCookiesData: Data? = nil
     ) {
         self.id = id
@@ -48,6 +50,7 @@ final class WebAppItem {
         self.createdAt = createdAt
         self.lastVisited = lastVisited
         self.isUBlockEnabled = isUBlockEnabled
+        self.openLinksInSafariReaderMode = openLinksInSafariReaderMode
         self.isolatedCookiesData = isolatedCookiesData
     }
 }

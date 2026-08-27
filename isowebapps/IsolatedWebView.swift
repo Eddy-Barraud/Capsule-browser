@@ -14,6 +14,10 @@ import SwiftUI
 import WebKit
 import SwiftData
 import PDFKit
+#if os(iOS)
+import SafariServices
+#endif
+
 
 // MARK: - YouTube Ad Blocking & Native Player Enhancement Scripts
 
@@ -677,6 +681,29 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
             navigationState.currentURLString = urlString
         }
+    }
+    
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if appItem.openLinksInSafariReaderMode, navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
+            decisionHandler(.cancel)
+            openInSafariReader(url: url)
+            return
+        }
+        decisionHandler(.allow)
+    }
+    
+    private func openInSafariReader(url: URL) {
+        #if os(iOS)
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = true
+        let svc = SFSafariViewController(url: url, configuration: config)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
+            rootVC.present(svc, animated: true)
+        }
+        #else
+        NSWorkspace.shared.open(url)
+        #endif
     }
     
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
