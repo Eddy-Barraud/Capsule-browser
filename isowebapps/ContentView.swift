@@ -272,7 +272,7 @@ struct ContentView: View {
 
 // Tile View for Each Web App with Liquid Glass Design
 struct WebAppTileView: View {
-    let app: WebAppItem
+    @Bindable var app: WebAppItem
     let onStart: () -> Void
     let onResume: () -> Void
     let onClearData: () -> Void
@@ -313,6 +313,17 @@ struct WebAppTileView: View {
                     Spacer()
                     
                     Menu {
+                        Toggle("Open links in Safari Reader", isOn: $app.openLinksInSafariReaderMode)
+                            .onChange(of: app.openLinksInSafariReaderMode) { _, _ in
+                                try? app.modelContext?.save()
+                            }
+                        Toggle("Delete cookies on close", isOn: $app.deleteCookiesOnClose)
+                            .onChange(of: app.deleteCookiesOnClose) { _, _ in
+                                try? app.modelContext?.save()
+                            }
+                            
+                        Divider()
+                        
                         Button(action: onClearData) {
                             Label("Clear Cookies & Cache...", systemImage: "arrow.clockwise.circle")
                         }
