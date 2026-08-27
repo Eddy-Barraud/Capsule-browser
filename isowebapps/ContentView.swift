@@ -57,6 +57,7 @@ struct ContentView: View {
         }
         .task {
             await UBlockOriginExtensionManager.shared.prepare()
+            seedDefaultAppsIfNeeded()
         }
         .sheet(isPresented: $isShowingAddSheet) {
             AddWebAppSheet()
@@ -237,6 +238,33 @@ struct ContentView: View {
                 #if DEBUG
                 print("[ContentView] Failed to save context after delete: \(error)")
                 #endif
+            }
+        }
+    }
+    
+    private func seedDefaultAppsIfNeeded() {
+        if webApps.isEmpty && !UserDefaults.standard.bool(forKey: "hasSeededDefaults") {
+            let defaults = [
+                ("YouTube", "https://www.youtube.com"),
+                ("Google News", "https://news.google.com"),
+                ("DuckDuckGo", "https://duckduckgo.com"),
+                ("Reddit", "https://www.reddit.com"),
+                ("Gemini", "https://gemini.google.com")
+            ]
+            
+            Task {
+                for app in defaults {
+                    guard let url = URL(string: app.1) else { continue }
+                    let iconData = await FaviconFetcher.fetchIcon(for: url)
+                    await MainActor.run {
+                        let newApp = WebAppItem(name: app.0, urlString: app.1, iconData: iconData)
+                        modelContext.insert(newApp)
+                    }
+                }
+                await MainActor.run {
+                    try? modelContext.save()
+                    UserDefaults.standard.set(true, forKey: "hasSeededDefaults")
+                }
             }
         }
     }
