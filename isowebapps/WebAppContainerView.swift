@@ -124,6 +124,10 @@ struct WebAppContainerView: View {
             let initialURL = appItem.lastOpenedURLString ?? appItem.urlString
             navigationState.currentURLString = initialURL
             editableURLString = initialURL
+            
+            navigationState.onOpenSafari = { url in
+                NSWorkspace.shared.open(url)
+            }
         }
         .onChange(of: navigationState.currentURLString) { newURL in
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
