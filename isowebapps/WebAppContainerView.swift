@@ -688,7 +688,7 @@ struct MacOSSolidBottomBar: View {
             if text.contains(".") && !text.contains(" ") {
                 text = "https://" + text
             } else {
-                text = "https://www.google.com/search?q=" + text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+                text = "https://duckduckgo.com/?q=" + text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
             }
         }
         if let url = URL(string: text) {
@@ -826,7 +826,7 @@ struct IOSSolidBottomBar: View {
                     if text.contains(".") && !text.contains(" ") {
                         text = "https://" + text
                     } else {
-                        text = "https://www.google.com/search?q=" + text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+                        text = "https://duckduckgo.com/?q=" + text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
                     }
                 }
                 if let url = URL(string: text) {
