@@ -30,6 +30,7 @@ class WebViewNavigationState: ObservableObject {
     var onLoadURL: ((URL) -> Void)?
     var onStopLoading: (() -> Void)?
     var onToggleUBlock: ((Bool) -> Void)?
+    var onOpenSafari: ((URL) -> Void)?
     var onCaptureFirstPagePDFText: (() async throws -> (title: String, url: String, text: String))?
 }
 
@@ -49,6 +50,7 @@ struct WebAppContainerView: View {
     @State private var summaryText = ""
     @State private var summaryErrorMessage: String? = nil
     @State private var summaryTask: Task<Void, Never>? = nil
+    @State private var safariURL: IdentifiableURL? = nil
     
     var body: some View {
         #if os(macOS)
@@ -205,6 +207,14 @@ struct WebAppContainerView: View {
             let initialURL = appItem.lastOpenedURLString ?? appItem.urlString
             navigationState.currentURLString = initialURL
             editableURLString = initialURL
+            
+            navigationState.onOpenSafari = { url in
+                #if os(iOS)
+                safariURL = IdentifiableURL(url: url)
+                #else
+                NSWorkspace.shared.open(url)
+                #endif
+            }
         }
         .onChange(of: navigationState.currentURLString) { newURL in
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
@@ -228,6 +238,10 @@ struct WebAppContainerView: View {
             if let url = URL(string: navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString) {
                 ShareSheet(activityItems: [url])
             }
+        }
+        .sheet(item: $safariURL) { item in
+            SafariView(url: item.url)
+                .ignoresSafeArea()
         }
         #endif
     }
@@ -835,5 +849,27 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+#endif
+
+struct IdentifiableURL: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+#if os(iOS)
+import SafariServices
+
+struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = true
+        return SFSafariViewController(url: url, configuration: config)
+    }
+
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {
+    }
 }
 #endif

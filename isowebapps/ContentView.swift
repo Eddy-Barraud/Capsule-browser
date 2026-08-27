@@ -150,8 +150,10 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "shield.lefthalf.filled")
                             .font(.system(size: 15, weight: .semibold))
+                            #if os(macOS)
                             .padding(8)
                             .liquidGlassButton(cornerRadius: 12)
+                            #endif
                     }
                     .buttonStyle(.plain)
                     .help("uBlock Origin Lite Settings")
@@ -161,8 +163,10 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .bold))
+                            #if os(macOS)
                             .padding(8)
                             .liquidGlassButton(cornerRadius: 12)
+                            #endif
                     }
                     .buttonStyle(.plain)
                     .help("Add Web App")

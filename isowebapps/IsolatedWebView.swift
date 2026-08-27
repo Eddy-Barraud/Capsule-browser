@@ -700,17 +700,11 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     }
     
     private func openInSafariReader(url: URL) {
-        #if os(iOS)
-        let config = SFSafariViewController.Configuration()
-        config.entersReaderIfAvailable = true
-        let svc = SFSafariViewController(url: url, configuration: config)
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
-            rootVC.present(svc, animated: true)
+        // Dispatch to main queue asynchronously to allow the WKNavigationDelegate callback
+        // to finish returning .cancel, avoiding WebKit state inconsistencies that cause blank pages.
+        DispatchQueue.main.async {
+            self.navigationState.onOpenSafari?(url)
         }
-        #else
-        NSWorkspace.shared.open(url)
-        #endif
     }
     
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
