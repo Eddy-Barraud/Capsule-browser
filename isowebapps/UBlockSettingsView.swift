@@ -50,10 +50,10 @@ struct UBlockSettingsView: View {
     @AppStorage("ublock_cosmetic_hiding") private var cosmeticHiding = true
     @AppStorage("ublock_scriptlet_defusers") private var scriptletDefusers = true
     
+    @ObservedObject private var manager = UBlockOriginExtensionManager.shared
+    
     @State private var isRecompiling = false
     @State private var recompileSuccess = false
-    @State private var activeRulesCount = UBlockOriginExtensionManager.shared.activeRulesCount
-    @State private var activeListsCount = UBlockOriginExtensionManager.shared.activeListsCount
     
     var body: some View {
         NavigationStack {
@@ -81,14 +81,14 @@ struct UBlockSettingsView: View {
                     HStack {
                         Label("Active Rules", systemImage: "bolt.shield.fill")
                         Spacer()
-                        Text("\(activeRulesCount.formatted()) rules")
+                        Text("\(manager.activeRulesCount.formatted()) rules")
                             .foregroundStyle(.secondary)
                             .bold()
                     }
                     HStack {
                         Label("Compiled Rule Lists", systemImage: "list.bullet.rectangle.fill")
                         Spacer()
-                        Text("\(activeListsCount) lists")
+                        Text("\(manager.activeListsCount) lists")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -155,10 +155,6 @@ struct UBlockSettingsView: View {
                     }
                 }
             }
-            .onAppear {
-                activeRulesCount = UBlockOriginExtensionManager.shared.activeRulesCount
-                activeListsCount = UBlockOriginExtensionManager.shared.activeListsCount
-            }
         }
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 480)
@@ -171,10 +167,8 @@ struct UBlockSettingsView: View {
         recompileSuccess = false
         
         Task {
-            await UBlockOriginExtensionManager.shared.recompile()
+            await manager.recompile()
             await MainActor.run {
-                activeRulesCount = UBlockOriginExtensionManager.shared.activeRulesCount
-                activeListsCount = UBlockOriginExtensionManager.shared.activeListsCount
                 isRecompiling = false
                 recompileSuccess = true
             }

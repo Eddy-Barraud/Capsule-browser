@@ -13,10 +13,11 @@
 
 import Foundation
 import WebKit
+import Combine
 
 /// Loads uBlock Origin Lite DNR rules, cosmetic filter scripts, and WebKit content blocker rules
 /// to provide full ad-blocking and privacy protection inside WKWebView.
-public final class UBlockOriginExtensionManager {
+public final class UBlockOriginExtensionManager: ObservableObject {
     public static let shared = UBlockOriginExtensionManager()
     
     /// Array of actively compiled WebKit native rule lists
@@ -26,8 +27,8 @@ public final class UBlockOriginExtensionManager {
     private var cosmeticUserScripts: [WKUserScript] = []
     
     private var isInitialized = false
-    public private(set) var activeRulesCount: Int = 0
-    public private(set) var activeListsCount: Int = 0
+    @Published public private(set) var activeRulesCount: Int = 0
+    @Published public private(set) var activeListsCount: Int = 0
     
     private init() {}
     
@@ -164,9 +165,12 @@ public final class UBlockOriginExtensionManager {
             }
         }
         
-        self.compiledRuleLists = newCompiledLists
-        self.activeRulesCount = totalRuleCount
-        self.activeListsCount = newCompiledLists.count
+        
+        await MainActor.run {
+            self.compiledRuleLists = newCompiledLists
+            self.activeRulesCount = totalRuleCount
+            self.activeListsCount = newCompiledLists.count
+        }
         
         #if DEBUG
         print("[UBlockOriginExtensionManager] Total active rule lists: \(newCompiledLists.count), total rules active: \(totalRuleCount)")
