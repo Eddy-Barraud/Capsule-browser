@@ -95,7 +95,7 @@ struct UBlockSettingsView: View {
                 
                 // Mode Selection
                 Section(header: Text("Filtering Level")) {
-                    Picker("Mode", selection: $blockingMode) {
+                    Picker("", selection: $blockingMode) {
                         ForEach(BlockingMode.allCases) { mode in
                             Text(mode.rawValue).tag(mode)
                         }
