@@ -22,6 +22,7 @@ struct AddWebAppSheet: View {
     @State private var isFetching: Bool = false
     @State private var fetchedIconData: Data? = nil
     @State private var openLinksInSafariReaderMode: Bool = false
+    @State private var deleteCookiesOnClose: Bool = false
     @State private var errorMessage: String? = nil
     
     var body: some View {
@@ -40,6 +41,7 @@ struct AddWebAppSheet: View {
                 
                 Section(header: Text("Options")) {
                     Toggle("Open links in Safari Reader mode", isOn: $openLinksInSafariReaderMode)
+                    Toggle("Delete cookies on close", isOn: $deleteCookiesOnClose)
                 }
                 
                 if let iconData = fetchedIconData,
@@ -113,7 +115,8 @@ struct AddWebAppSheet: View {
                     name: name.trimmingCharacters(in: .whitespaces),
                     urlString: formattedURL,
                     iconData: iconData,
-                    openLinksInSafariReaderMode: openLinksInSafariReaderMode
+                    openLinksInSafariReaderMode: openLinksInSafariReaderMode,
+                    deleteCookiesOnClose: deleteCookiesOnClose
                 )
                 modelContext.insert(newApp)
                 try? modelContext.save()
