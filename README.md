@@ -15,13 +15,15 @@ Traditional web browsers share cookie jars, local storage, and caches across tab
 
 ---
 
+[![Build, Sign & Release DMG](https://github.com/Eddy-Barraud/Capsule-browser/actions/workflows/release.yml/badge.svg)](https://github.com/Eddy-Barraud/Capsule-browser/actions/workflows/release.yml)
+
 ## Features
 
 - **Isolated Web Containers:** Independent cookies, cache, and local website storage for each web app.
 - **Multi-Identity & Multi-Session:** Run multiple concurrent accounts for any website with complete separation.
 - **Anti-Tracking & Ad-Blocking:** Built-in uBlock Origin Lite rulesets with configurable filter lists and cosmetic element hiding.
 - **Cross-Device Sync:** CloudKit synchronization of web apps, settings, display order, and isolated sessions across iOS and macOS.
-- **Safari Reader Mode Integration:** Option to open external links in Safari reader mode (`SFSafariViewController` on iOS / Safari on macOS) while keeping same-domain authentication flows within the isolated container.
+- **Safari Reader Mode Integration:** Option to open external links in Safari reader mode (`SFSafariViewController` on iOS / Safari on macOS).
 - **Home Screen & Custom App Tiles:** Fast, customizable home screen grid with automatic favicon fetching and drag-and-drop reordering.
 - **Smart AI Web Page Summaries:** On-device Apple Foundation Models web page summarization.
 - **Platform-Native UI:** Solid native toolbar on macOS and floating Liquid Glass controls on iOS with swipe-to-home gesture navigation.
