@@ -1,23 +1,31 @@
-# Capsule browser
+# Capsule Browser
 
-Capsule browser is a SwiftUI application for turning websites into app-like shortcuts. Each saved web app opens in its own `WKWebView` with a separate non-persistent `WKWebsiteDataStore`, while selected cookies are serialized into SwiftData so an app's session can be restored independently of the others.
+**Capsule Browser** is a privacy-first web application container for macOS and iOS that transforms websites into independent, isolated web apps.
 
-The project targets macOS and iOS and uses SwiftData, WebKit, and platform-specific UIKit/AppKit adapters.
+---
+
+### 🛡️ Built for Total Privacy & Multi-Account Isolation
+
+Traditional web browsers share cookie jars, local storage, and caches across tabs, enabling third-party tracking networks and data brokers to profile your browsing habits across different websites. **Capsule Browser completely eliminates cross-site tracking through strict container isolation:**
+
+* **🚫 Zero Cross-Site Tracking:** Each web app runs in its own sandboxed WebKit container with an isolated, non-persistent data store (`WKWebsiteDataStore.nonPersistent()`). Trackers, cookies, local storage, and fingerprints are strictly partitioned and cannot leak across your web apps.
+* **👥 Multi-Account Support on the Same Website:** Create multiple distinct capsules for the same service (e.g., *Personal GitHub* vs. *Work GitHub*, multiple Google/Gmail accounts, or separate social media identities). Each capsule maintains its own independent login session without interfering with the others.
+* **🛡️ Integrated uBlock Origin Lite:** Advanced built-in ad and tracker blocking, cosmetic element hiding, and scriptlet defusers powered by uBlock rulesets compiled natively to WebKit content rules.
+* **☁️ Private CloudKit Sync:** Your web apps, preferences, and serialized sessions sync securely between your Apple devices via your private iCloud database with zero third-party telemetry or analytics.
+
+---
 
 ## Features
 
-- Home screen of saved web app tiles with fetched favicons.
-- Sync web-apps, settings, last open page and cookies between devices
-- Web-App setting to open links in Safari reader view by default, using `SFSafariViewController` instead of `WKWebView` on iOS, and in the Safari app on macOS.
-- Independent cookies, cache, and website storage for each web app.
-- Back, forward, reload, stop, URL entry, and share actions.
-- URL bar synchronization as pages redirect or navigate internally.
-- SwiftData persistence for app metadata, icons, visit dates, and cookies.
-- CloudKit sync between user devices of the SwiftData
-- uBlock Origin Lite filter lists, cosmetic hiding, and scriptlet defusers.
-- Settings for enabling individual uBlock filter groups.
-- macOS solid toolbar and iOS floating Liquid Glass navigation controls.
-- Teardown of the active web view when leaving an app to stop background activity.
+- **Isolated Web Containers:** Independent cookies, cache, and local website storage for each web app.
+- **Multi-Identity & Multi-Session:** Run multiple concurrent accounts for any website with complete separation.
+- **Anti-Tracking & Ad-Blocking:** Built-in uBlock Origin Lite rulesets with configurable filter lists and cosmetic element hiding.
+- **Cross-Device Sync:** CloudKit synchronization of web apps, settings, display order, and isolated sessions across iOS and macOS.
+- **Safari Reader Mode Integration:** Option to open external links in Safari reader mode (`SFSafariViewController` on iOS / Safari on macOS) while keeping same-domain authentication flows within the isolated container.
+- **Home Screen & Custom App Tiles:** Fast, customizable home screen grid with automatic favicon fetching and drag-and-drop reordering.
+- **Smart AI Web Page Summaries:** On-device Apple Foundation Models web page summarization.
+- **Platform-Native UI:** Solid native toolbar on macOS and floating Liquid Glass controls on iOS with swipe-to-home gesture navigation.
+- **Clean Lifecycle Teardown:** Complete teardown of WebViews on exit to halt background activity and battery drain.
 
 ## Build and Run
 
