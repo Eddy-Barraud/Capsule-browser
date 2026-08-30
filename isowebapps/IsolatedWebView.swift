@@ -17,350 +17,8 @@ import PDFKit
 #if os(iOS)
 import SafariServices
 #endif
-
-
-// MARK: - YouTube Ad Blocking & Native Player Enhancement Scripts
-
-/// Injected on YouTube pages.
-/// Hides ads, attaches a tap-to-play placeholder overlay on video pages (/watch),
-/// and starts the video directly in native full-screen player when tapped.
-/// Does nothing on Shorts (/shorts/) pages or non-YouTube domains.
-private let ytPlaceholderAndAdBlockScript = """
-(function() {
-    var hostname = window.location.hostname;
-    if (!hostname.includes('youtube.com')) return;
-
-    function injectStyles() {
-        if (document.getElementById('yt-free-styles')) return;
-        var style = document.createElement('style');
-        style.id = 'yt-free-styles';
-        style.textContent = [
-            /* Ad blocking CSS rules */
-            '.video-ads, .ytp-ad-module, .ytp-ad-overlay-container,',
-            '.ytp-ad-player-overlay, .ytp-ad-text, .ytp-ad-image-overlay,',
-            '.ad-showing .ytp-ad-action-interstitial, .ad-container,',
-            '.ytp-ad-preview-container, .ytp-ad-skip-button-slot,',
-            '.ytp-ad-message-container, ytd-ad-slot-renderer,',
-            '#player-ads, ytm-promoted-sparkles-web-renderer,',
-            '.ytp-pause-overlay, .ytp-ce-element, .ytp-endscreen-content {',
-            '    display: none !important;',
-            '}',
-            /* Native player placeholder overlay */
-            '.yt-free-placeholder {',
-            '    position: absolute !important;',
-            '    top: 0 !important;',
-            '    left: 0 !important;',
-            '    width: 100% !important;',
-            '    height: 100% !important;',
-            '    z-index: 99999 !important;',
-            '    background: rgba(12, 12, 12, 0.90) !important;',
-            '    backdrop-filter: blur(10px) !important;',
-            '    -webkit-backdrop-filter: blur(10px) !important;',
-            '    display: flex !important;',
-            '    flex-direction: column !important;',
-            '    align-items: center !important;',
-            '    justify-content: center !important;',
-            '    cursor: pointer !important;',
-            '    user-select: none !important;',
-            '    -webkit-user-select: none !important;',
-            '    -webkit-tap-highlight-color: transparent !important;',
-            '    transition: opacity 0.2s ease;',
-            '}',
-            '.yt-free-placeholder:active {',
-            '    background: rgba(25, 25, 25, 0.96) !important;',
-            '}',
-            '.yt-free-btn {',
-            '    width: 64px !important;',
-            '    height: 64px !important;',
-            '    background: #ff0000 !important;',
-            '    border-radius: 50% !important;',
-            '    display: flex !important;',
-            '    align-items: center !important;',
-            '    justify-content: center !important;',
-            '    box-shadow: 0 4px 20px rgba(255, 0, 0, 0.5), 0 2px 10px rgba(0, 0, 0, 0.5) !important;',
-            '    margin-bottom: 12px !important;',
-            '    transition: transform 0.15s ease !important;',
-            '    pointer-events: none !important;',
-            '}',
-            '.yt-free-placeholder:active .yt-free-btn {',
-            '    transform: scale(0.92) !important;',
-            '}',
-            '.yt-free-btn svg {',
-            '    width: 26px !important;',
-            '    height: 26px !important;',
-            '    fill: #ffffff !important;',
-            '    margin-left: 3px !important;',
-            '    pointer-events: none !important;',
-            '}',
-            '.yt-free-label {',
-            '    color: #ffffff !important;',
-            '    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;',
-            '    font-size: 15px !important;',
-            '    font-weight: 600 !important;',
-            '    letter-spacing: -0.2px !important;',
-            '    text-shadow: 0 1px 4px rgba(0,0,0,0.8) !important;',
-            '    pointer-events: none !important;',
-            '}',
-            '.yt-free-badge {',
-            '    color: rgba(255, 255, 255, 0.7) !important;',
-            '    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;',
-            '    font-size: 11px !important;',
-            '    margin-top: 4px !important;',
-            '    text-shadow: 0 1px 3px rgba(0,0,0,0.8) !important;',
-            '    pointer-events: none !important;',
-            '}'
-        ].join('\\n');
-        (document.head || document.documentElement).appendChild(style);
-    }
-
-    function isShorts() {
-        var path = window.location.pathname || '';
-        return path.startsWith('/shorts') || window.location.href.includes('/shorts/');
-    }
-
-    function isWatchPage() {
-        if (isShorts()) return false;
-        var path = window.location.pathname || '';
-        return path.startsWith('/watch') || window.location.search.includes('v=');
-    }
-
-    function skipAds() {
-        var video = document.querySelector('video');
-        var adShowing = document.querySelector('.ad-showing, .ad-interrupting, .ytp-ad-player-overlay, ytm-promoted-sparkles-web-renderer');
-        if (adShowing && video) {
-            video.muted = true;
-            video.playbackRate = 16;
-            if (isFinite(video.duration) && video.duration > 0) {
-                video.currentTime = video.duration;
-            }
-            var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-overlay-close-button');
-            if (skipBtn) skipBtn.click();
-        }
-    }
-
-    function findPlayerContainer() {
-        return document.getElementById('player-container-id') ||
-               document.getElementById('player') ||
-               document.getElementById('movie_player') ||
-               document.getElementById('ytd-player') ||
-               document.querySelector('.player-container') ||
-               document.querySelector('.html5-video-player') ||
-               (document.querySelector('video') && document.querySelector('video').parentElement);
-    }
-
-    function launchNativePlayer(placeholder) {
-        skipAds();
-
-        var video = document.querySelector('video');
-        var player = document.getElementById('movie_player');
-
-        if (video) {
-            video.muted = false;
-            video.playbackRate = 1.0;
-            video.removeAttribute('playsinline');
-            video.removeAttribute('webkit-playsinline');
-
-            function enterFS() {
-                if (typeof video.webkitEnterFullscreen === 'function') {
-                    video.webkitEnterFullscreen();
-                } else if (typeof video.requestFullscreen === 'function') {
-                    video.requestFullscreen().catch(function(){});
-                } else if (typeof video.webkitRequestFullscreen === 'function') {
-                    video.webkitRequestFullscreen();
-                }
-            }
-
-            var p = video.play();
-            if (p !== undefined) {
-                p.then(enterFS).catch(enterFS);
-            } else {
-                enterFS();
-            }
-
-            function onExitFS() {
-                video.removeEventListener('webkitendfullscreen', onExitFS);
-                video.removeEventListener('fullscreenchange', onExitFS);
-                if (placeholder) {
-                    placeholder.style.display = 'flex';
-                }
-                video.pause();
-            }
-            video.addEventListener('webkitendfullscreen', onExitFS);
-            video.addEventListener('fullscreenchange', onExitFS);
-        } else if (player && typeof player.playVideo === 'function') {
-            player.playVideo();
-        }
-
-        if (placeholder) {
-            placeholder.style.display = 'none';
-        }
-    }
-
-    function setupPlaceholder() {
-        injectStyles();
-
-        // For Shorts: do nothing and remove any placeholder
-        if (isShorts()) {
-            var existing = document.querySelector('.yt-free-placeholder');
-            if (existing) existing.remove();
-            return;
-        }
-
-        if (!isWatchPage()) {
-            var existing = document.querySelector('.yt-free-placeholder');
-            if (existing) existing.remove();
-            return;
-        }
-
-        var container = findPlayerContainer();
-        if (!container) return;
-
-        var pos = window.getComputedStyle(container).position;
-        if (pos === 'static' || !pos) {
-            container.style.position = 'relative';
-        }
-
-        var placeholder = container.querySelector(':scope > .yt-free-placeholder');
-        if (!placeholder) {
-            var strays = document.querySelectorAll('.yt-free-placeholder');
-            strays.forEach(function(s) { s.remove(); });
-
-            placeholder = document.createElement('div');
-            placeholder.className = 'yt-free-placeholder';
-            placeholder.innerHTML = [
-                '<div class="yt-free-btn">',
-                '  <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
-                '</div>',
-                '<div class="yt-free-label">Play Video</div>',
-                '<div class="yt-free-badge">Ad-Free Player</div>'
-            ].join('');
-
-            placeholder.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                launchNativePlayer(placeholder);
-            });
-
-            container.appendChild(placeholder);
-        }
-
-        // Before user interaction, pause/mute video to prevent background ad audio
-        var video = document.querySelector('video');
-        if (video && placeholder.style.display !== 'none') {
-            if (!video.paused && !document.fullscreenElement && !document.webkitFullscreenElement) {
-                video.muted = true;
-                video.pause();
-            }
-        }
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', setupPlaceholder);
-    } else {
-        setupPlaceholder();
-    }
-
-    window.addEventListener('yt-navigate-finish', setupPlaceholder);
-    window.addEventListener('yt-page-data-updated', setupPlaceholder);
-    window.addEventListener('popstate', setupPlaceholder);
-
-    var obs = new MutationObserver(function() {
-        setupPlaceholder();
-    });
-    obs.observe(document.documentElement, { childList: true, subtree: true });
-
-    setInterval(function() {
-        setupPlaceholder();
-        if (isWatchPage()) {
-            skipAds();
-        }
-    }, 500);
-})();
-"""
-
-/// macOS only — forces native <video controls> on top of the YouTube player.
-/// The native controls bar, including PiP and AirPlay, overlays the bottom
-/// of the player.
-private let ytNativeControlsScript = """
-(function() {
-    var hostname = window.location.hostname;
-    if (!hostname.includes('youtube.com')) return;
-
-    var style = document.createElement('style');
-    style.textContent = [
-        '.ytp-pause-overlay { display: none !important; }',
-        '.ytp-ce-element { display: none !important; }',
-        '.ytp-endscreen-content { display: none !important; }'
-    ].join(' ');
-    document.documentElement.appendChild(style);
-
-    var guardedVideos = new WeakSet();
-
-    function guardVideo(video) {
-        if (guardedVideos.has(video)) return;
-        guardedVideos.add(video);
-
-        function applyAttrs() {
-            video.setAttribute('controls', '');
-            video.removeAttribute('controlslist');
-            video.removeAttribute('disablepictureinpicture');
-            video.removeAttribute('playsinline');
-            video.removeAttribute('webkit-playsinline');
-        }
-        applyAttrs();
-
-        var obs = new MutationObserver(function(mutations) {
-            mutations.forEach(function(m) {
-                if (m.attributeName === 'controls' && !video.hasAttribute('controls')) {
-                    video.setAttribute('controls', '');
-                }
-                if (m.attributeName === 'controlslist') video.removeAttribute('controlslist');
-                if (m.attributeName === 'disablepictureinpicture') video.removeAttribute('disablepictureinpicture');
-                if (m.attributeName === 'playsinline') video.removeAttribute('playsinline');
-                if (m.attributeName === 'webkit-playsinline') video.removeAttribute('webkit-playsinline');
-            });
-        });
-        obs.observe(video, {
-            attributes: true,
-            attributeFilter: ['controls', 'controlslist', 'disablepictureinpicture', 'playsinline', 'webkit-playsinline']
-        });
-    }
-
-    document.querySelectorAll('video').forEach(guardVideo);
-
-    var docObs = new MutationObserver(function(mutations) {
-        mutations.forEach(function(m) {
-            m.addedNodes.forEach(function(node) {
-                if (node.nodeType !== 1) return;
-                if (node.tagName === 'VIDEO') guardVideo(node);
-                else node.querySelectorAll && node.querySelectorAll('video').forEach(guardVideo);
-            });
-        });
-    });
-    docObs.observe(document.documentElement, { childList: true, subtree: true });
-
-    try {
-        Object.defineProperty(HTMLVideoElement.prototype, 'disablePictureInPicture', {
-            get: function() { return false; },
-            set: function() {},
-            configurable: true
-        });
-    } catch(e) {}
-
-    document.addEventListener('contextmenu', function(e) {
-        var el = e.target;
-        while (el) {
-            if (el.tagName === 'VIDEO') {
-                e.stopImmediatePropagation();
-                return;
-            }
-            el = el.parentElement;
-        }
-    }, true);
-})();
-"""
-
 #if os(iOS)
+
 struct IsolatedWebViewRepresentable: UIViewRepresentable {
     let appItem: WebAppItem
     @ObservedObject var navigationState: WebViewNavigationState
@@ -459,7 +117,7 @@ extension IsolatedWebViewRepresentable {
         if isYouTube {
             // For YouTube: use dedicated lightweight script & native player controls instead of uBlock
             let ytPlaceholderScript = WKUserScript(
-                source: ytPlaceholderAndAdBlockScript,
+                source: YouTubeScripts.ytPlaceholderAndAdBlockScript,
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true
             )
@@ -467,7 +125,7 @@ extension IsolatedWebViewRepresentable {
 
             #if os(macOS)
             let ytNativeControlsUserScript = WKUserScript(
-                source: ytNativeControlsScript,
+                source: YouTubeScripts.ytNativeControlsScript,
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             )
@@ -478,14 +136,22 @@ extension IsolatedWebViewRepresentable {
             UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
         }
         
-        // 4. Configure Application User Agent with Name and Version
-        // Setting applicationNameForUserAgent appends 'isowebapps/<version>' to the authentic
-        // Safari/Mobile Safari User-Agent without overriding mobile/desktop platform tokens.
-        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-        let appUserAgent = "isowebapps/\(appVersion)"
-        configuration.applicationNameForUserAgent = appUserAgent
+        // 4. Configure Application User Agent
+        if isYouTube {
+            let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+            configuration.applicationNameForUserAgent = "isowebapps/\(appVersion)"
+        }
         
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        
+        if !isYouTube {
+            #if os(macOS)
+            webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15"
+            #else
+            webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1"
+            #endif
+        }
+        
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         #if os(iOS)
