@@ -13,11 +13,13 @@
 import SwiftUI
 import SwiftData
 import WebKit
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \WebAppItem.createdAt, order: .forward) private var webApps: [WebAppItem]
+    @Query(sort: [SortDescriptor(\WebAppItem.displayOrder, order: .forward), SortDescriptor(\WebAppItem.createdAt, order: .forward)]) private var webApps: [WebAppItem]
     
+    @State private var draggingItem: WebAppItem?
     @State private var selectedWebApp: WebAppItem?
     @State private var isShowingAddSheet = false
     @State private var isShowingUBlockSettings = false
@@ -134,6 +136,11 @@ struct ContentView: View {
                                         isShowingDeleteConfirmation = true
                                     }
                                 )
+                                .onDrag {
+                                    self.draggingItem = app
+                                    return NSItemProvider(object: app.id.uuidString as NSString)
+                                }
+                                .onDrop(of: [.plainText], delegate: WebAppDropDelegate(item: app, items: webApps, draggingItem: $draggingItem, modelContext: modelContext))
                             }
                         }
                         .padding(.horizontal, 20)
@@ -380,18 +387,47 @@ struct WebAppTileView: View {
         }
         .padding(16)
         .liquidGlassCard(cornerRadius: 24)
-        .contextMenu {
-            Button(action: onClearData) {
-                Label("Clear Cookies & Cache...", systemImage: "arrow.clockwise.circle")
-            }
-            Button(role: .destructive, action: onDelete) {
-                Label("Delete Web App", systemImage: "trash.fill")
-            }
-        }
     }
 }
 
 #Preview {
     ContentView()
         .modelContainer(for: WebAppItem.self, inMemory: true)
+}
+
+struct WebAppDropDelegate: DropDelegate {
+    let item: WebAppItem
+    let items: [WebAppItem]
+    @Binding var draggingItem: WebAppItem?
+    var modelContext: ModelContext
+    
+    func dropEntered(info: DropInfo) {
+        guard let draggingItem = draggingItem, draggingItem.id != item.id else { return }
+        
+        guard let fromIndex = items.firstIndex(where: { $0.id == draggingItem.id }),
+              let toIndex = items.firstIndex(where: { $0.id == item.id }) else { return }
+        
+        if fromIndex != toIndex {
+            withAnimation(.default) {
+                var sortedItems = items
+                let movedItem = sortedItems.remove(at: fromIndex)
+                sortedItems.insert(movedItem, at: toIndex)
+                
+                for (index, app) in sortedItems.enumerated() {
+                    app.displayOrder = index
+                }
+                
+                try? modelContext.save()
+            }
+        }
+    }
+    
+    func performDrop(info: DropInfo) -> Bool {
+        self.draggingItem = nil
+        return true
+    }
+    
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        return DropProposal(operation: .move)
+    }
 }
