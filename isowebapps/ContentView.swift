@@ -125,7 +125,7 @@ struct ContentView: View {
                                             .padding(24)
                                             .liquidGlassCard(cornerRadius: 28)
                                         
-                                        Text("Welcome to Isolated Web Apps")
+                                        Text("Welcome to Capsule Browser")
                                             .font(.title2.bold())
                                         
                                         Text("Would you like to start with a blank slate, or try our default list of apps?\n(YouTube, Google News, DuckDuckGo, Reddit, Instagram, Gemini)")
@@ -200,7 +200,7 @@ struct ContentView: View {
                 self.draggingItem = nil
                 return false
             }
-            .navigationTitle("Isolated Web Apps")
+            .navigationTitle("Capsule Browser")
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button {
