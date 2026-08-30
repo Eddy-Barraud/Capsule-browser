@@ -13,7 +13,7 @@ Traditional web browsers share cookie jars, local storage, and caches across tab
 * **🛡️ Integrated uBlock Origin Lite:** Advanced built-in ad and tracker blocking, cosmetic element hiding, and scriptlet defusers powered by uBlock rulesets compiled natively to WebKit content rules.
 * **☁️ Private CloudKit Sync:** Your web apps, preferences, and serialized sessions sync securely between your Apple devices via your private iCloud database with zero third-party telemetry or analytics.
 
-<center><img src="ios-screenshots/home_screen_wiki.png" width=30%></center>
+<div align="center"><img src="ios-screenshots/home_screen_wiki.png" width=30%><img src="ios-screenshots/webview_wiki_cg_reader.png" width=30%><img src="ios-screenshots/ublock_settings.png" width=30%></div>
 
 ---
 
