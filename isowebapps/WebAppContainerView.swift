@@ -85,7 +85,8 @@ struct WebAppContainerView: View {
                         isGeneratingSummary: isGeneratingSummary,
                         onDismiss: handleDismiss,
                         onToggleShield: toggleUBlockProtection,
-                        onSummarize: handleSummarizeTap
+                        onSummarize: handleSummarizeTap,
+                        onToggleSafariReader: toggleSafariReaderMode
                     )
                     
                     Divider()
@@ -156,7 +157,8 @@ struct WebAppContainerView: View {
                 isGeneratingSummary: isGeneratingSummary,
                 onDismiss: handleDismiss,
                 onToggleShield: toggleUBlockProtection,
-                onSummarize: handleSummarizeTap
+                onSummarize: handleSummarizeTap,
+                onToggleSafariReader: toggleSafariReaderMode
             )
             
             // Dropdown AI Summary section directly below top bar
@@ -284,6 +286,11 @@ struct WebAppContainerView: View {
         navigationState.onToggleUBlock?(newState)
     }
     
+    private func toggleSafariReaderMode() {
+        appItem.openLinksInSafariReaderMode.toggle()
+        try? modelContext.save()
+    }
+    
     private func handleSummarizeTap() {
         if isShowingSummary && !isGeneratingSummary && summaryErrorMessage == nil && !summaryText.isEmpty {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -366,6 +373,7 @@ struct TopControlsBar: View {
     let onDismiss: () -> Void
     let onToggleShield: () -> Void
     let onSummarize: () -> Void
+    let onToggleSafariReader: () -> Void
     
     private var isYouTube: Bool {
         appItem.urlString.lowercased().contains("youtube.com")
@@ -416,13 +424,23 @@ struct TopControlsBar: View {
             
             Spacer()
             
-            // App Title in Center
-            Text(appItem.name)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-                .truncationMode(.tail)
-            
-            Spacer()
+            // Safari Reader Toggle Button (Center Right)
+            Button(action: onToggleSafariReader) {
+                HStack(spacing: 4) {
+                    Image(systemName: appItem.openLinksInSafariReaderMode ? "doc.plaintext.fill" : "doc.plaintext")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(appItem.openLinksInSafariReaderMode ? .blue : .secondary)
+                    
+                    Text(appItem.openLinksInSafariReaderMode ? "Reader ON" : "Reader OFF")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(appItem.openLinksInSafariReaderMode ? .primary : .secondary)
+                }
+                .padding(.horizontal, 9)
+                .frame(height: 32)
+                .liquidGlassButton(cornerRadius: 10)
+            }
+            .buttonStyle(.plain)
+            .help("Toggle Safari Reader Mode for external links")
             
             // Tiles / Grid Home Button (Top Right)
             Button(action: onDismiss) {
