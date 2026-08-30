@@ -707,6 +707,8 @@ struct IOSSolidBottomBar: View {
     let onGoHome: () -> Void
     let onShare: () -> Void
     
+    @FocusState private var isURLFocused: Bool
+    
     var body: some View {
         HStack(spacing: 8) {
             if !isURLExpanded {
@@ -751,14 +753,14 @@ struct IOSSolidBottomBar: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
+                        .focused($isURLFocused)
                         .onSubmit {
                             submitURL()
                         }
                     
                     Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            isURLExpanded = false
-                        }
+                        isURLFocused = false
+                        isURLExpanded = false
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
@@ -783,11 +785,13 @@ struct IOSSolidBottomBar: View {
             .liquidGlassButton(cornerRadius: 12)
             .contentShape(Rectangle())
             .onTapGesture {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    if !isURLExpanded {
-                        editableURLString = navigationState.currentURLString
-                        isURLExpanded = true
-                    }
+                if !isURLExpanded {
+                    editableURLString = navigationState.currentURLString
+                    isURLExpanded = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isURLFocused = true
+                    UIApplication.shared.sendAction(#selector(UIResponder.selectAll(_:)), to: nil, from: nil, for: nil)
                 }
             }
             
@@ -815,12 +819,17 @@ struct IOSSolidBottomBar: View {
         .padding(.top, 8)
         .padding(.bottom, 6)
         .background(Color(uiColor: .systemBackground))
+        .onChange(of: isURLFocused) { _ in
+            if !isURLFocused && isURLExpanded {
+                isURLExpanded = false
+            }
+        }
     }
     
     private func submitURL() {
-        withAnimation(.spring()) {
-            isURLExpanded = false
-            var text = editableURLString.trimmingCharacters(in: .whitespaces)
+        isURLFocused = false
+        isURLExpanded = false
+        var text = editableURLString.trimmingCharacters(in: .whitespaces)
             if !text.isEmpty {
                 if !text.lowercased().hasPrefix("http://") && !text.lowercased().hasPrefix("https://") {
                     if text.contains(".") && !text.contains(" ") {

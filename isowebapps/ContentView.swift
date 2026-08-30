@@ -271,10 +271,11 @@ struct ContentView: View {
     private func seedDefaultAppsIfNeeded() {
         if webApps.isEmpty && !hasSeededDefaults {
             let defaults = [
-                ("YouTube", "https://www.youtube.com"),
                 ("Google News", "https://news.google.com"),
-                ("DuckDuckGo", "https://duckduckgo.com"),
+                ("YouTube", "https://www.youtube.com"),
                 ("Reddit", "https://www.reddit.com"),
+                ("Instagram", "https://www.instagram.com"),
+                ("DuckDuckGo", "https://start.duckduckgo.com"),
                 ("Gemini", "https://gemini.google.com")
             ]
             
