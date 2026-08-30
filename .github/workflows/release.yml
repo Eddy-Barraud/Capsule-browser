@@ -66,9 +66,10 @@ jobs:
       - name: Build & Archive App
         run: |
           xcodebuild clean archive \
-            -scheme Tiny-SFTP-server \
+            -project isowebapps.xcodeproj \
+            -scheme Capsule-Browser \
             -destination "generic/platform=macOS" \
-            -archivePath "$RUNNER_TEMP/Tiny-SFTP-server.xcarchive" \
+            -archivePath "$RUNNER_TEMP/Capsule-Browser.xcarchive" \
             -configuration Release \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="-"
@@ -76,26 +77,27 @@ jobs:
       - name: Export & Sign .app
         run: |
           mkdir -p "$RUNNER_TEMP/Export"
-          cp -R "$RUNNER_TEMP/Tiny-SFTP-server.xcarchive/Products/Applications/Tiny-SFTP-server.app" "$RUNNER_TEMP/Export/Tiny-SFTP-server.app"
+          cp -R "$RUNNER_TEMP/Capsule-Browser.xcarchive/Products/Applications/Capsule Browser.app" "$RUNNER_TEMP/Export/Capsule Browser.app"
           
           # Sign all frameworks, dylibs, and the main app binary with Developer ID & Hardened Runtime
           codesign --force --deep --options runtime \
+            --entitlements isowebapps/isowebapps.entitlements \
             --keychain "$RUNNER_TEMP/build.keychain" \
             --sign "$SIGNING_IDENTITY" \
             --timestamp \
-            "$RUNNER_TEMP/Export/Tiny-SFTP-server.app"
+            "$RUNNER_TEMP/Export/Capsule Browser.app"
 
       - name: Create DMG
         run: |
           mkdir -p "$RUNNER_TEMP/dmg-source"
-          cp -R "$RUNNER_TEMP/Export/Tiny-SFTP-server.app" "$RUNNER_TEMP/dmg-source/"
+          cp -R "$RUNNER_TEMP/Export/Capsule Browser.app" "$RUNNER_TEMP/dmg-source/"
           ln -s /Applications "$RUNNER_TEMP/dmg-source/Applications"
           
           mkdir -p "$RUNNER_TEMP/dmg-output"
-          hdiutil create -volname "Tiny SFTP Server" \
+          hdiutil create -volname "Capsule Browser" \
             -srcfolder "$RUNNER_TEMP/dmg-source" \
             -ov -format UDZO \
-            "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg"
+            "$RUNNER_TEMP/dmg-output/Capsule-Browser.dmg"
 
       - name: Sign DMG
         run: |
@@ -103,7 +105,7 @@ jobs:
             --keychain "$RUNNER_TEMP/build.keychain" \
             --sign "$SIGNING_IDENTITY" \
             --timestamp \
-            "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg"
+            "$RUNNER_TEMP/dmg-output/Capsule-Browser.dmg"
 
       - name: Notarize DMG
         env:
@@ -111,7 +113,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          xcrun notarytool submit "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg" \
+          xcrun notarytool submit "$RUNNER_TEMP/dmg-output/Capsule-Browser.dmg" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
@@ -119,12 +121,12 @@ jobs:
 
       - name: Staple Notarization Ticket
         run: |
-          xcrun stapler staple "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg"
+          xcrun stapler staple "$RUNNER_TEMP/dmg-output/Capsule-Browser.dmg"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ runner.temp }}/dmg-output/Tiny-SFTP-server.dmg
+          files: ${{ runner.temp }}/dmg-output/Capsule-Browser.dmg
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
