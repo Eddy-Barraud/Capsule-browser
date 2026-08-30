@@ -86,7 +86,7 @@ struct WebAppContainerView: View {
                         onDismiss: handleDismiss,
                         onToggleShield: toggleUBlockProtection,
                         onSummarize: handleSummarizeTap,
-                        onToggleSafariReader: toggleSafariReaderMode
+                        onOpenInReader: openCurrentInSafariReader
                     )
                     
                     Divider()
@@ -158,7 +158,7 @@ struct WebAppContainerView: View {
                 onDismiss: handleDismiss,
                 onToggleShield: toggleUBlockProtection,
                 onSummarize: handleSummarizeTap,
-                onToggleSafariReader: toggleSafariReaderMode
+                onOpenInReader: openCurrentInSafariReader
             )
             
             // Dropdown AI Summary section directly below top bar
@@ -294,9 +294,15 @@ struct WebAppContainerView: View {
         navigationState.onToggleUBlock?(newState)
     }
     
-    private func toggleSafariReaderMode() {
-        appItem.openLinksInSafariReaderMode.toggle()
-        try? modelContext.save()
+    private func openCurrentInSafariReader() {
+        let activeURLString = navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString
+        guard let url = URL(string: activeURLString), url.scheme?.hasPrefix("http") == true else { return }
+        
+        #if os(iOS)
+        safariURL = IdentifiableURL(url: url)
+        #else
+        NSWorkspace.shared.open(url)
+        #endif
     }
     
     private func handleSummarizeTap() {
@@ -381,7 +387,7 @@ struct TopControlsBar: View {
     let onDismiss: () -> Void
     let onToggleShield: () -> Void
     let onSummarize: () -> Void
-    let onToggleSafariReader: () -> Void
+    let onOpenInReader: () -> Void
     
     private var isYouTube: Bool {
         appItem.urlString.lowercased().contains("youtube.com")
@@ -432,23 +438,25 @@ struct TopControlsBar: View {
             
             Spacer()
             
-            // Safari Reader Toggle Button (Center Right)
-            Button(action: onToggleSafariReader) {
-                HStack(spacing: 5) {
-                    Image(systemName: appItem.openLinksInSafariReaderMode ? "doc.plaintext.fill" : "doc.plaintext")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(appItem.openLinksInSafariReaderMode ? .blue : .secondary)
-                    
-                    Text(appItem.openLinksInSafariReaderMode ? "Reader ON" : "Reader OFF")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(appItem.openLinksInSafariReaderMode ? .primary : .secondary)
+            // Reader Button (Appears only when "open links in safari reader mode" is OFF)
+            if !appItem.openLinksInSafariReaderMode {
+                Button(action: onOpenInReader) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.plaintext")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.blue)
+                        
+                        Text("Reader")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.primary)
+                    }
+                    .padding(.horizontal, 9)
+                    .frame(height: 32)
+                    .liquidGlassButton(cornerRadius: 10)
                 }
-                .padding(.horizontal, 9)
-                .frame(height: 32)
-                .liquidGlassButton(cornerRadius: 10)
+                .buttonStyle(.plain)
+                .help("Open current web page in Safari Reader view")
             }
-            .buttonStyle(.plain)
-            .help("Toggle Safari Reader Mode for external links")
             
             // Tiles / Grid Home Button (Top Right)
             Button(action: onDismiss) {
