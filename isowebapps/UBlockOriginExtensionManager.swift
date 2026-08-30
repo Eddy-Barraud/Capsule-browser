@@ -72,7 +72,7 @@ public final class UBlockOriginExtensionManager: ObservableObject {
         let easylist = defaults.object(forKey: "ublock_filter_easylist") as? Bool ?? true
         let easyprivacy = defaults.object(forKey: "ublock_filter_easyprivacy") as? Bool ?? true
         let urlhaus = defaults.object(forKey: "ublock_filter_urlhaus") as? Bool ?? true
-        let annoyances = defaults.object(forKey: "ublock_filter_annoyances") as? Bool ?? false
+        let annoyances = defaults.object(forKey: "ublock_filter_annoyances") as? Bool ?? true
         let blockLan = defaults.object(forKey: "ublock_filter_block_lan") as? Bool ?? true
         let cosmeticHiding = defaults.object(forKey: "ublock_cosmetic_hiding") as? Bool ?? true
         let scriptletDefusers = defaults.object(forKey: "ublock_scriptlet_defusers") as? Bool ?? true

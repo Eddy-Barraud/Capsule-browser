@@ -39,13 +39,13 @@ struct UBlockSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     
     // Persistent Filter List & Mode Preferences in UserDefaults
-    @AppStorage("ublock_blocking_mode") private var blockingMode: BlockingMode = .optimal
+    @AppStorage("ublock_blocking_mode") private var blockingMode: BlockingMode = .complete
     @AppStorage("ublock_filter_ublock_filters") private var filterUblockFilters = true
     @AppStorage("ublock_filter_ublock_badware") private var filterUblockBadware = true
     @AppStorage("ublock_filter_easylist") private var filterEasyList = true
     @AppStorage("ublock_filter_easyprivacy") private var filterEasyPrivacy = true
     @AppStorage("ublock_filter_urlhaus") private var filterURLhaus = true
-    @AppStorage("ublock_filter_annoyances") private var filterAnnoyances = false
+    @AppStorage("ublock_filter_annoyances") private var filterAnnoyances = true
     @AppStorage("ublock_filter_block_lan") private var filterBlockLAN = true
     @AppStorage("ublock_cosmetic_hiding") private var cosmeticHiding = true
     @AppStorage("ublock_scriptlet_defusers") private var scriptletDefusers = true
