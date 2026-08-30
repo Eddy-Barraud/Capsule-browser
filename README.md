@@ -7,6 +7,7 @@ The project targets macOS and iOS and uses SwiftData, WebKit, and platform-speci
 ## Features
 
 - Home screen of saved web app tiles with fetched favicons.
+- Sync web-apps, settings, last open page and cookies between devices
 - Web-App setting to open links in Safari reader view by default, using `SFSafariViewController` instead of `WKWebView` on iOS, and in the Safari app on macOS.
 - Independent cookies, cache, and website storage for each web app.
 - Back, forward, reload, stop, URL entry, and share actions.
