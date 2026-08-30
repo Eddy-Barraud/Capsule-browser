@@ -1,16 +1,18 @@
-# Isolated Web Apps
+# Capsule browser
 
-Isolated Web Apps is a SwiftUI application for turning websites into app-like shortcuts. Each saved web app opens in its own `WKWebView` with a separate non-persistent `WKWebsiteDataStore`, while selected cookies are serialized into SwiftData so an app's session can be restored independently of the others.
+Capsule browser is a SwiftUI application for turning websites into app-like shortcuts. Each saved web app opens in its own `WKWebView` with a separate non-persistent `WKWebsiteDataStore`, while selected cookies are serialized into SwiftData so an app's session can be restored independently of the others.
 
 The project targets macOS and iOS and uses SwiftData, WebKit, and platform-specific UIKit/AppKit adapters.
 
 ## Features
 
 - Home screen of saved web app tiles with fetched favicons.
+- Web-App setting to open links in Safari reader view by default, using `SFSafariViewController` instead of `WKWebView` on iOS, and in the Safari app on macOS.
 - Independent cookies, cache, and website storage for each web app.
 - Back, forward, reload, stop, URL entry, and share actions.
 - URL bar synchronization as pages redirect or navigate internally.
 - SwiftData persistence for app metadata, icons, visit dates, and cookies.
+- CloudKit sync between user devices of the SwiftData
 - uBlock Origin Lite filter lists, cosmetic hiding, and scriptlet defusers.
 - Settings for enabling individual uBlock filter groups.
 - macOS solid toolbar and iOS floating Liquid Glass navigation controls.
@@ -18,26 +20,26 @@ The project targets macOS and iOS and uses SwiftData, WebKit, and platform-speci
 
 ## Build and Run
 
-1. Initialize the uBlock Origin Lite submodule:
+1. Clone with the uBlock Origin Lite submodule:
 
    ```sh
-   git submodule update --init --recursive
+   git clone --recurse-submodules https://github.com/Eddy-Barraud/Capsule-browser.git
    ```
 
 2. Open `isowebapps.xcodeproj` in Xcode.
-3. Select the `isowebapps` scheme and a macOS or iOS destination.
+3. Select the `Capsule-Browser` scheme and a macOS or iOS destination.
 4. Build and run.
 
 Command-line builds can use the generic destinations:
 
 ```sh
 xcodebuild -project isowebapps.xcodeproj \
-  -scheme isowebapps \
+  -scheme Capsule-Browser \
   -destination 'generic/platform=macOS' \
   -derivedDataPath ./build build
 
 xcodebuild -project isowebapps.xcodeproj \
-  -scheme isowebapps \
+  -scheme Capsule-Browser \
   -destination 'generic/platform=iOS' \
   -derivedDataPath ./build build
 ```
@@ -66,7 +68,7 @@ The project expects the ruleset resource link at `isowebapps/rulesets`, pointing
 
 `isowebappsApp` creates the SwiftData container and presents `ContentView`. The home screen queries `WebAppItem` records. Selecting one presents `WebAppContainerView`, which creates an `IsolatedWebViewRepresentable` for that record and binds toolbar state through `WebViewNavigationState`.
 
-`IsolatedWebView` creates a new non-persistent WebKit data store for the selected app. `CookieManager` restores that app's serialized cookies before loading its URL and observes cookie changes for persistence. Navigation delegates and KVO update the URL bar, loading state, and back/forward state. Dismissing the container stops loading and tears down the web view.
+`IsolatedWebView` creates a new non-persistent WebKit data store for the selected app. `CookieManager` restores that app's serialized cookies before loading its URL and observes cookie changes for persistence. Navigation delegates and Key-Value Observing (KVO) update the URL bar, loading state, and back/forward state. Dismissing the container stops loading and tears down the web view.
 
 At startup, `ContentView` asks `UBlockOriginExtensionManager` to prepare. The manager reads enabled JSON rulesets from the linked uBOL resources, asks `UBlockRuleCompiler` to translate them, compiles each ruleset independently, and applies the resulting WebKit rule lists and user scripts to new web view configurations.
 
