@@ -139,7 +139,7 @@ struct ContentView: View {
                                 .onDrag {
                                     self.draggingItem = app
                                     return NSItemProvider(object: app.id.uuidString as NSString)
-                                }
+                                } 
                                 .onDrop(of: [.plainText], delegate: WebAppDropDelegate(item: app, items: webApps, draggingItem: $draggingItem, modelContext: modelContext))
                             }
                         }
@@ -148,6 +148,10 @@ struct ContentView: View {
                     }
                 }
                 .padding(.bottom, 40)
+            }
+            .onDrop(of: [.plainText], isTargeted: nil) { _ in
+                self.draggingItem = nil
+                return false
             }
             .navigationTitle("Isolated Web Apps")
             .toolbar {
