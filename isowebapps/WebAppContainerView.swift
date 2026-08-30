@@ -426,7 +426,7 @@ struct TopControlsBar: View {
             
             // Safari Reader Toggle Button (Center Right)
             Button(action: onToggleSafariReader) {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Image(systemName: appItem.openLinksInSafariReaderMode ? "doc.plaintext.fill" : "doc.plaintext")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(appItem.openLinksInSafariReaderMode ? .blue : .secondary)
@@ -770,8 +770,13 @@ struct IOSSolidBottomBar: View {
                         .font(.system(size: 14))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .keyboardType(.URL)
+                        .keyboardType(.default)
                         .focused($isURLFocused)
+                        .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidBeginEditingNotification)) { obj in
+                            if let textField = obj.object as? UITextField {
+                                textField.selectedTextRange = textField.textRange(from: textField.beginningOfDocument, to: textField.endOfDocument)
+                            }
+                        }
                         .onSubmit {
                             submitURL()
                         }
@@ -807,9 +812,8 @@ struct IOSSolidBottomBar: View {
                     editableURLString = navigationState.currentURLString
                     isURLExpanded = true
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                if !isURLFocused{
                     isURLFocused = true
-                    UIApplication.shared.sendAction(#selector(UIResponder.selectAll(_:)), to: nil, from: nil, for: nil)
                 }
             }
             
