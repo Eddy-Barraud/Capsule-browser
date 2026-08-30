@@ -358,11 +358,36 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         }
         
         if appItem.openLinksInSafariReaderMode, navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
-            decisionHandler(.cancel)
-            openInSafariReader(url: url)
-            return
+            // If the link is on the same root domain (e.g. accounts.google.com from news.google.com),
+            // keep the navigation inside the WKWebView so session, cookies, and authentication flows work.
+            if !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
+                decisionHandler(.cancel)
+                openInSafariReader(url: url)
+                return
+            }
         }
         decisionHandler(.allow)
+    }
+    
+    private func isInternalNavigation(to targetURL: URL, currentWebViewURL: URL?) -> Bool {
+        // Allow non-HTTP(S) schemes, about:blank, or local navigation to proceed in WKWebView
+        guard let targetHost = targetURL.host?.lowercased(), !targetHost.isEmpty else {
+            return true
+        }
+        
+        let targetRoot = targetURL.rootDomain
+        
+        // Compare with configured WebApp starting URL (e.g. news.google.com -> google.com)
+        if let appRoot = URL(string: appItem.urlString)?.rootDomain, targetRoot == appRoot {
+            return true
+        }
+        
+        // Compare with current active page URL in the WebView
+        if let currentRoot = currentWebViewURL?.rootDomain, targetRoot == currentRoot {
+            return true
+        }
+        
+        return false
     }
     
     private func openInSafariReader(url: URL) {
@@ -410,12 +435,33 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     // Handle target="_blank" and popup windows inside the same isolated webview
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil {
-            if appItem.openLinksInSafariReaderMode, let url = navigationAction.request.url {
-                openInSafariReader(url: url)
-            } else {
-                webView.load(navigationAction.request)
+            if let url = navigationAction.request.url {
+                if appItem.openLinksInSafariReaderMode && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
+                    openInSafariReader(url: url)
+                } else {
+                    webView.load(navigationAction.request)
+                }
             }
         }
         return nil
+    }
+}
+
+// MARK: - URL Root Domain Helper
+
+private extension URL {
+    /// Extracts the root/registrable domain (e.g. "google.com" from "accounts.google.com" or "news.google.com")
+    var rootDomain: String? {
+        guard let host = self.host?.lowercased() else { return nil }
+        let parts = host.split(separator: ".").map(String.init)
+        guard parts.count > 1 else { return host }
+        
+        // Multi-part second-level domains (e.g. .co.uk, .com.au, .gouv.fr, .asso.fr, .org.uk)
+        let multiPartTLDs: Set<String> = ["co", "com", "net", "org", "gov", "edu", "gouv", "asso"]
+        if parts.count >= 3, let secondToLast = parts.dropLast().last, multiPartTLDs.contains(secondToLast) {
+            return parts.suffix(3).joined(separator: ".")
+        }
+        
+        return parts.suffix(2).joined(separator: ".")
     }
 }
