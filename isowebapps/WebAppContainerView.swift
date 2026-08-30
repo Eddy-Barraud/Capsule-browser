@@ -849,7 +849,7 @@ struct IOSSolidBottomBar: View {
         guard let url = URL(string: urlString) else { return urlString }
         return url.host ?? urlString
     }
-}
+
 #endif
 
 #if os(iOS)

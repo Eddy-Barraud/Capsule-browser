@@ -20,6 +20,7 @@ struct ContentView: View {
     @Query(sort: [SortDescriptor(\WebAppItem.displayOrder, order: .forward), SortDescriptor(\WebAppItem.createdAt, order: .forward)]) private var webApps: [WebAppItem]
     @AppStorage("hasSeededDefaults") private var hasSeededDefaults = false
     
+    @State private var isSeedingDefaults = false
     @State private var draggingItem: WebAppItem?
     @State private var selectedWebApp: WebAppItem?
     @State private var isShowingAddSheet = false
@@ -60,7 +61,6 @@ struct ContentView: View {
         }
         .task {
             await UBlockOriginExtensionManager.shared.prepare()
-            seedDefaultAppsIfNeeded()
         }
         .sheet(isPresented: $isShowingAddSheet) {
             AddWebAppSheet()
@@ -111,10 +111,46 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     if webApps.isEmpty {
                         if !hasSeededDefaults {
-                            VStack {
-                                Spacer(minLength: 120)
-                                ProgressView("Preparing Isolated Web Apps...")
-                                    .padding()
+                            VStack(spacing: 24) {
+                                Spacer(minLength: 60)
+                                
+                                if isSeedingDefaults {
+                                    ProgressView("Downloading Icons & Preparing Apps...")
+                                        .padding()
+                                } else {
+                                    VStack(spacing: 16) {
+                                        Image(systemName: "sparkles.rectangle.stack.fill")
+                                            .font(.system(size: 56))
+                                            .foregroundStyle(.purple.gradient)
+                                            .padding(24)
+                                            .liquidGlassCard(cornerRadius: 28)
+                                        
+                                        Text("Welcome to Isolated Web Apps")
+                                            .font(.title2.bold())
+                                        
+                                        Text("Would you like to start with a blank slate, or try our default list of apps?\n(YouTube, Google News, DuckDuckGo, Reddit, Instagram, Gemini)")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                            .multilineTextAlignment(.center)
+                                            .padding(.horizontal, 36)
+                                        
+                                        HStack(spacing: 16) {
+                                            Button("Start Empty") {
+                                                startEmpty()
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .controlSize(.large)
+                                            
+                                            Button("Load Defaults") {
+                                                loadDefaultApps()
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            .controlSize(.large)
+                                        }
+                                        .padding(.top, 16)
+                                    }
+                                }
+                                
                                 Spacer()
                             }
                             .frame(maxWidth: .infinity)
@@ -268,29 +304,40 @@ struct ContentView: View {
         }
     }
     
-    private func seedDefaultAppsIfNeeded() {
-        if webApps.isEmpty && !hasSeededDefaults {
-            let defaults = [
-                ("Google News", "https://news.google.com"),
-                ("YouTube", "https://www.youtube.com"),
-                ("Reddit", "https://www.reddit.com"),
-                ("Instagram", "https://www.instagram.com"),
-                ("DuckDuckGo", "https://start.duckduckgo.com"),
-                ("Gemini", "https://gemini.google.com")
-            ]
-            
-            Task {
-                for app in defaults {
-                    guard let url = URL(string: app.1) else { continue }
-                    let iconData = await FaviconFetcher.fetchIcon(for: url)
-                    await MainActor.run {
-                        let newApp = WebAppItem(name: app.0, urlString: app.1, iconData: iconData)
-                        modelContext.insert(newApp)
-                    }
-                }
+    private func startEmpty() {
+        withAnimation {
+            hasSeededDefaults = true
+        }
+    }
+    
+    private func loadDefaultApps() {
+        isSeedingDefaults = true
+        
+        let defaults = [
+            ("Google News", "https://news.google.com"),
+            ("YouTube", "https://www.youtube.com"),
+            ("Reddit", "https://www.reddit.com"),
+            ("Instagram", "https://www.instagram.com"),
+            ("DuckDuckGo", "https://start.duckduckgo.com"),
+            ("Gemini", "https://gemini.google.com")
+        ]
+        
+        Task {
+            for app in defaults {
+                guard let url = URL(string: app.1) else { continue }
+                let iconData = await FaviconFetcher.fetchIcon(for: url)
                 await MainActor.run {
-                    try? modelContext.save()
+                    let use_reader: Bool = (app.1 == "https://news.google.com") ? true : false
+
+                    let newApp = WebAppItem(name: app.0, urlString: app.1, iconData: iconData, openLinksInSafariReaderMode: use_reader)
+                    modelContext.insert(newApp)
+                }
+            }
+            await MainActor.run {
+                try? modelContext.save()
+                withAnimation {
                     hasSeededDefaults = true
+                    isSeedingDefaults = false
                 }
             }
         }
