@@ -18,6 +18,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor(\WebAppItem.displayOrder, order: .forward), SortDescriptor(\WebAppItem.createdAt, order: .forward)]) private var webApps: [WebAppItem]
+    @AppStorage("hasSeededDefaults") private var hasSeededDefaults = false
     
     @State private var draggingItem: WebAppItem?
     @State private var selectedWebApp: WebAppItem?
@@ -109,7 +110,17 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     if webApps.isEmpty {
-                        emptyStateView
+                        if !hasSeededDefaults {
+                            VStack {
+                                Spacer(minLength: 120)
+                                ProgressView("Preparing Isolated Web Apps...")
+                                    .padding()
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            emptyStateView
+                        }
                     } else {
                         LazyVGrid(columns: columns, spacing: 24) {
                             ForEach(webApps) { app in
@@ -258,7 +269,7 @@ struct ContentView: View {
     }
     
     private func seedDefaultAppsIfNeeded() {
-        if webApps.isEmpty && !UserDefaults.standard.bool(forKey: "hasSeededDefaults") {
+        if webApps.isEmpty && !hasSeededDefaults {
             let defaults = [
                 ("YouTube", "https://www.youtube.com"),
                 ("Google News", "https://news.google.com"),
@@ -278,7 +289,7 @@ struct ContentView: View {
                 }
                 await MainActor.run {
                     try? modelContext.save()
-                    UserDefaults.standard.set(true, forKey: "hasSeededDefaults")
+                    hasSeededDefaults = true
                 }
             }
         }
