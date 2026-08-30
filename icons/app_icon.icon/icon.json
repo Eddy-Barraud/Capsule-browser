@@ -1,0 +1,50 @@
+{
+  "fill" : "automatic",
+  "groups" : [
+    {
+      "blend-mode" : "normal",
+      "blur-material" : null,
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "Image 6.svg",
+          "name" : "Image 6",
+          "position" : {
+            "scale" : 4,
+            "translation-in-points" : [
+              68.90625,
+              59.509562500000015
+            ]
+          }
+        },
+        {
+          "glass" : false,
+          "image-name" : "Image.svg",
+          "name" : "Image",
+          "position" : {
+            "scale" : 6,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "lighting" : "combined",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

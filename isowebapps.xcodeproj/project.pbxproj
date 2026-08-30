@@ -7,16 +7,16 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		3624B888303B5D2A00943D2A /* isowebapps.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = isowebapps.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3624B888303B5D2A00943D2A /* Capsule Browser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Capsule Browser.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		3624B895303B5D2B00943D2A /* Exceptions for "isowebapps" folder in "isowebapps" target */ = {
+		3624B895303B5D2B00943D2A /* Exceptions for "isowebapps" folder in "Capsule Browser" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = 3624B887303B5D2A00943D2A /* isowebapps */;
+			target = 3624B887303B5D2A00943D2A /* Capsule Browser */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -24,7 +24,7 @@
 		3624B88A303B5D2A00943D2A /* isowebapps */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				3624B895303B5D2B00943D2A /* Exceptions for "isowebapps" folder in "isowebapps" target */,
+				3624B895303B5D2B00943D2A /* Exceptions for "isowebapps" folder in "Capsule Browser" target */,
 			);
 			path = isowebapps;
 			sourceTree = "<group>";
@@ -53,7 +53,7 @@
 		3624B889303B5D2A00943D2A /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				3624B888303B5D2A00943D2A /* isowebapps.app */,
+				3624B888303B5D2A00943D2A /* Capsule Browser.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,9 +61,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		3624B887303B5D2A00943D2A /* isowebapps */ = {
+		3624B887303B5D2A00943D2A /* Capsule Browser */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 3624B896303B5D2B00943D2A /* Build configuration list for PBXNativeTarget "isowebapps" */;
+			buildConfigurationList = 3624B896303B5D2B00943D2A /* Build configuration list for PBXNativeTarget "Capsule Browser" */;
 			buildPhases = (
 				3624B884303B5D2A00943D2A /* Sources */,
 				3624B885303B5D2A00943D2A /* Frameworks */,
@@ -76,11 +76,11 @@
 			fileSystemSynchronizedGroups = (
 				3624B88A303B5D2A00943D2A /* isowebapps */,
 			);
-			name = isowebapps;
+			name = "Capsule Browser";
 			packageProductDependencies = (
 			);
 			productName = isowebapps;
-			productReference = 3624B888303B5D2A00943D2A /* isowebapps.app */;
+			productReference = 3624B888303B5D2A00943D2A /* Capsule Browser.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -112,7 +112,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				3624B887303B5D2A00943D2A /* isowebapps */,
+				3624B887303B5D2A00943D2A /* Capsule Browser */,
 			);
 		};
 /* End PBXProject section */
@@ -163,6 +163,8 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = isowebapps/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Capsule Browser";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -219,6 +221,8 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = isowebapps/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Capsule Browser";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -378,7 +382,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		3624B896303B5D2B00943D2A /* Build configuration list for PBXNativeTarget "isowebapps" */ = {
+		3624B896303B5D2B00943D2A /* Build configuration list for PBXNativeTarget "Capsule Browser" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				3624B897303B5D2B00943D2A /* Debug */,
