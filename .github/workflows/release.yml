@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Select Latest Xcode Version
         uses: maxim-lobanov/setup-xcode@v1
