@@ -208,6 +208,14 @@ struct WebAppContainerView: View {
                 onShare: shareCurrentURL
             )
         }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 30, coordinateSpace: .global)
+                .onEnded { value in
+                    if !navigationState.canGoBack && value.startLocation.x < 30 && value.translation.width > 40 {
+                        handleDismiss()
+                    }
+                }
+        )
         .onAppear {
             navigationState.isUBlockEnabled = appItem.isUBlockEnabled
             let initialURL = appItem.lastOpenedURLString ?? appItem.urlString
