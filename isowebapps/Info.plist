@@ -10,10 +10,6 @@
 		<string>com.apple.coredata.cloudkit.activity.setup</string>
 	</array>
 	<key>UIBackgroundModes</key>
-	<array>
-		<string>processing</string>
-		<string>fetch</string>
-		<string>remote-notification</string>
-	</array>
+	<array/>
 </dict>
 </plist>
