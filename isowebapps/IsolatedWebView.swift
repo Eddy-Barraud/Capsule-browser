@@ -357,10 +357,13 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
             return
         }
         
-        if appItem.openLinksInSafariReaderMode, navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
-            // If the link is on the same root domain (e.g. accounts.google.com from news.google.com),
-            // keep the navigation inside the WKWebView so session, cookies, and authentication flows work.
-            if !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
+        if appItem.openLinksInSafariReaderMode, let url = navigationAction.request.url {
+            let isUserClick = navigationAction.navigationType == .linkActivated
+            let isExternalRedirect = navigationAction.navigationType == .other && webView.url != nil && webView.url?.absoluteString != "about:blank"
+            
+            // If the link is on an external domain or is a known article redirector (like Google News /read/...),
+            // open it in Safari Reader mode and cancel navigation inside the isolated WKWebView.
+            if (isUserClick || isExternalRedirect) && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
                 decisionHandler(.cancel)
                 openInSafariReader(url: url)
                 return
@@ -369,10 +372,39 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         decisionHandler(.allow)
     }
     
+    /// Checks whether a URL is a known intermediary article redirector (e.g. Google News /read/... or /articles/...)
+    /// that leads to an external publication.
+    private func isExternalArticleOrRedirect(url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        
+        // Google News & Google Search redirect patterns
+        if host.contains("news.google.") || host == "google.com" || host.hasSuffix(".google.com") {
+            let path = url.path.lowercased()
+            if path.hasPrefix("/read/") || path.hasPrefix("/articles/") || path.hasPrefix("/rss/articles/") || path.hasPrefix("/stories/") {
+                return true
+            }
+            if path == "/url" || path.hasPrefix("/url/") {
+                return true
+            }
+        }
+        
+        // Common external link aggregators & shorteners
+        if host == "out.reddit.com" || host == "t.co" {
+            return true
+        }
+        
+        return false
+    }
+    
     private func isInternalNavigation(to targetURL: URL, currentWebViewURL: URL?) -> Bool {
         // Allow non-HTTP(S) schemes, about:blank, or local navigation to proceed in WKWebView
         guard let targetHost = targetURL.host?.lowercased(), !targetHost.isEmpty else {
             return true
+        }
+        
+        // Known article redirectors (like Google News /read/... or /articles/...) always lead to external content
+        if isExternalArticleOrRedirect(url: targetURL) {
+            return false
         }
         
         let targetRoot = targetURL.rootDomain
