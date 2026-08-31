@@ -47,6 +47,7 @@ struct WebAppContainerView: View {
     // AI Summarization State
     @State private var isShowingSummary = false
     @State private var isGeneratingSummary = false
+    @State private var isSummarizationAvailable = AISummarizer.isAvailable
     @State private var summaryText = ""
     @State private var summaryErrorMessage: String? = nil
     @State private var summaryTask: Task<Void, Never>? = nil
@@ -83,6 +84,7 @@ struct WebAppContainerView: View {
                         appItem: appItem,
                         navigationState: navigationState,
                         isGeneratingSummary: isGeneratingSummary,
+                        isSummarizationAvailable: isSummarizationAvailable,
                         onDismiss: handleDismiss,
                         onToggleShield: toggleUBlockProtection,
                         onSummarize: handleSummarizeTap,
@@ -155,6 +157,7 @@ struct WebAppContainerView: View {
                 appItem: appItem,
                 navigationState: navigationState,
                 isGeneratingSummary: isGeneratingSummary,
+                isSummarizationAvailable: isSummarizationAvailable,
                 onDismiss: handleDismiss,
                 onToggleShield: toggleUBlockProtection,
                 onSummarize: handleSummarizeTap,
@@ -178,36 +181,40 @@ struct WebAppContainerView: View {
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .zIndex(10)
+                
+                Divider()
             }
             
-            Divider()
-            
-            // Web View Content (no longer overlaid by bottom bar)
-            IsolatedWebViewRepresentable(
-                appItem: appItem,
-                navigationState: navigationState,
-                modelContext: modelContext
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onTapGesture {
-                if isURLExpanded {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            // Main Web Content & Bottom Solid Glass Controls Bar
+            ZStack(alignment: .bottom) {
+                IsolatedWebViewRepresentable(
+                    appItem: appItem,
+                    navigationState: navigationState,
+                    modelContext: modelContext
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onTapGesture {
+                    // Tap anywhere on the page outside the URL field to collapse it
+                    if isURLExpanded {
                         isURLExpanded = false
                     }
                 }
+                
+                // Floating URL Bar and Bottom Action Buttons
+                IOSSolidBottomBar(
+                    navigationState: navigationState,
+                    isURLExpanded: $isURLExpanded,
+                    editableURLString: $editableURLString,
+                    onGoHome: navigateToConfiguredHome,
+                    onShare: shareCurrentURL
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 20)
+                .zIndex(20)
             }
-            
-            Divider()
-            
-            // Solid non-transparent Bottom Bar on iOS (Home button navigates to configured home URL)
-            IOSSolidBottomBar(
-                navigationState: navigationState,
-                isURLExpanded: $isURLExpanded,
-                editableURLString: $editableURLString,
-                onGoHome: navigateToConfiguredHome,
-                onShare: shareCurrentURL
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .edgesIgnoringSafeArea(.bottom)
         .simultaneousGesture(
             DragGesture(minimumDistance: 30, coordinateSpace: .global)
                 .onEnded { value in
@@ -217,6 +224,7 @@ struct WebAppContainerView: View {
                 }
         )
         .onAppear {
+            isSummarizationAvailable = AISummarizer.isAvailable
             navigationState.isUBlockEnabled = appItem.isUBlockEnabled
             let initialURL = appItem.lastOpenedURLString ?? appItem.urlString
             navigationState.currentURLString = initialURL
@@ -384,6 +392,7 @@ struct TopControlsBar: View {
     let appItem: WebAppItem
     @ObservedObject var navigationState: WebViewNavigationState
     var isGeneratingSummary: Bool = false
+    var isSummarizationAvailable: Bool = false
     let onDismiss: () -> Void
     let onToggleShield: () -> Void
     let onSummarize: () -> Void
@@ -395,27 +404,29 @@ struct TopControlsBar: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            // Summarize Button (Top Left)
-            Button(action: onSummarize) {
-                HStack(spacing: 4) {
-                    if isGeneratingSummary {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(width: 14, height: 14)
-                    } else {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.purple.gradient)
+            // Summarize Button (Top Left - shown only if Apple Intelligence is available)
+            if isSummarizationAvailable {
+                Button(action: onSummarize) {
+                    HStack(spacing: 4) {
+                        if isGeneratingSummary {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(width: 14, height: 14)
+                        } else {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.purple.gradient)
+                        }
+                        Text("Summarize")
+                            .font(.system(size: 11, weight: .medium))
                     }
-                    Text("Summarize")
-                        .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 9)
+                    .frame(height: 32)
+                    .liquidGlassButton(cornerRadius: 10)
                 }
-                .padding(.horizontal, 9)
-                .frame(height: 32)
-                .liquidGlassButton(cornerRadius: 10)
+                .buttonStyle(.plain)
+                .help("Summarize the currently shown web page using Foundation Models")
             }
-            .buttonStyle(.plain)
-            .help("Summarize the currently shown web page using Foundation Models")
             
             // Shield Button (Next to Summarize Button)
             Button(action: onToggleShield) {
