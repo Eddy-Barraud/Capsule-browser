@@ -185,36 +185,33 @@ struct WebAppContainerView: View {
                 Divider()
             }
             
-            // Main Web Content & Bottom Solid Glass Controls Bar
-            ZStack(alignment: .bottom) {
-                IsolatedWebViewRepresentable(
-                    appItem: appItem,
-                    navigationState: navigationState,
-                    modelContext: modelContext
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onTapGesture {
-                    // Tap anywhere on the page outside the URL field to collapse it
-                    if isURLExpanded {
-                        isURLExpanded = false
-                    }
-                }
-                
-                // Floating URL Bar and Bottom Action Buttons
-                IOSSolidBottomBar(
-                    navigationState: navigationState,
-                    isURLExpanded: $isURLExpanded,
-                    editableURLString: $editableURLString,
-                    onGoHome: navigateToConfiguredHome,
-                    onShare: shareCurrentURL
-                )
-                .padding(.horizontal, 16)
-                .padding(.bottom, 20)
-                .zIndex(20)
-            }
+            Divider()
+            
+            // Web View Content
+            IsolatedWebViewRepresentable(
+                appItem: appItem,
+                navigationState: navigationState,
+                modelContext: modelContext
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onTapGesture {
+                // Tap anywhere on the page outside the URL field to collapse it
+                if isURLExpanded {
+                    isURLExpanded = false
+                }
+            }
+            
+            Divider()
+            
+            // Solid Bottom Bar on iOS
+            IOSSolidBottomBar(
+                navigationState: navigationState,
+                isURLExpanded: $isURLExpanded,
+                editableURLString: $editableURLString,
+                onGoHome: navigateToConfiguredHome,
+                onShare: shareCurrentURL
+            )
         }
-        .edgesIgnoringSafeArea(.bottom)
         .simultaneousGesture(
             DragGesture(minimumDistance: 30, coordinateSpace: .global)
                 .onEnded { value in
