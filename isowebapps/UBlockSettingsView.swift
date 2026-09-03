@@ -44,9 +44,11 @@ struct UBlockSettingsView: View {
     @AppStorage("ublock_filter_ublock_badware") private var filterUblockBadware = true
     @AppStorage("ublock_filter_easylist") private var filterEasyList = true
     @AppStorage("ublock_filter_easyprivacy") private var filterEasyPrivacy = true
+    @AppStorage("ublock_filter_adguard_mobile") private var filterAdGuardMobile = true
     @AppStorage("ublock_filter_urlhaus") private var filterURLhaus = true
     @AppStorage("ublock_filter_annoyances") private var filterAnnoyances = true
     @AppStorage("ublock_filter_block_lan") private var filterBlockLAN = true
+    @AppStorage("ublock_filter_french") private var filterFrench = false
     @AppStorage("ublock_cosmetic_hiding") private var cosmeticHiding = true
     @AppStorage("ublock_scriptlet_defusers") private var scriptletDefusers = true
     
@@ -113,9 +115,15 @@ struct UBlockSettingsView: View {
                     Toggle("uBlock Badware & Malware Risks", isOn: $filterUblockBadware)
                     Toggle("EasyList (Ad Removal)", isOn: $filterEasyList)
                     Toggle("EasyPrivacy (Tracker Protection)", isOn: $filterEasyPrivacy)
+                    Toggle("AdGuard Mobile Ads", isOn: $filterAdGuardMobile)
                     Toggle("URLhaus (Malicious Hosts)", isOn: $filterURLhaus)
                     Toggle("Annoyances (Cookie Warnings & Popups)", isOn: $filterAnnoyances)
                     Toggle("Block Local Network / LAN Probing", isOn: $filterBlockLAN)
+                }
+                
+                // Regional Ruleset Toggles
+                Section(header: Text("Regional Lists")) {
+                    Toggle("French Regional Filters (fra-0)", isOn: $filterFrench)
                 }
                 
                 // Scriptlets and Cosmetic DOM Cleanup

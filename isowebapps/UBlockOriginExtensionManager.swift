@@ -71,9 +71,11 @@ public final class UBlockOriginExtensionManager: ObservableObject {
         let ublockBadware = defaults.object(forKey: "ublock_filter_ublock_badware") as? Bool ?? true
         let easylist = defaults.object(forKey: "ublock_filter_easylist") as? Bool ?? true
         let easyprivacy = defaults.object(forKey: "ublock_filter_easyprivacy") as? Bool ?? true
+        let adguardMobile = defaults.object(forKey: "ublock_filter_adguard_mobile") as? Bool ?? true
         let urlhaus = defaults.object(forKey: "ublock_filter_urlhaus") as? Bool ?? true
         let annoyances = defaults.object(forKey: "ublock_filter_annoyances") as? Bool ?? true
         let blockLan = defaults.object(forKey: "ublock_filter_block_lan") as? Bool ?? true
+        let frenchFilters = defaults.object(forKey: "ublock_filter_french") as? Bool ?? false
         let cosmeticHiding = defaults.object(forKey: "ublock_cosmetic_hiding") as? Bool ?? true
         let scriptletDefusers = defaults.object(forKey: "ublock_scriptlet_defusers") as? Bool ?? true
         
@@ -83,9 +85,11 @@ public final class UBlockOriginExtensionManager: ObservableObject {
             includeUblockBadware: ublockBadware,
             includeEasyList: easylist,
             includeEasyPrivacy: easyprivacy,
+            includeAdguardMobile: adguardMobile,
             includeURLhaus: urlhaus,
             includeAnnoyances: annoyances,
-            includeBlockLan: blockLan
+            includeBlockLan: blockLan,
+            includeFrenchFilters: frenchFilters
         )
         
         #if DEBUG
@@ -311,21 +315,25 @@ public final class UBlockOriginExtensionManager: ObservableObject {
         includeUblockBadware: Bool,
         includeEasyList: Bool,
         includeEasyPrivacy: Bool,
+        includeAdguardMobile: Bool,
         includeURLhaus: Bool,
         includeAnnoyances: Bool,
-        includeBlockLan: Bool
+        includeBlockLan: Bool,
+        includeFrenchFilters: Bool
     ) -> [URL] {
         var targets: [String] = []
         if includeUblockFilters { targets.append("ublock-filters.json") }
         if includeUblockBadware { targets.append("ublock-badware.json") }
         if includeEasyList { targets.append("easylist.json") }
         if includeEasyPrivacy { targets.append("easyprivacy.json") }
+        if includeAdguardMobile { targets.append("adguard-mobile.json") }
         if includeURLhaus { targets.append("urlhaus-full.json") }
         if includeAnnoyances {
             targets.append("annoyances-cookies.json")
             targets.append("annoyances-overlays.json")
         }
         if includeBlockLan { targets.append("block-lan.json") }
+        if includeFrenchFilters { targets.append("fra-0.json") }
         
         var urls: [URL] = []
         

@@ -22,7 +22,7 @@ SUBMODULE_DIR = REPO_ROOT / "shared" / "uBOL-home"
 SOURCE_RULESETS_DIR = SUBMODULE_DIR / "chromium" / "rulesets" / "main"
 DEST_RULESETS_DIR = REPO_ROOT / "isowebapps" / "rulesets" / "main"
 
-# The 8 target rulesets actively loaded by UBlockOriginExtensionManager
+# The target rulesets actively loaded or optional in UBlockOriginExtensionManager
 TARGET_RULESET_FILES = [
     "ublock-filters.json",
     "ublock-badware.json",
@@ -31,7 +31,9 @@ TARGET_RULESET_FILES = [
     "urlhaus-full.json",
     "annoyances-cookies.json",
     "annoyances-overlays.json",
-    "block-lan.json"
+    "block-lan.json",
+    "adguard-mobile.json",
+    "fra-0.json"
 ]
 
 # Regex to match embargoed TLDs: Iran (.ir), Cuba (.cu), Syria (.sy), North Korea (.kp)
