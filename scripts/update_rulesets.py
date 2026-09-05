@@ -56,7 +56,8 @@ def update_git_submodule():
     """Updates git submodule to latest remote revision."""
     print("\n[Step 1/4] Updating git submodule 'shared/uBOL-home'...")
     try:
-        run_command(["git", "submodule", "update", "--init", "--recursive", "--remote", "shared/uBOL-home"], cwd=REPO_ROOT)
+        #run_command(["git", "submodule", "update", "--init", "--recursive", "--remote", "shared/uBOL-home"], cwd=REPO_ROOT)
+        run_command(["git", "pull"], cwd=REPO_ROOT)
         print("Submodule updated successfully.")
     except Exception as e:
         print(f"Warning updating submodule: {e}")
