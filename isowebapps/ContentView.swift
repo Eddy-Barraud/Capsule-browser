@@ -25,6 +25,8 @@ struct ContentView: View {
     @State private var draggingItem: HomeGridItem?
     @State private var selectedWebApp: WebAppItem?
     @State private var quickSearchText = ""
+    @State private var isShowingOpenURLSheet = false
+    @State private var pendingOpenURL: String? = nil
     @FocusState private var isSearchFocused: Bool
     @State private var isShowingAddSheet = false
     @State private var isShowingAddGroupSheet = false
@@ -84,6 +86,36 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isShowingUBlockSettings) {
             UBlockSettingsView()
+        }
+        .sheet(isPresented: $isShowingOpenURLSheet) {
+            if let targetURLString = pendingOpenURL {
+                OpenURLSheet(
+                    targetURLString: targetURLString,
+                    webApps: webApps,
+                    onSelectApp: { app in
+                        withAnimation {
+                            app.lastOpenedURLString = targetURLString
+                            try? modelContext.save()
+                            selectedWebApp = app
+                            isShowingOpenURLSheet = false
+                            pendingOpenURL = nil
+                        }
+                    },
+                    onSelectEphemeral: {
+                        guard let host = URL(string: targetURLString)?.host else { return }
+                        let ephemeralApp = WebAppItem(name: host, urlString: targetURLString)
+                        withAnimation {
+                            selectedWebApp = ephemeralApp
+                            isShowingOpenURLSheet = false
+                            pendingOpenURL = nil
+                        }
+                    },
+                    onCancel: {
+                        isShowingOpenURLSheet = false
+                        pendingOpenURL = nil
+                    }
+                )
+            }
         }
         .confirmationDialog(
             "Clear Data for \(itemToClearData?.name ?? "Web App")?",
@@ -454,7 +486,24 @@ struct ContentView: View {
                 )
                 .ignoresSafeArea()
             )
+            .onOpenURL { url in
+                handleIncomingURL(url)
+            }
         }
+    }
+    
+    private func handleIncomingURL(_ url: URL) {
+        // Expected format: capsulebrowser://open?url=https%3A%2F%2Fwww.youtube.com
+        guard url.scheme == "capsulebrowser",
+              url.host == "open",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let queryItem = components.queryItems?.first(where: { $0.name == "url" }),
+              let targetURLString = queryItem.value else {
+            return
+        }
+        
+        pendingOpenURL = targetURLString
+        isShowingOpenURLSheet = true
     }
     
     private var emptyStateView: some View {
@@ -737,5 +786,115 @@ struct WebAppDropDelegate: DropDelegate {
     
     func dropUpdated(info: DropInfo) -> DropProposal? {
         return DropProposal(operation: .move)
+    }
+}
+
+
+struct OpenURLSheet: View {
+    let targetURLString: String
+    let webApps: [WebAppItem]
+    let onSelectApp: (WebAppItem) -> Void
+    let onSelectEphemeral: () -> Void
+    let onCancel: () -> Void
+    
+    var matchingApps: [WebAppItem] {
+        guard let host = URL(string: targetURLString)?.host else { return [] }
+        return webApps.filter { app in
+            guard let existingHost = URL(string: app.urlString)?.host else { return false }
+            return existingHost == host || existingHost.hasSuffix("." + host) || host.hasSuffix("." + existingHost)
+        }
+    }
+    
+    var otherApps: [WebAppItem] {
+        let matched = Set(matchingApps.map { $0.id })
+        return webApps.filter { !matched.contains($0.id) }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button(action: onSelectEphemeral) {
+                        HStack {
+                            Image(systemName: "sparkles")
+                                .foregroundStyle(.purple)
+                            Text("Ephemeral Capsule")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Text("No cookies saved")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Quick Open")
+                }
+                
+                if !matchingApps.isEmpty {
+                    Section {
+                        ForEach(matchingApps) { app in
+                            Button {
+                                onSelectApp(app)
+                            } label: {
+                                appRow(app)
+                            }
+                        }
+                    } header: {
+                        Text("Recommended Apps")
+                    }
+                }
+                
+                if !otherApps.isEmpty {
+                    Section {
+                        ForEach(otherApps) { app in
+                            Button {
+                                onSelectApp(app)
+                            } label: {
+                                appRow(app)
+                            }
+                        }
+                    } header: {
+                        Text("Other Apps")
+                    }
+                }
+            }
+            .navigationTitle("Open Link")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(width: 400, height: 500)
+        #endif
+    }
+    
+    private func appRow(_ app: WebAppItem) -> some View {
+        HStack {
+            if let iconData = app.iconData,
+               let platformImage = PlatformImage(data: iconData) {
+                Image(platformImage: platformImage)
+                    .resizable()
+                    .frame(width: 24, height: 24)
+                    .cornerRadius(6)
+            } else {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(width: 24, height: 24)
+                    .overlay(
+                        Text(String(app.name.prefix(1)).uppercased())
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.primary)
+                    )
+            }
+            
+            Text(app.name)
+                .foregroundColor(.primary)
+            Spacer()
+        }
     }
 }
