@@ -349,8 +349,8 @@ struct ContentView: View {
             }
             
             // Bottom Search Bar
-            HStack(spacing: 12) {
-                HStack(spacing: 12) {
+            HStack(spacing: 5) {
+                HStack(spacing: 5) {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.secondary)
                         .font(.system(size: 20))
@@ -407,6 +407,10 @@ struct ContentView: View {
                     RoundedRectangle(cornerRadius: 24)
                         .stroke(Color.white.opacity(0.2), lineWidth: 1)
                 )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isSearchFocused = true
+                }
                 
                 #if os(iOS)
                 if isSearchFocused || !quickSearchText.isEmpty {
@@ -455,7 +459,14 @@ struct ContentView: View {
                 #endif
             }
             .padding(.horizontal, 20)
+            #if os(macOS)
             .padding(.bottom, 20)
+            #else
+            .padding(.bottom, 4)
+            #endif
+            #if os(iOS)
+            .frame(width: isSearchFocused ? UIScreen.main.bounds.width : UIScreen.main.bounds.width * 0.7)
+            #endif
             .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isSearchFocused)
             .animation(.spring(response: 0.35, dampingFraction: 0.75), value: quickSearchText.isEmpty)
         }
