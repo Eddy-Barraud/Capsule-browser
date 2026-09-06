@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var isSeedingDefaults = false
     @State private var draggingItem: HomeGridItem?
     @State private var selectedWebApp: WebAppItem?
+    @State private var quickSearchText = ""
     @State private var isShowingAddSheet = false
     @State private var isShowingAddGroupSheet = false
     @State private var isShowingUBlockSettings = false
@@ -147,6 +148,9 @@ struct ContentView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
                     if isInitializing && webApps.isEmpty && webAppGroups.isEmpty {
                         VStack(spacing: 24) {
                             Spacer(minLength: 120)
@@ -281,12 +285,50 @@ struct ContentView: View {
                     }
                 }
                 .padding(.bottom, 40)
+                .padding(.bottom, 20)
             }
             .onDrop(of: [.plainText], isTargeted: nil) { _ in
                 self.draggingItem = nil
                 return false
             }
             .navigationTitle("Capsule Browser")
+            
+            // Bottom Search Bar
+            HStack(spacing: 12) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                    .font(.system(size: 20))
+                
+                TextField("Search DuckDuckGo or enter URL...", text: $quickSearchText)
+                    .textFieldStyle(.plain)
+                    .onSubmit {
+                        performQuickSearch()
+                    }
+                
+                if !quickSearchText.isEmpty {
+                    Button(action: performQuickSearch) {
+                        Image(systemName: "paperplane.fill")
+                            .foregroundColor(.blue)
+                            .font(.system(size: 20))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(.ultraThinMaterial)
+                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .navigationTitle("Capsule Browser")
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button {
@@ -447,6 +489,27 @@ struct ContentView: View {
                     isSeedingDefaults = false
                 }
             }
+        }
+    }
+    
+    private func performQuickSearch() {
+        let query = quickSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        
+        let urlString: String
+        if query.lowercased().hasPrefix("http://") || query.lowercased().hasPrefix("https://") {
+            urlString = query
+        } else if query.contains(".") && !query.contains(" ") {
+            urlString = "https://\(query)"
+        } else {
+            guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return }
+            urlString = "https://duckduckgo.com/?q=\(encodedQuery)"
+        }
+        
+        let ephemeralApp = WebAppItem(name: "Search", urlString: urlString)
+        withAnimation {
+            selectedWebApp = ephemeralApp
+            quickSearchText = ""
         }
     }
 }

@@ -81,6 +81,18 @@ final class IsolatedCookieManager {
     }
     
     /// Selectively wipes all cookies, cache, local storage, and website data for a specific webapp
+    static func saveCookies(for appItem: WebAppItem, from dataStore: WKWebsiteDataStore) {
+        guard appItem.modelContext != nil else { return } // Ephemeral apps don't persist cookies
+        
+        dataStore.httpCookieStore.getAllCookies { cookies in
+            let serializable = cookies.map { SerializableCookie(from: $0) }
+            if let encoded = try? JSONEncoder().encode(serializable) {
+                appItem.isolatedCookiesData = encoded
+                try? appItem.modelContext?.save()
+            }
+        }
+    }
+    
     func clearData(for item: WebAppItem, dataStore: WKWebsiteDataStore, context: ModelContext) async {
         #if DEBUG
         print("[IsolatedCookieManager] Clearing all data for \(item.name)...")
