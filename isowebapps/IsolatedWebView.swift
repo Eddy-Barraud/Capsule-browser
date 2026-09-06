@@ -143,6 +143,9 @@ extension IsolatedWebViewRepresentable {
         }
         
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        #if os(iOS)
+        webView.scrollView.keyboardDismissMode = .interactive
+        #endif
         
         if !isYouTube {
             #if os(macOS)

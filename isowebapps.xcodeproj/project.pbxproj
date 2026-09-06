@@ -6,11 +6,47 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3622915C304DB754003F8C9A /* Open in a capsule.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 36229152304DB754003F8C9A /* Open in a capsule.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3622915A304DB754003F8C9A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3624B880303B5D2A00943D2A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 36229151304DB754003F8C9A;
+			remoteInfo = "Open in a capsule";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		36229161304DB754003F8C9A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				3622915C304DB754003F8C9A /* Open in a capsule.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		36229152304DB754003F8C9A /* Open in a capsule.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Open in a capsule.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		3624B888303B5D2A00943D2A /* Capsule Browser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Capsule Browser.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		36229160304DB754003F8C9A /* Exceptions for "Open in a capsule" folder in "Open in a capsule" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 36229151304DB754003F8C9A /* Open in a capsule */;
+		};
 		3624B895303B5D2B00943D2A /* Exceptions for "isowebapps" folder in "Capsule Browser" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -21,6 +57,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		36229153304DB754003F8C9A /* Open in a capsule */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				36229160304DB754003F8C9A /* Exceptions for "Open in a capsule" folder in "Open in a capsule" target */,
+			);
+			path = "Open in a capsule";
+			sourceTree = "<group>";
+		};
 		3624B88A303B5D2A00943D2A /* isowebapps */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -32,6 +76,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		3622914F304DB754003F8C9A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		3624B885303B5D2A00943D2A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -46,6 +97,7 @@
 			isa = PBXGroup;
 			children = (
 				3624B88A303B5D2A00943D2A /* isowebapps */,
+				36229153304DB754003F8C9A /* Open in a capsule */,
 				3624B889303B5D2A00943D2A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				3624B888303B5D2A00943D2A /* Capsule Browser.app */,
+				36229152304DB754003F8C9A /* Open in a capsule.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,6 +114,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		36229151304DB754003F8C9A /* Open in a capsule */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3622915D304DB754003F8C9A /* Build configuration list for PBXNativeTarget "Open in a capsule" */;
+			buildPhases = (
+				3622914E304DB754003F8C9A /* Sources */,
+				3622914F304DB754003F8C9A /* Frameworks */,
+				36229150304DB754003F8C9A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				36229153304DB754003F8C9A /* Open in a capsule */,
+			);
+			name = "Open in a capsule";
+			packageProductDependencies = (
+			);
+			productName = "Open in a capsule";
+			productReference = 36229152304DB754003F8C9A /* Open in a capsule.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		3624B887303B5D2A00943D2A /* Capsule Browser */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 3624B896303B5D2B00943D2A /* Build configuration list for PBXNativeTarget "Capsule Browser" */;
@@ -68,10 +143,12 @@
 				3624B884303B5D2A00943D2A /* Sources */,
 				3624B885303B5D2A00943D2A /* Frameworks */,
 				3624B886303B5D2A00943D2A /* Resources */,
+				36229161304DB754003F8C9A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				3622915B304DB754003F8C9A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				3624B88A303B5D2A00943D2A /* isowebapps */,
@@ -93,6 +170,9 @@
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
+					36229151304DB754003F8C9A = {
+						CreatedOnToolsVersion = 26.6;
+					};
 					3624B887303B5D2A00943D2A = {
 						CreatedOnToolsVersion = 26.6;
 					};
@@ -113,11 +193,19 @@
 			projectRoot = "";
 			targets = (
 				3624B887303B5D2A00943D2A /* Capsule Browser */,
+				36229151304DB754003F8C9A /* Open in a capsule */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		36229150304DB754003F8C9A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		3624B886303B5D2A00943D2A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -128,6 +216,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		3622914E304DB754003F8C9A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		3624B884303B5D2A00943D2A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -137,7 +232,77 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		3622915B304DB754003F8C9A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilter = ios;
+			target = 36229151304DB754003F8C9A /* Open in a capsule */;
+			targetProxy = 3622915A304DB754003F8C9A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		3622915E304DB754003F8C9A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WPBZAUF723;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Open in a capsule/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Open in a capsule";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "fr.trevalim.isowebapps.Open-in-a-capsule";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3622915F304DB754003F8C9A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WPBZAUF723;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Open in a capsule/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Open in a capsule";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "fr.trevalim.isowebapps.Open-in-a-capsule";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		3624B897303B5D2B00943D2A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -373,6 +538,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		3622915D304DB754003F8C9A /* Build configuration list for PBXNativeTarget "Open in a capsule" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3622915E304DB754003F8C9A /* Debug */,
+				3622915F304DB754003F8C9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		3624B883303B5D2A00943D2A /* Build configuration list for PBXProject "isowebapps" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -9,6 +9,19 @@
 		<string>com.apple.coredata.cloudkit.activity.import</string>
 		<string>com.apple.coredata.cloudkit.activity.setup</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>fr.trevalim.isowebapps</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>capsulebrowser</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

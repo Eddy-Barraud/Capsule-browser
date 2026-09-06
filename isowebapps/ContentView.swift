@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var draggingItem: HomeGridItem?
     @State private var selectedWebApp: WebAppItem?
     @State private var quickSearchText = ""
+    @FocusState private var isSearchFocused: Bool
     @State private var isShowingAddSheet = false
     @State private var isShowingAddGroupSheet = false
     @State private var isShowingUBlockSettings = false
@@ -146,9 +147,7 @@ struct ContentView: View {
     // Liquid Glass Home Screen
     private var homeScreenView: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-            VStack(spacing: 0) {
+            ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                     if isInitializing && webApps.isEmpty && webAppGroups.isEmpty {
@@ -285,48 +284,124 @@ struct ContentView: View {
                     }
                 }
                 .padding(.bottom, 40)
-                .padding(.bottom, 20)
+                .padding(.bottom, 100)
             }
+            .scrollDismissesKeyboard(.interactively)
             .onDrop(of: [.plainText], isTargeted: nil) { _ in
                 self.draggingItem = nil
                 return false
             }
-            .navigationTitle("Capsule Browser")
             
             // Bottom Search Bar
             HStack(spacing: 12) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: 20))
-                
-                TextField("Search DuckDuckGo or enter URL...", text: $quickSearchText)
-                    .textFieldStyle(.plain)
-                    .onSubmit {
-                        performQuickSearch()
+                HStack(spacing: 12) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 20))
+                    
+                    TextField(
+                        "",
+                        text: $quickSearchText,
+                        prompt: Text("Search DuckDuckGo or enter URL...")
+                            .foregroundColor(.primary.opacity(0.6))
+                    )
+                        .textFieldStyle(.plain)
+                        .focused($isSearchFocused)
+                        .onSubmit {
+                            performQuickSearch()
+                            isSearchFocused = false
+                        }
+                    
+                    #if os(macOS)
+                    if isSearchFocused || !quickSearchText.isEmpty {
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                quickSearchText = ""
+                                isSearchFocused = false
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                                    .font(.system(size: 20))
+                            }
+                            .buttonStyle(.plain)
+                            .transition(.scale.combined(with: .opacity))
+                            
+                            Button(action: {
+                                performQuickSearch()
+                                isSearchFocused = false
+                            }) {
+                                Image(systemName: "paperplane.fill")
+                                    .foregroundColor(.blue)
+                                    .font(.system(size: 20))
+                            }
+                            .buttonStyle(.plain)
+                            .transition(.scale.combined(with: .opacity))
+                        }
                     }
+                    #endif
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 24)
+                        .fill(.ultraThinMaterial)
+                        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
                 
-                if !quickSearchText.isEmpty {
-                    Button(action: performQuickSearch) {
+                #if os(iOS)
+                if isSearchFocused || !quickSearchText.isEmpty {
+                    Button(action: {
+                        performQuickSearch()
+                        isSearchFocused = false
+                    }) {
                         Image(systemName: "paperplane.fill")
+                            .font(.system(size: 18))
                             .foregroundColor(.blue)
-                            .font(.system(size: 20))
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                            )
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
                     }
                     .buttonStyle(.plain)
+                    .transition(.scale.combined(with: .opacity).combined(with: .move(edge: .trailing)))
+
+                    Button(action: {
+                        quickSearchText = ""
+                        isSearchFocused = false
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 48, height: 48)
+                            .background(
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                            )
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.scale.combined(with: .opacity).combined(with: .move(edge: .trailing)))
                 }
+                #endif
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(.ultraThinMaterial)
-                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 24)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
-            )
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
+            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isSearchFocused)
+            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: quickSearchText.isEmpty)
         }
         .navigationTitle("Capsule Browser")
             .toolbar {
