@@ -61,6 +61,7 @@ struct ContentView: View {
                         }
                     }
                 )
+                .id(activeApp.id)
                 .transition(.asymmetric(insertion: .scale(scale: 0.95).combined(with: .opacity), removal: .opacity))
             } else {
                 // Home Screen Grid
@@ -93,21 +94,41 @@ struct ContentView: View {
                     targetURLString: targetURLString,
                     webApps: webApps,
                     onSelectApp: { app in
-                        withAnimation {
-                            app.lastOpenedURLString = targetURLString
-                            try? modelContext.save()
-                            selectedWebApp = app
-                            isShowingOpenURLSheet = false
-                            pendingOpenURL = nil
+                        app.lastOpenedURLString = targetURLString
+                        try? modelContext.save()
+                        isShowingOpenURLSheet = false
+                        pendingOpenURL = nil
+                        
+                        if selectedWebApp != nil {
+                            selectedWebApp = nil
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation {
+                                    selectedWebApp = app
+                                }
+                            }
+                        } else {
+                            withAnimation {
+                                selectedWebApp = app
+                            }
                         }
                     },
                     onSelectEphemeral: {
                         guard let host = URL(string: targetURLString)?.host else { return }
                         let ephemeralApp = WebAppItem(name: host, urlString: targetURLString)
-                        withAnimation {
-                            selectedWebApp = ephemeralApp
-                            isShowingOpenURLSheet = false
-                            pendingOpenURL = nil
+                        isShowingOpenURLSheet = false
+                        pendingOpenURL = nil
+                        
+                        if selectedWebApp != nil {
+                            selectedWebApp = nil
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation {
+                                    selectedWebApp = ephemeralApp
+                                }
+                            }
+                        } else {
+                            withAnimation {
+                                selectedWebApp = ephemeralApp
+                            }
                         }
                     },
                     onCancel: {
@@ -116,6 +137,9 @@ struct ContentView: View {
                     }
                 )
             }
+        }
+        .onOpenURL { url in
+            handleIncomingURL(url)
         }
         .confirmationDialog(
             "Clear Data for \(itemToClearData?.name ?? "Web App")?",
@@ -486,9 +510,6 @@ struct ContentView: View {
                 )
                 .ignoresSafeArea()
             )
-            .onOpenURL { url in
-                handleIncomingURL(url)
-            }
         }
     }
     
