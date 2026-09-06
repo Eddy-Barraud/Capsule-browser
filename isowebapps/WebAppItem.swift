@@ -31,6 +31,9 @@ final class WebAppItem {
     
     /// Encoded `[SerializableCookie]` array stored in SwiftData and synced via CloudKit
     var isolatedCookiesData: Data? = nil
+    
+    /// The group this web app belongs to, if any.
+    var group: WebAppGroup? = nil
 
     init(
         id: UUID = UUID(),

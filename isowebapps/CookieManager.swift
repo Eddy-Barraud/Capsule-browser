@@ -22,21 +22,43 @@ final class IsolatedCookieManager {
     
     private init() {}
     
-    /// Restores cookies from a SwiftData `WebAppItem` into the target `WKHTTPCookieStore`
-    func restoreCookies(for item: WebAppItem, into cookieStore: WKHTTPCookieStore) async {
-        guard let data = item.isolatedCookiesData,
-              let serializableCookies = try? JSONDecoder().decode([SerializableCookie].self, from: data) else {
+    /// Restores cookies from a SwiftData `WebAppItem` and its group into the target `WKHTTPCookieStore`
+    func restoreCookies(for item: WebAppItem, groupedItems: [WebAppItem] = [], into cookieStore: WKHTTPCookieStore) async {
+        // 1. Combine cookies. Deduplicate using a unique key per cookie.
+        var combinedCookies: [String: SerializableCookie] = [:]
+        
+        // Load grouped items first (so they can be overridden by the item's own cookies)
+        for groupItem in groupedItems where groupItem.id != item.id {
+            if let data = groupItem.isolatedCookiesData,
+               let serializableCookies = try? JSONDecoder().decode([SerializableCookie].self, from: data) {
+                for cookie in serializableCookies {
+                    let key = "\(cookie.name)-\(cookie.domain)-\(cookie.path)"
+                    combinedCookies[key] = cookie
+                }
+            }
+        }
+        
+        // Load the item's own cookies (these take precedence)
+        if let data = item.isolatedCookiesData,
+           let serializableCookies = try? JSONDecoder().decode([SerializableCookie].self, from: data) {
+            for cookie in serializableCookies {
+                let key = "\(cookie.name)-\(cookie.domain)-\(cookie.path)"
+                combinedCookies[key] = cookie
+            }
+        }
+        
+        guard !combinedCookies.isEmpty else {
             #if DEBUG
-            print("[IsolatedCookieManager] No stored cookies found for \(item.name)")
+            print("[IsolatedCookieManager] No stored cookies found for \(item.name) or its group")
             #endif
             return
         }
         
         #if DEBUG
-        print("[IsolatedCookieManager] Restoring \(serializableCookies.count) cookies for \(item.name)...")
+        print("[IsolatedCookieManager] Restoring \(combinedCookies.count) cookies for \(item.name) (including group)...")
         #endif
         
-        for sCookie in serializableCookies {
+        for sCookie in combinedCookies.values {
             if let cookie = sCookie.toHTTPCookie() {
                 await cookieStore.setCookie(cookie)
             }

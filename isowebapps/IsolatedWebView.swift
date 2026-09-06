@@ -239,8 +239,11 @@ extension IsolatedWebViewRepresentable {
         }
         
         // 3. Restore isolated cookies and load start page (last opened URL or configured home URL)
+        // 3. Restore isolated cookies (including grouped apps if applicable) and load start page
         Task { @MainActor in
             await IsolatedCookieManager.shared.restoreCookies(for: appItem, into: dataStore.httpCookieStore)
+            let groupedItems = appItem.group?.items ?? []
+            await IsolatedCookieManager.shared.restoreCookies(for: appItem, groupedItems: groupedItems, into: dataStore.httpCookieStore)
             let startURLString = appItem.lastOpenedURLString ?? appItem.urlString
             if let url = URL(string: startURLString) {
                 #if DEBUG

@@ -19,6 +19,7 @@ struct isowebappsApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             WebAppItem.self,
+            WebAppGroup.self,
         ])
         let modelConfiguration = ModelConfiguration(
             schema: schema,

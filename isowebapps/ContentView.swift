@@ -18,17 +18,21 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor(\WebAppItem.displayOrder, order: .forward), SortDescriptor(\WebAppItem.createdAt, order: .forward)]) private var webApps: [WebAppItem]
+    @Query(sort: [SortDescriptor(\WebAppGroup.displayOrder, order: .forward), SortDescriptor(\WebAppGroup.createdAt, order: .forward)]) private var webAppGroups: [WebAppGroup]
     @AppStorage("hasSeededDefaults") private var hasSeededDefaults = false
     
     @State private var isSeedingDefaults = false
     @State private var draggingItem: WebAppItem?
     @State private var selectedWebApp: WebAppItem?
     @State private var isShowingAddSheet = false
+    @State private var isShowingAddGroupSheet = false
     @State private var isShowingUBlockSettings = false
     @State private var itemToClearData: WebAppItem?
     @State private var isShowingClearConfirmation = false
     @State private var itemToDelete: WebAppItem?
     @State private var isShowingDeleteConfirmation = false
+    @State private var groupToDelete: WebAppGroup?
+    @State private var isShowingDeleteGroupConfirmation = false
     
     #if os(iOS)
     let columns = [
@@ -65,6 +69,9 @@ struct ContentView: View {
         .sheet(isPresented: $isShowingAddSheet) {
             AddWebAppSheet()
         }
+        .sheet(isPresented: $isShowingAddGroupSheet) {
+            AddGroupSheet()
+        }
         .sheet(isPresented: $isShowingUBlockSettings) {
             UBlockSettingsView()
         }
@@ -83,14 +90,14 @@ struct ContentView: View {
                 itemToClearData = nil
             }
         } message: {
-            Text("This will wipe all locally stored cookies, session cache, and website storage for this web application.")
+            Text("This will permanently remove all cached files, cookies, and local storage isolated for this app.")
         }
         .confirmationDialog(
             "Delete \(itemToDelete?.name ?? "Web App")?",
             isPresented: $isShowingDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete Web App", role: .destructive) {
+            Button("Delete App", role: .destructive) {
                 if let item = itemToDelete {
                     deleteApp(item)
                     itemToDelete = nil
@@ -102,6 +109,23 @@ struct ContentView: View {
         } message: {
             Text("Are you sure you want to delete this web app? This action will remove it from all synced devices.")
         }
+        .confirmationDialog(
+            "Delete \(groupToDelete?.name ?? "Group")?",
+            isPresented: $isShowingDeleteGroupConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Ungroup Apps", role: .destructive) {
+                if let group = groupToDelete {
+                    deleteGroup(group)
+                    groupToDelete = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                groupToDelete = nil
+            }
+        } message: {
+            Text("The group will be removed, but the apps inside it will be kept.")
+        }
     }
     
     // Liquid Glass Home Screen
@@ -109,7 +133,7 @@ struct ContentView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    if webApps.isEmpty {
+                    if webApps.isEmpty && webAppGroups.isEmpty {
                         if !hasSeededDefaults {
                             VStack(spacing: 24) {
                                 Spacer(minLength: 60)
@@ -158,36 +182,68 @@ struct ContentView: View {
                             emptyStateView
                         }
                     } else {
-                        LazyVGrid(columns: columns, spacing: 24) {
-                            ForEach(webApps) { app in
-                                WebAppTileView(
-                                    app: app,
-                                    onStart: {
+                        VStack(spacing: 32) {
+                            ForEach(webAppGroups) { group in
+                                WebAppGroupTileView(
+                                    group: group,
+                                    onStartApp: { app in
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                             app.lastOpenedURLString = nil
                                             try? modelContext.save()
                                             selectedWebApp = app
                                         }
                                     },
-                                    onResume: {
+                                    onResumeApp: { app in
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                             selectedWebApp = app
                                         }
                                     },
-                                    onClearData: {
+                                    onClearDataApp: { app in
                                         itemToClearData = app
                                         isShowingClearConfirmation = true
                                     },
-                                    onDelete: {
+                                    onDeleteApp: { app in
                                         itemToDelete = app
                                         isShowingDeleteConfirmation = true
+                                    },
+                                    onDeleteGroup: {
+                                        groupToDelete = group
+                                        isShowingDeleteGroupConfirmation = true
                                     }
                                 )
-                                .onDrag {
-                                    self.draggingItem = app
-                                    return NSItemProvider(object: app.id.uuidString as NSString)
-                                } 
-                                .onDrop(of: [.plainText], delegate: WebAppDropDelegate(item: app, items: webApps, draggingItem: $draggingItem, modelContext: modelContext))
+                            }
+                            
+                            LazyVGrid(columns: columns, spacing: 24) {
+                                ForEach(webApps.filter { $0.group == nil }) { app in
+                                    WebAppTileView(
+                                        app: app,
+                                        onStart: {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                app.lastOpenedURLString = nil
+                                                try? modelContext.save()
+                                                selectedWebApp = app
+                                            }
+                                        },
+                                        onResume: {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                selectedWebApp = app
+                                            }
+                                        },
+                                        onClearData: {
+                                            itemToClearData = app
+                                            isShowingClearConfirmation = true
+                                        },
+                                        onDelete: {
+                                            itemToDelete = app
+                                            isShowingDeleteConfirmation = true
+                                        }
+                                    )
+                                    .onDrag {
+                                        self.draggingItem = app
+                                        return NSItemProvider(object: app.id.uuidString as NSString)
+                                    } 
+                                    .onDrop(of: [.plainText], delegate: WebAppDropDelegate(item: app, items: webApps, draggingItem: $draggingItem, modelContext: modelContext))
+                                }
                             }
                         }
                         .padding(.horizontal, 20)
@@ -216,8 +272,17 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("uBlock Origin Lite Settings")
                     
-                    Button {
-                        isShowingAddSheet = true
+                    Menu {
+                        Button {
+                            isShowingAddSheet = true
+                        } label: {
+                            Label("Add New App", systemImage: "plus.app")
+                        }
+                        Button {
+                            isShowingAddGroupSheet = true
+                        } label: {
+                            Label("Create a Group", systemImage: "folder.badge.plus")
+                        }
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .bold))
@@ -227,7 +292,7 @@ struct ContentView: View {
                             #endif
                     }
                     .buttonStyle(.plain)
-                    .help("Add Web App")
+                    .help("Add Options")
                 }
             }
             .background(
@@ -301,6 +366,18 @@ struct ContentView: View {
                 print("[ContentView] Failed to save context after delete: \(error)")
                 #endif
             }
+        }
+    }
+    
+    private func deleteGroup(_ group: WebAppGroup) {
+        withAnimation {
+            if let items = group.items {
+                for app in items {
+                    app.group = nil
+                }
+            }
+            modelContext.delete(group)
+            try? modelContext.save()
         }
     }
     
