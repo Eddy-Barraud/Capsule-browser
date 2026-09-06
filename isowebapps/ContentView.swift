@@ -22,7 +22,7 @@ struct ContentView: View {
     @AppStorage("hasSeededDefaults") private var hasSeededDefaults = false
     
     @State private var isSeedingDefaults = false
-    @State private var draggingItem: WebAppItem?
+    @State private var draggingItem: HomeGridItem?
     @State private var selectedWebApp: WebAppItem?
     @State private var isShowingAddSheet = false
     @State private var isShowingAddGroupSheet = false
@@ -33,14 +33,15 @@ struct ContentView: View {
     @State private var isShowingDeleteConfirmation = false
     @State private var groupToDelete: WebAppGroup?
     @State private var isShowingDeleteGroupConfirmation = false
+    @State private var isInitializing = true
     
     #if os(iOS)
     let columns = [
-        GridItem(.flexible(), spacing: 20)
+        GridItem(.flexible(), spacing: 20, alignment: .top)
     ]
     #else
     let columns = [
-        GridItem(.adaptive(minimum: 300, maximum: 350), spacing: 20)
+        GridItem(.adaptive(minimum: 300, maximum: 350), spacing: 20, alignment: .top)
     ]
     #endif
     
@@ -65,6 +66,13 @@ struct ContentView: View {
         }
         .task {
             await UBlockOriginExtensionManager.shared.prepare()
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                withAnimation {
+                    isInitializing = false
+                }
+            }
         }
         .sheet(isPresented: $isShowingAddSheet) {
             AddWebAppSheet()
@@ -128,12 +136,29 @@ struct ContentView: View {
         }
     }
     
+    private var allHomeItems: [HomeGridItem] {
+        let apps = webApps.filter { $0.group == nil }.map { HomeGridItem.app($0) }
+        let groups = webAppGroups.map { HomeGridItem.group($0) }
+        return (apps + groups).sorted { $0.displayOrder < $1.displayOrder }
+    }
+    
     // Liquid Glass Home Screen
     private var homeScreenView: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    if webApps.isEmpty && webAppGroups.isEmpty {
+                    if isInitializing && webApps.isEmpty && webAppGroups.isEmpty {
+                        VStack(spacing: 24) {
+                            Spacer(minLength: 120)
+                            ProgressView()
+                                .scaleEffect(1.5)
+                            Text("Loading your apps...")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else if webApps.isEmpty && webAppGroups.isEmpty {
                         if !hasSeededDefaults {
                             VStack(spacing: 24) {
                                 Spacer(minLength: 60)
@@ -182,39 +207,44 @@ struct ContentView: View {
                             emptyStateView
                         }
                     } else {
-                        VStack(spacing: 32) {
-                            ForEach(webAppGroups) { group in
-                                WebAppGroupTileView(
-                                    group: group,
-                                    onStartApp: { app in
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                            app.lastOpenedURLString = nil
-                                            try? modelContext.save()
-                                            selectedWebApp = app
+                        AdaptiveMasonryLayout(minColumnWidth: 300, spacing: 24) {
+                            ForEach(allHomeItems) { item in
+                                switch item {
+                                case .group(let group):
+                                    WebAppGroupTileView(
+                                        group: group,
+                                        onStartApp: { app in
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                app.lastOpenedURLString = nil
+                                                try? modelContext.save()
+                                                selectedWebApp = app
+                                            }
+                                        },
+                                        onResumeApp: { app in
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                selectedWebApp = app
+                                            }
+                                        },
+                                        onClearDataApp: { app in
+                                            itemToClearData = app
+                                            isShowingClearConfirmation = true
+                                        },
+                                        onDeleteApp: { app in
+                                            itemToDelete = app
+                                            isShowingDeleteConfirmation = true
+                                        },
+                                        onDeleteGroup: {
+                                            groupToDelete = group
+                                            isShowingDeleteGroupConfirmation = true
                                         }
-                                    },
-                                    onResumeApp: { app in
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                            selectedWebApp = app
-                                        }
-                                    },
-                                    onClearDataApp: { app in
-                                        itemToClearData = app
-                                        isShowingClearConfirmation = true
-                                    },
-                                    onDeleteApp: { app in
-                                        itemToDelete = app
-                                        isShowingDeleteConfirmation = true
-                                    },
-                                    onDeleteGroup: {
-                                        groupToDelete = group
-                                        isShowingDeleteGroupConfirmation = true
+                                    )
+                                    .onDrag {
+                                        self.draggingItem = item
+                                        return NSItemProvider(object: item.id as NSString)
                                     }
-                                )
-                            }
-                            
-                            LazyVGrid(columns: columns, spacing: 24) {
-                                ForEach(webApps.filter { $0.group == nil }) { app in
+                                    .onDrop(of: [.plainText], delegate: HomeItemDropDelegate(item: item, items: allHomeItems, draggingItem: $draggingItem, modelContext: modelContext))
+                                    
+                                case .app(let app):
                                     WebAppTileView(
                                         app: app,
                                         onStart: {
@@ -239,10 +269,10 @@ struct ContentView: View {
                                         }
                                     )
                                     .onDrag {
-                                        self.draggingItem = app
-                                        return NSItemProvider(object: app.id.uuidString as NSString)
+                                        self.draggingItem = item
+                                        return NSItemProvider(object: item.id as NSString)
                                     } 
-                                    .onDrop(of: [.plainText], delegate: WebAppDropDelegate(item: app, items: webApps, draggingItem: $draggingItem, modelContext: modelContext))
+                                    .onDrop(of: [.plainText], delegate: HomeItemDropDelegate(item: item, items: allHomeItems, draggingItem: $draggingItem, modelContext: modelContext))
                                 }
                             }
                         }

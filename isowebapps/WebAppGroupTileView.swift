@@ -10,11 +10,11 @@ struct WebAppGroupTileView: View {
     
     #if os(iOS)
     let columns = [
-        GridItem(.flexible(), spacing: 20)
+        GridItem(.flexible(), spacing: 20, alignment: .top)
     ]
     #else
     let columns = [
-        GridItem(.adaptive(minimum: 300, maximum: 350), spacing: 20)
+        GridItem(.flexible(), spacing: 20, alignment: .top)
     ]
     #endif
     
