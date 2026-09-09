@@ -43,6 +43,7 @@ struct WebAppContainerView: View {
     @State private var isURLExpanded = false
     @State private var isShowingShareSheet = false
     @State private var editableURLString: String = ""
+    @State private var isShowingAddSheet = false
     
     // AI Summarization State
     @State private var isShowingSummary = false
@@ -88,7 +89,10 @@ struct WebAppContainerView: View {
                         onDismiss: handleDismiss,
                         onToggleShield: toggleUBlockProtection,
                         onSummarize: handleSummarizeTap,
-                        onOpenInReader: openCurrentInSafariReader
+                        onOpenInReader: openCurrentInSafariReader,
+                        onAddCapsule: {
+                            isShowingAddSheet = true
+                        }
                     )
                     
                     Divider()
@@ -150,6 +154,10 @@ struct WebAppContainerView: View {
             summaryTask?.cancel()
             navigationState.onStopLoading?()
         }
+        .sheet(isPresented: $isShowingAddSheet) {
+            let activeURLString = navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString
+            AddWebAppSheet(initialURLString: activeURLString)
+        }
         #else
         VStack(spacing: 0) {
             // Top Bar with Shield toggle, Summarize button, and Tiles/Home button
@@ -161,7 +169,10 @@ struct WebAppContainerView: View {
                 onDismiss: handleDismiss,
                 onToggleShield: toggleUBlockProtection,
                 onSummarize: handleSummarizeTap,
-                onOpenInReader: openCurrentInSafariReader
+                onOpenInReader: openCurrentInSafariReader,
+                onAddCapsule: {
+                    isShowingAddSheet = true
+                }
             )
             
             // Dropdown AI Summary section directly below top bar
@@ -252,6 +263,10 @@ struct WebAppContainerView: View {
         .onDisappear {
             summaryTask?.cancel()
             navigationState.onStopLoading?()
+        }
+        .sheet(isPresented: $isShowingAddSheet) {
+            let activeURLString = navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString
+            AddWebAppSheet(initialURLString: activeURLString)
         }
         .sheet(isPresented: $isShowingShareSheet) {
             if let url = URL(string: navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString) {
@@ -394,6 +409,7 @@ struct TopControlsBar: View {
     let onToggleShield: () -> Void
     let onSummarize: () -> Void
     let onOpenInReader: () -> Void
+    var onAddCapsule: (() -> Void)? = nil
     
     private var isYouTube: Bool {
         appItem.urlString.lowercased().contains("youtube.com")
@@ -445,6 +461,28 @@ struct TopControlsBar: View {
             .help(isYouTube ? "YouTube ad-blocking active" : "Toggle uBlock Origin protection")
             
             Spacer()
+            
+            // Ephemeral Add Button (Middle)
+            if appItem.modelContext == nil, let onAddCapsule = onAddCapsule {
+                Button(action: onAddCapsule) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.blue)
+                        
+                        Text("Add")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.primary)
+                    }
+                    .padding(.horizontal, 9)
+                    .frame(height: 32)
+                    .liquidGlassButton(cornerRadius: 10)
+                }
+                .buttonStyle(.plain)
+                .help("Add current page as a new capsule")
+                
+                Spacer()
+            }
             
             // Reader Button (Appears only when "open links in safari reader mode" is OFF)
             if !appItem.openLinksInSafariReaderMode {

@@ -25,6 +25,11 @@ struct AddWebAppSheet: View {
     @State private var deleteCookiesOnClose: Bool = false
     @State private var errorMessage: String? = nil
     
+    init(initialURLString: String = "https://", initialName: String = "") {
+        _urlString = State(initialValue: initialURLString)
+        _name = State(initialValue: initialName)
+    }
+    
     var body: some View {
         NavigationStack {
             Form {
@@ -89,6 +94,14 @@ struct AddWebAppSheet: View {
         #if os(macOS)
         .frame(minWidth: 400, minHeight: 300)
         #endif
+        .task {
+            if fetchedIconData == nil, let url = URL(string: urlString), url.host != nil {
+                let icon = await FaviconFetcher.fetchIcon(for: url)
+                await MainActor.run {
+                    self.fetchedIconData = icon
+                }
+            }
+        }
     }
     
     /// Normalizes URL, fetches favicon metadata asynchronously, and inserts `WebAppItem`
@@ -108,7 +121,12 @@ struct AddWebAppSheet: View {
         
         Task {
             // Fetch web app icon once upon creation
-            let iconData = await FaviconFetcher.fetchIcon(for: url)
+            let iconData: Data?
+            if let existing = fetchedIconData {
+                iconData = existing
+            } else {
+                iconData = await FaviconFetcher.fetchIcon(for: url)
+            }
             
             await MainActor.run {
                 let newApp = WebAppItem(
