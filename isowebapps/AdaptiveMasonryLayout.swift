@@ -28,6 +28,10 @@ struct AdaptiveMasonryLayout<Data: RandomAccessCollection, Content: View>: View 
 
     private func distributeItems(width: CGFloat) -> [[Data.Element]] {
         let count = columnsCount(for: width)
+        if count <= 1 {
+            return [Array(items)]
+        }
+        
         var columns = Array(repeating: [Data.Element](), count: count)
         var heights = Array(repeating: CGFloat(0), count: count)
         
@@ -61,11 +65,19 @@ struct AdaptiveMasonryLayout<Data: RandomAccessCollection, Content: View>: View 
             let width = availableWidth > 0 ? availableWidth : 350
             let cols = distributeItems(width: width)
             
-            HStack(alignment: .top, spacing: spacing) {
-                ForEach(0..<cols.count, id: \.self) { colIndex in
-                    LazyVStack(spacing: spacing) {
-                        ForEach(cols[colIndex]) { item in
-                            content(item)
+            if cols.count <= 1 {
+                LazyVStack(spacing: spacing) {
+                    ForEach(items) { item in
+                        content(item)
+                    }
+                }
+            } else {
+                HStack(alignment: .top, spacing: spacing) {
+                    ForEach(0..<cols.count, id: \.self) { colIndex in
+                        LazyVStack(spacing: spacing) {
+                            ForEach(cols[colIndex]) { item in
+                                content(item)
+                            }
                         }
                     }
                 }

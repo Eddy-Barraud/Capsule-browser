@@ -36,6 +36,7 @@ struct ContentView: View {
     @State private var groupToDelete: WebAppGroup?
     @State private var isShowingDeleteGroupConfirmation = false
     @State private var isInitializing = true
+    @State private var isReordering = false
     
     #if os(iOS)
     let columns = [
@@ -192,6 +193,14 @@ struct ContentView: View {
         }
     }
     
+    private var isDragDropEnabled: Bool {
+        #if os(macOS)
+        return true
+        #else
+        return isReordering
+        #endif
+    }
+
     private var allHomeItems: [HomeGridItem] {
         let apps = webApps.filter { $0.group == nil }.map { HomeGridItem.app($0) }
         let groups = webAppGroups.map { HomeGridItem.group($0) }
@@ -200,7 +209,8 @@ struct ContentView: View {
     
     // Liquid Glass Home Screen
     private var homeScreenView: some View {
-        NavigationStack {
+        let currentHomeItems = allHomeItems
+        return NavigationStack {
             ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -218,7 +228,7 @@ struct ContentView: View {
                     } else if webApps.isEmpty && webAppGroups.isEmpty {
                         emptyStateView
                     } else {
-                        AdaptiveMasonryLayout(items: allHomeItems, minColumnWidth: 300, spacing: 24) { item in
+                        AdaptiveMasonryLayout(items: currentHomeItems, minColumnWidth: 300, spacing: 24) { item in
                                 switch item {
                                 case .group(let group):
                                     WebAppGroupTileView(
@@ -248,11 +258,22 @@ struct ContentView: View {
                                             isShowingDeleteGroupConfirmation = true
                                         }
                                     )
-                                    .onDrag {
-                                        self.draggingItem = item
-                                        return NSItemProvider(object: item.id as NSString)
+                                    .reorderable(
+                                        item: item,
+                                        items: currentHomeItems,
+                                        isEnabled: isDragDropEnabled,
+                                        draggingItem: $draggingItem,
+                                        modelContext: modelContext
+                                    )
+                                    .onLongPressGesture {
+                                        #if os(iOS)
+                                        let impact = UIImpactFeedbackGenerator(style: .medium)
+                                        impact.impactOccurred()
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                            isReordering = true
+                                        }
+                                        #endif
                                     }
-                                    .onDrop(of: [.plainText], delegate: HomeItemDropDelegate(item: item, items: allHomeItems, draggingItem: $draggingItem, modelContext: modelContext))
                                     
                                 case .app(let app):
                                     WebAppTileView(
@@ -278,11 +299,22 @@ struct ContentView: View {
                                             isShowingDeleteConfirmation = true
                                         }
                                     )
-                                    .onDrag {
-                                        self.draggingItem = item
-                                        return NSItemProvider(object: item.id as NSString)
-                                    } 
-                                    .onDrop(of: [.plainText], delegate: HomeItemDropDelegate(item: item, items: allHomeItems, draggingItem: $draggingItem, modelContext: modelContext))
+                                    .reorderable(
+                                        item: item,
+                                        items: currentHomeItems,
+                                        isEnabled: isDragDropEnabled,
+                                        draggingItem: $draggingItem,
+                                        modelContext: modelContext
+                                    )
+                                    .onLongPressGesture {
+                                        #if os(iOS)
+                                        let impact = UIImpactFeedbackGenerator(style: .medium)
+                                        impact.impactOccurred()
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                            isReordering = true
+                                        }
+                                        #endif
+                                    }
                                 }
                         }
                         .padding(.horizontal, 20)
@@ -423,6 +455,19 @@ struct ContentView: View {
         .navigationTitle("Capsule Browser")
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
+                    #if os(iOS)
+                    if isReordering {
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isReordering = false
+                            }
+                        } label: {
+                            Text("Done")
+                                .fontWeight(.bold)
+                        }
+                    }
+                    #endif
+                    
                     Button {
                         isShowingUBlockSettings = true
                     } label: {
@@ -447,6 +492,16 @@ struct ContentView: View {
                         } label: {
                             Label("Create a Group", systemImage: "folder.badge.plus")
                         }
+                        #if os(iOS)
+                        Divider()
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isReordering.toggle()
+                            }
+                        } label: {
+                            Label(isReordering ? "Done Reordering" : "Reorder Capsules", systemImage: isReordering ? "checkmark" : "arrow.up.arrow.down")
+                        }
+                        #endif
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .bold))
@@ -583,7 +638,7 @@ struct ContentView: View {
 
 // Tile View for Each Web App with Liquid Glass Design
 struct WebAppTileView: View {
-    @Bindable var app: WebAppItem
+    let app: WebAppItem
     let onStart: () -> Void
     let onResume: () -> Void
     let onClearData: () -> Void
@@ -623,33 +678,12 @@ struct WebAppTileView: View {
                     
                     Spacer()
                     
-                    Menu {
-                        Toggle("Open links in Safari Reader", isOn: $app.openLinksInSafariReaderMode)
-                            .onChange(of: app.openLinksInSafariReaderMode) { _, _ in
-                                try? app.modelContext?.save()
-                            }
-                        Toggle("Delete cookies on close", isOn: $app.deleteCookiesOnClose)
-                            .onChange(of: app.deleteCookiesOnClose) { _, _ in
-                                try? app.modelContext?.save()
-                            }
-                            
-                        Divider()
-                        
-                        Button(action: onClearData) {
-                            Label("Clear Cookies & Cache...", systemImage: "arrow.clockwise.circle")
-                        }
-                        Button(role: .destructive, action: onDelete) {
-                            Label("Delete Capsule", systemImage: "trash.fill")
-                        }
-                    } label: {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(.secondary)
-                            .frame(width: 30, height: 30) // Ensure large enough tappable area
-                            .background(Color.primary.opacity(0.1))
-                            .clipShape(Circle())
-                    }
-                    .menuStyle(.borderlessButton)
+                    // Settings menu in separate subview to isolate @Bindable observation
+                    WebAppTileSettingsMenu(
+                        app: app,
+                        onClearData: onClearData,
+                        onDelete: onDelete
+                    )
                 }
                 
                 HStack(spacing: 12) {
@@ -687,6 +721,74 @@ struct WebAppTileView: View {
         }
         .padding(16)
         .liquidGlassCard(cornerRadius: 24)
+        .compositingGroup()
+    }
+}
+
+// Extracted Settings Menu to isolate @Bindable observation and avoid re-evaluating the parent tile
+struct WebAppTileSettingsMenu: View {
+    @Bindable var app: WebAppItem
+    let onClearData: () -> Void
+    let onDelete: () -> Void
+    
+    var body: some View {
+        Menu {
+            Toggle("Open links in Safari Reader", isOn: $app.openLinksInSafariReaderMode)
+                .onChange(of: app.openLinksInSafariReaderMode) { _, _ in
+                    try? app.modelContext?.save()
+                }
+            Toggle("Delete cookies on close", isOn: $app.deleteCookiesOnClose)
+                .onChange(of: app.deleteCookiesOnClose) { _, _ in
+                    try? app.modelContext?.save()
+                }
+                
+            Divider()
+            
+            Button(action: onClearData) {
+                Label("Clear Cookies & Cache...", systemImage: "arrow.clockwise.circle")
+            }
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete Capsule", systemImage: "trash.fill")
+            }
+        } label: {
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .frame(width: 30, height: 30) // Ensure large enough tappable area
+                .background(Color.primary.opacity(0.1))
+                .clipShape(Circle())
+        }
+        .menuStyle(.borderlessButton)
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func reorderable(
+        item: HomeGridItem,
+        items: [HomeGridItem],
+        isEnabled: Bool,
+        draggingItem: Binding<HomeGridItem?>,
+        modelContext: ModelContext
+    ) -> some View {
+        if isEnabled {
+            self
+                .onDrag {
+                    draggingItem.wrappedValue = item
+                    return NSItemProvider(object: item.id as NSString)
+                }
+                .onDrop(
+                    of: [.plainText],
+                    delegate: HomeItemDropDelegate(
+                        item: item,
+                        items: items,
+                        draggingItem: draggingItem,
+                        modelContext: modelContext
+                    )
+                )
+        } else {
+            self
+        }
     }
 }
 
