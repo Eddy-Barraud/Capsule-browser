@@ -1,102 +1,86 @@
 import SwiftUI
 
-struct AdaptiveMasonryLayout<Data: RandomAccessCollection, Content: View>: View where Data.Element: Identifiable {
-    let items: Data
+struct AdaptiveMasonryLayout: Layout {
     var minColumnWidth: CGFloat = 300
     var spacing: CGFloat = 24
-    @ViewBuilder let content: (Data.Element) -> Content
 
-    @State private var availableWidth: CGFloat = 0
-
-    init(
-        items: Data,
-        minColumnWidth: CGFloat = 300,
-        spacing: CGFloat = 24,
-        @ViewBuilder content: @escaping (Data.Element) -> Content
-    ) {
-        self.items = items
-        self.minColumnWidth = minColumnWidth
-        self.spacing = spacing
-        self.content = content
+    struct Cache {
+        var width: CGFloat = -1
+        var columnCount: Int = 0
+        var frames: [CGRect] = []
+        var totalHeight: CGFloat = 0
     }
 
-    private func columnsCount(for width: CGFloat) -> Int {
-        guard width > 0 else { return 1 }
-        let count = Int((width + spacing) / (minColumnWidth + spacing))
-        return max(1, count)
+    func makeCache(subviews: Subviews) -> Cache {
+        Cache()
     }
 
-    private func distributeItems(width: CGFloat) -> [[Data.Element]] {
-        let count = columnsCount(for: width)
-        if count <= 1 {
-            return [Array(items)]
+    func updateCache(_ cache: inout Cache, subviews: Subviews) {
+        cache.width = -1
+    }
+
+    private func computeLayout(width: CGFloat, subviews: Subviews, cache: inout Cache) {
+        guard width > 0, !subviews.isEmpty else {
+            cache.frames = []
+            cache.totalHeight = 0
+            return
+        }
+
+        // Return cached frames if width has not changed and subview count matches
+        if abs(cache.width - width) < 0.5 && cache.frames.count == subviews.count {
+            return
+        }
+
+        let columns = max(1, Int((width + spacing) / (minColumnWidth + spacing)))
+        let columnWidth = max(0, (width - spacing * CGFloat(columns - 1)) / CGFloat(columns))
+        
+        var columnHeights = Array(repeating: CGFloat(0), count: columns)
+        var frames: [CGRect] = []
+        frames.reserveCapacity(subviews.count)
+        
+        for subview in subviews {
+            var shortestIndex = 0
+            var minHeight = columnHeights[0]
+            for i in 1..<columns {
+                if columnHeights[i] < minHeight {
+                    minHeight = columnHeights[i]
+                    shortestIndex = i
+                }
+            }
+            
+            let x = CGFloat(shortestIndex) * (columnWidth + spacing)
+            let y = columnHeights[shortestIndex]
+            
+            let size = subview.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil))
+            frames.append(CGRect(x: x, y: y, width: columnWidth, height: size.height))
+            
+            columnHeights[shortestIndex] += size.height + spacing
         }
         
-        var columns = Array(repeating: [Data.Element](), count: count)
-        var heights = Array(repeating: CGFloat(0), count: count)
+        cache.width = width
+        cache.columnCount = columns
+        cache.frames = frames
+        cache.totalHeight = max(0, (columnHeights.max() ?? 0) - (columnHeights.isEmpty ? 0 : spacing))
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+        guard !subviews.isEmpty else { return .zero }
+        let width = proposal.width ?? 350
+        computeLayout(width: width, subviews: subviews, cache: &cache)
+        return CGSize(width: width, height: cache.totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
+        guard !subviews.isEmpty, bounds.width > 0 else { return }
+        computeLayout(width: bounds.width, subviews: subviews, cache: &cache)
         
-        for item in items {
-            let minIndex = heights.firstIndex(of: heights.min() ?? 0) ?? 0
-            columns[minIndex].append(item)
-            
-            var weight: CGFloat = 120
-            if let homeItem = item as? HomeGridItem {
-                switch homeItem {
-                case .app:
-                    weight = 120
-                case .group(let g):
-                    let count = CGFloat(max(1, g.items?.count ?? 1))
-                    weight = 60 + count * 130
-                }
-            }
-            heights[minIndex] += weight + spacing
-        }
-        return columns
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            GeometryReader { geo in
-                Color.clear
-                    .preference(key: MasonryWidthPreferenceKey.self, value: geo.size.width)
-            }
-            .frame(height: 0)
-            
-            let width = availableWidth > 0 ? availableWidth : 350
-            let cols = distributeItems(width: width)
-            
-            if cols.count <= 1 {
-                LazyVStack(spacing: spacing) {
-                    ForEach(items) { item in
-                        content(item)
-                    }
-                }
-            } else {
-                HStack(alignment: .top, spacing: spacing) {
-                    ForEach(0..<cols.count, id: \.self) { colIndex in
-                        LazyVStack(spacing: spacing) {
-                            ForEach(cols[colIndex]) { item in
-                                content(item)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .onPreferenceChange(MasonryWidthPreferenceKey.self) { newWidth in
-            if newWidth > 0 && abs(newWidth - availableWidth) > 1 {
-                availableWidth = newWidth
-            }
-        }
-    }
-}
-
-private struct MasonryWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        let next = nextValue()
-        if next > 0 {
-            value = next
+        for (index, subview) in subviews.enumerated() {
+            guard index < cache.frames.count else { break }
+            let frame = cache.frames[index]
+            subview.place(
+                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                proposal: ProposedViewSize(width: frame.width, height: frame.height)
+            )
         }
     }
 }

@@ -228,7 +228,8 @@ struct ContentView: View {
                     } else if webApps.isEmpty && webAppGroups.isEmpty {
                         emptyStateView
                     } else {
-                        AdaptiveMasonryLayout(items: currentHomeItems, minColumnWidth: 300, spacing: 24) { item in
+                        AdaptiveMasonryLayout(minColumnWidth: 300, spacing: 24) {
+                            ForEach(currentHomeItems) { item in
                                 switch item {
                                 case .group(let group):
                                     WebAppGroupTileView(
@@ -265,15 +266,15 @@ struct ContentView: View {
                                         draggingItem: $draggingItem,
                                         modelContext: modelContext
                                     )
+                                    #if os(iOS)
                                     .onLongPressGesture {
-                                        #if os(iOS)
                                         let impact = UIImpactFeedbackGenerator(style: .medium)
                                         impact.impactOccurred()
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                             isReordering = true
                                         }
-                                        #endif
                                     }
+                                    #endif
                                     
                                 case .app(let app):
                                     WebAppTileView(
@@ -306,16 +307,17 @@ struct ContentView: View {
                                         draggingItem: $draggingItem,
                                         modelContext: modelContext
                                     )
+                                    #if os(iOS)
                                     .onLongPressGesture {
-                                        #if os(iOS)
                                         let impact = UIImpactFeedbackGenerator(style: .medium)
                                         impact.impactOccurred()
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                             isReordering = true
                                         }
-                                        #endif
                                     }
+                                    #endif
                                 }
+                            }
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 16)
