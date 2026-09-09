@@ -218,8 +218,7 @@ struct ContentView: View {
                     } else if webApps.isEmpty && webAppGroups.isEmpty {
                         emptyStateView
                     } else {
-                        AdaptiveMasonryLayout(minColumnWidth: 300, spacing: 24) {
-                            ForEach(allHomeItems) { item in
+                        AdaptiveMasonryLayout(items: allHomeItems, minColumnWidth: 300, spacing: 24) { item in
                                 switch item {
                                 case .group(let group):
                                     WebAppGroupTileView(
@@ -285,7 +284,6 @@ struct ContentView: View {
                                     } 
                                     .onDrop(of: [.plainText], delegate: HomeItemDropDelegate(item: item, items: allHomeItems, draggingItem: $draggingItem, modelContext: modelContext))
                                 }
-                            }
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 16)

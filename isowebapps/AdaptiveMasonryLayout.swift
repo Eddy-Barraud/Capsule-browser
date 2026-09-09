@@ -1,49 +1,90 @@
 import SwiftUI
 
-struct AdaptiveMasonryLayout: Layout {
-    var minColumnWidth: CGFloat
-    var spacing: CGFloat
+struct AdaptiveMasonryLayout<Data: RandomAccessCollection, Content: View>: View where Data.Element: Identifiable {
+    let items: Data
+    var minColumnWidth: CGFloat = 300
+    var spacing: CGFloat = 24
+    @ViewBuilder let content: (Data.Element) -> Content
 
-    private func computeColumns(width: CGFloat) -> Int {
-        let maxColumns = Int((width + spacing) / (minColumnWidth + spacing))
-        return max(1, maxColumns)
+    @State private var availableWidth: CGFloat = 0
+
+    init(
+        items: Data,
+        minColumnWidth: CGFloat = 300,
+        spacing: CGFloat = 24,
+        @ViewBuilder content: @escaping (Data.Element) -> Content
+    ) {
+        self.items = items
+        self.minColumnWidth = minColumnWidth
+        self.spacing = spacing
+        self.content = content
     }
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.replacingUnspecifiedDimensions().width
-        let columns = computeColumns(width: width)
-        let columnWidth = (width - spacing * CGFloat(columns - 1)) / CGFloat(columns)
+    private func columnsCount(for width: CGFloat) -> Int {
+        guard width > 0 else { return 1 }
+        let count = Int((width + spacing) / (minColumnWidth + spacing))
+        return max(1, count)
+    }
+
+    private func distributeItems(width: CGFloat) -> [[Data.Element]] {
+        let count = columnsCount(for: width)
+        var columns = Array(repeating: [Data.Element](), count: count)
+        var heights = Array(repeating: CGFloat(0), count: count)
         
-        var columnHeights = Array(repeating: CGFloat(0), count: columns)
-        
-        for subview in subviews {
-            let shortestColumnIndex = columnHeights.firstIndex(of: columnHeights.min()!) ?? 0
-            let size = subview.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil))
-            columnHeights[shortestColumnIndex] += size.height + spacing
+        for item in items {
+            let minIndex = heights.firstIndex(of: heights.min() ?? 0) ?? 0
+            columns[minIndex].append(item)
+            
+            var weight: CGFloat = 120
+            if let homeItem = item as? HomeGridItem {
+                switch homeItem {
+                case .app:
+                    weight = 120
+                case .group(let g):
+                    let count = CGFloat(max(1, g.items?.count ?? 1))
+                    weight = 60 + count * 130
+                }
+            }
+            heights[minIndex] += weight + spacing
         }
-        
-        let maxHeight = (columnHeights.max() ?? 0) - spacing
-        return CGSize(width: width, height: max(0, maxHeight))
+        return columns
     }
-    
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let columns = computeColumns(width: bounds.width)
-        let columnWidth = (bounds.width - spacing * CGFloat(columns - 1)) / CGFloat(columns)
-        
-        var columnHeights = Array(repeating: bounds.minY, count: columns)
-        
-        for subview in subviews {
-            let shortestColumnIndex = columnHeights.firstIndex(of: columnHeights.min()!) ?? 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            GeometryReader { geo in
+                Color.clear
+                    .preference(key: MasonryWidthPreferenceKey.self, value: geo.size.width)
+            }
+            .frame(height: 0)
             
-            let x = bounds.minX + CGFloat(shortestColumnIndex) * (columnWidth + spacing)
-            let y = columnHeights[shortestColumnIndex]
+            let width = availableWidth > 0 ? availableWidth : 350
+            let cols = distributeItems(width: width)
             
-            let size = subview.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil))
-            
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: columnWidth, height: size.height))
-            
-            columnHeights[shortestColumnIndex] += size.height + spacing
+            HStack(alignment: .top, spacing: spacing) {
+                ForEach(0..<cols.count, id: \.self) { colIndex in
+                    LazyVStack(spacing: spacing) {
+                        ForEach(cols[colIndex]) { item in
+                            content(item)
+                        }
+                    }
+                }
+            }
+        }
+        .onPreferenceChange(MasonryWidthPreferenceKey.self) { newWidth in
+            if newWidth > 0 && abs(newWidth - availableWidth) > 1 {
+                availableWidth = newWidth
+            }
         }
     }
 }
 
+private struct MasonryWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 {
+            value = next
+        }
+    }
+}
