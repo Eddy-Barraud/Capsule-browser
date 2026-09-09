@@ -651,6 +651,7 @@ struct ContentView: View {
 
 // Tile View for Each Web App with Liquid Glass Design
 struct WebAppTileView: View {
+    @Environment(\.colorScheme) var colorScheme
     let app: WebAppItem
     let onStart: () -> Void
     let onResume: () -> Void
@@ -676,7 +677,34 @@ struct WebAppTileView: View {
                     }
                 }
                 .frame(width: 80, height: 80)
-                .liquidGlassCard(cornerRadius: 20)
+                .background(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(
+                            colorScheme == .dark
+                            ? Color(white: 0.28).opacity(0.85)
+                            : Color.white.opacity(0.95)
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(colorScheme == .dark ? 0.45 : 1.0),
+                                    Color.white.opacity(colorScheme == .dark ? 0.1 : 0.4)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(
+                    color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.1),
+                    radius: 5,
+                    x: 0,
+                    y: 2.5
+                )
             }
             .buttonStyle(.plain)
             

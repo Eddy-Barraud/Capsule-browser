@@ -51,7 +51,7 @@ struct WebAppGroupTileView: View {
         .background(
             RoundedRectangle(cornerRadius: 32)
                 .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 32)

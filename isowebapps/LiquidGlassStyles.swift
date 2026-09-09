@@ -45,10 +45,10 @@ struct LiquidGlassCardModifier: ViewModifier {
                             )
                     )
                     .shadow(
-                        color: colorScheme == .dark ? Color.black.opacity(0.4) : Color.black.opacity(0.08),
-                        radius: 12,
+                        color: colorScheme == .dark ? Color.black.opacity(0.2) : Color.black.opacity(0.04),
+                        radius: 4,
                         x: 0,
-                        y: 6
+                        y: 2
                     )
             )
     }
@@ -65,20 +65,16 @@ struct LiquidGlassButtonModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(
                         colorScheme == .dark
-                        ? Color(white: 0.2).opacity(0.7)
-                        : Color.white.opacity(0.75)
-                    )
-                    .background(
-                        .ultraThinMaterial,
-                        in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        ? Color(white: 0.28).opacity(0.85)
+                        : Color.white.opacity(0.95)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                             .stroke(
                                 LinearGradient(
                                     colors: [
-                                        Color.white.opacity(colorScheme == .dark ? 0.4 : 0.9),
-                                        Color.white.opacity(0.1)
+                                        Color.white.opacity(colorScheme == .dark ? 0.45 : 1.0),
+                                        Color.white.opacity(colorScheme == .dark ? 0.1 : 0.4)
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
@@ -87,10 +83,10 @@ struct LiquidGlassButtonModifier: ViewModifier {
                             )
                     )
                     .shadow(
-                        color: Color.black.opacity(0.12),
-                        radius: 8,
+                        color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.1),
+                        radius: 5,
                         x: 0,
-                        y: 4
+                        y: 2.5
                     )
             )
             .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
