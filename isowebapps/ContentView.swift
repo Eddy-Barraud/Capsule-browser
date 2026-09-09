@@ -228,94 +228,105 @@ struct ContentView: View {
                     } else if webApps.isEmpty && webAppGroups.isEmpty {
                         emptyStateView
                     } else {
-                        AdaptiveMasonryLayout(minColumnWidth: 300, spacing: 24) {
-                            ForEach(currentHomeItems) { item in
-                                switch item {
-                                case .group(let group):
-                                    WebAppGroupTileView(
-                                        group: group,
-                                        onStartApp: { app in
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                app.lastOpenedURLString = nil
-                                                try? modelContext.save()
-                                                selectedWebApp = app
+                        VStack(alignment: .leading, spacing: 24) {
+                            if !webAppGroups.isEmpty {
+                                let groupItems = webAppGroups.map { HomeGridItem.group($0) }
+                                LazyVGrid(columns: columns, spacing: 24) {
+                                    ForEach(webAppGroups) { group in
+                                        let item = HomeGridItem.group(group)
+                                        WebAppGroupTileView(
+                                            group: group,
+                                            onStartApp: { app in
+                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                    app.lastOpenedURLString = nil
+                                                    try? modelContext.save()
+                                                    selectedWebApp = app
+                                                }
+                                            },
+                                            onResumeApp: { app in
+                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                    selectedWebApp = app
+                                                }
+                                            },
+                                            onClearDataApp: { app in
+                                                itemToClearData = app
+                                                isShowingClearConfirmation = true
+                                            },
+                                            onDeleteApp: { app in
+                                                itemToDelete = app
+                                                isShowingDeleteConfirmation = true
+                                            },
+                                            onDeleteGroup: {
+                                                groupToDelete = group
+                                                isShowingDeleteGroupConfirmation = true
                                             }
-                                        },
-                                        onResumeApp: { app in
+                                        )
+                                        .reorderable(
+                                            item: item,
+                                            items: groupItems,
+                                            isEnabled: isDragDropEnabled,
+                                            draggingItem: $draggingItem,
+                                            modelContext: modelContext
+                                        )
+                                        #if os(iOS)
+                                        .onLongPressGesture {
+                                            let impact = UIImpactFeedbackGenerator(style: .medium)
+                                            impact.impactOccurred()
                                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                selectedWebApp = app
+                                                isReordering = true
                                             }
-                                        },
-                                        onClearDataApp: { app in
-                                            itemToClearData = app
-                                            isShowingClearConfirmation = true
-                                        },
-                                        onDeleteApp: { app in
-                                            itemToDelete = app
-                                            isShowingDeleteConfirmation = true
-                                        },
-                                        onDeleteGroup: {
-                                            groupToDelete = group
-                                            isShowingDeleteGroupConfirmation = true
                                         }
-                                    )
-                                    .reorderable(
-                                        item: item,
-                                        items: currentHomeItems,
-                                        isEnabled: isDragDropEnabled,
-                                        draggingItem: $draggingItem,
-                                        modelContext: modelContext
-                                    )
-                                    #if os(iOS)
-                                    .onLongPressGesture {
-                                        let impact = UIImpactFeedbackGenerator(style: .medium)
-                                        impact.impactOccurred()
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                            isReordering = true
-                                        }
+                                        #endif
                                     }
-                                    #endif
-                                    
-                                case .app(let app):
-                                    WebAppTileView(
-                                        app: app,
-                                        onStart: {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                app.lastOpenedURLString = nil
-                                                try? modelContext.save()
-                                                selectedWebApp = app
+                                }
+                            }
+                            
+                            let standaloneApps = webApps.filter { $0.group == nil }
+                            if !standaloneApps.isEmpty {
+                                let appItems = standaloneApps.map { HomeGridItem.app($0) }
+                                LazyVGrid(columns: columns, spacing: 24) {
+                                    ForEach(standaloneApps) { app in
+                                        let item = HomeGridItem.app(app)
+                                        WebAppTileView(
+                                            app: app,
+                                            onStart: {
+                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                    app.lastOpenedURLString = nil
+                                                    try? modelContext.save()
+                                                    selectedWebApp = app
+                                                }
+                                            },
+                                            onResume: {
+                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                    selectedWebApp = app
+                                                }
+                                            },
+                                            onClearData: {
+                                                itemToClearData = app
+                                                isShowingClearConfirmation = true
+                                            },
+                                            onDelete: {
+                                                itemToDelete = app
+                                                isShowingDeleteConfirmation = true
                                             }
-                                        },
-                                        onResume: {
+                                        )
+                                        .reorderable(
+                                            item: item,
+                                            items: appItems,
+                                            isEnabled: isDragDropEnabled,
+                                            draggingItem: $draggingItem,
+                                            modelContext: modelContext
+                                        )
+                                        #if os(iOS)
+                                        .onLongPressGesture {
+                                            let impact = UIImpactFeedbackGenerator(style: .medium)
+                                            impact.impactOccurred()
                                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                selectedWebApp = app
+                                                isReordering = true
                                             }
-                                        },
-                                        onClearData: {
-                                            itemToClearData = app
-                                            isShowingClearConfirmation = true
-                                        },
-                                        onDelete: {
-                                            itemToDelete = app
-                                            isShowingDeleteConfirmation = true
                                         }
-                                    )
-                                    .reorderable(
-                                        item: item,
-                                        items: currentHomeItems,
-                                        isEnabled: isDragDropEnabled,
-                                        draggingItem: $draggingItem,
-                                        modelContext: modelContext
-                                    )
-                                    #if os(iOS)
-                                    .onLongPressGesture {
-                                        let impact = UIImpactFeedbackGenerator(style: .medium)
-                                        impact.impactOccurred()
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                            isReordering = true
-                                        }
+                                        #endif
                                     }
-                                    #endif
                                 }
                             }
                         }
