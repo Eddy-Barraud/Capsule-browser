@@ -23,11 +23,11 @@ struct AddGroupSheet: View {
                     TextField("Group Name", text: $groupName)
                 }
                 
-                Section(header: Text("Select Apps for Group"), footer: Text("Apps already in a group are hidden.")) {
+                Section(header: Text("Select Capsules for Group"), footer: Text("Capsules already in a group are hidden.")) {
                     let availableApps = allApps.filter { $0.group == nil }
                     
                     if availableApps.isEmpty {
-                        Text("No available apps to group.")
+                        Text("No available capsules to group.")
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(availableApps) { app in
@@ -70,7 +70,7 @@ struct AddGroupSheet: View {
                     }
                 }
             }
-            .navigationTitle("Create App Group")
+            .navigationTitle("Create Capsule Group")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif

@@ -19,9 +19,7 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor(\WebAppItem.displayOrder, order: .forward), SortDescriptor(\WebAppItem.createdAt, order: .forward)]) private var webApps: [WebAppItem]
     @Query(sort: [SortDescriptor(\WebAppGroup.displayOrder, order: .forward), SortDescriptor(\WebAppGroup.createdAt, order: .forward)]) private var webAppGroups: [WebAppGroup]
-    @AppStorage("hasSeededDefaults") private var hasSeededDefaults = false
     
-    @State private var isSeedingDefaults = false
     @State private var draggingItem: HomeGridItem?
     @State private var selectedWebApp: WebAppItem?
     @State private var quickSearchText = ""
@@ -142,7 +140,7 @@ struct ContentView: View {
             handleIncomingURL(url)
         }
         .confirmationDialog(
-            "Clear Data for \(itemToClearData?.name ?? "Web App")?",
+            "Clear Data for \(itemToClearData?.name ?? "Capsule")?",
             isPresented: $isShowingClearConfirmation,
             titleVisibility: .visible
         ) {
@@ -156,14 +154,14 @@ struct ContentView: View {
                 itemToClearData = nil
             }
         } message: {
-            Text("This will permanently remove all cached files, cookies, and local storage isolated for this app.")
+            Text("This will permanently remove all cached files, cookies, and local storage isolated for this capsule.")
         }
         .confirmationDialog(
-            "Delete \(itemToDelete?.name ?? "Web App")?",
+            "Delete \(itemToDelete?.name ?? "Capsule")?",
             isPresented: $isShowingDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete App", role: .destructive) {
+            Button("Delete Capsule", role: .destructive) {
                 if let item = itemToDelete {
                     deleteApp(item)
                     itemToDelete = nil
@@ -173,14 +171,14 @@ struct ContentView: View {
                 itemToDelete = nil
             }
         } message: {
-            Text("Are you sure you want to delete this web app? This action will remove it from all synced devices.")
+            Text("Are you sure you want to delete this capsule? This action will remove it from all synced devices.")
         }
         .confirmationDialog(
             "Delete \(groupToDelete?.name ?? "Group")?",
             isPresented: $isShowingDeleteGroupConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Ungroup Apps", role: .destructive) {
+            Button("Ungroup Capsules", role: .destructive) {
                 if let group = groupToDelete {
                     deleteGroup(group)
                     groupToDelete = nil
@@ -190,7 +188,7 @@ struct ContentView: View {
                 groupToDelete = nil
             }
         } message: {
-            Text("The group will be removed, but the apps inside it will be kept.")
+            Text("The group will be removed, but the capsules inside it will be kept.")
         }
     }
     
@@ -211,60 +209,14 @@ struct ContentView: View {
                             Spacer(minLength: 120)
                             ProgressView()
                                 .scaleEffect(1.5)
-                            Text("Loading your apps...")
+                            Text("Loading your capsules...")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                             Spacer()
                         }
                         .frame(maxWidth: .infinity)
                     } else if webApps.isEmpty && webAppGroups.isEmpty {
-                        if !hasSeededDefaults {
-                            VStack(spacing: 24) {
-                                Spacer(minLength: 60)
-                                
-                                if isSeedingDefaults {
-                                    ProgressView("Downloading Icons & Preparing Apps...")
-                                        .padding()
-                                } else {
-                                    VStack(spacing: 16) {
-                                        Image(systemName: "sparkles.rectangle.stack.fill")
-                                            .font(.system(size: 56))
-                                            .foregroundStyle(.purple.gradient)
-                                            .padding(24)
-                                            .liquidGlassCard(cornerRadius: 28)
-                                        
-                                        Text("Welcome to Capsule Browser")
-                                            .font(.title2.bold())
-                                        
-                                        Text("Would you like to start with a blank slate, or try our default list of apps?\n(YouTube, Google News, DuckDuckGo, Reddit, Instagram, Gemini)")
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                            .multilineTextAlignment(.center)
-                                            .padding(.horizontal, 36)
-                                        
-                                        HStack(spacing: 16) {
-                                            Button("Start Empty") {
-                                                startEmpty()
-                                            }
-                                            .buttonStyle(.bordered)
-                                            .controlSize(.large)
-                                            
-                                            Button("Load Defaults") {
-                                                loadDefaultApps()
-                                            }
-                                            .buttonStyle(.borderedProminent)
-                                            .controlSize(.large)
-                                        }
-                                        .padding(.top, 16)
-                                    }
-                                }
-                                
-                                Spacer()
-                            }
-                            .frame(maxWidth: .infinity)
-                        } else {
-                            emptyStateView
-                        }
+                        emptyStateView
                     } else {
                         AdaptiveMasonryLayout(minColumnWidth: 300, spacing: 24) {
                             ForEach(allHomeItems) { item in
@@ -490,7 +442,7 @@ struct ContentView: View {
                         Button {
                             isShowingAddSheet = true
                         } label: {
-                            Label("Add New App", systemImage: "plus.app")
+                            Label("New Capsule", systemImage: "plus.rectangle.on.rectangle")
                         }
                         Button {
                             isShowingAddGroupSheet = true
@@ -548,10 +500,10 @@ struct ContentView: View {
                 .padding(24)
                 .liquidGlassCard(cornerRadius: 28)
             
-            Text("No Isolated Web Apps Yet")
+            Text("No Capsules Yet")
                 .font(.title3.bold())
             
-            Text("Add your favorite web applications to run in isolated containers with uBlock Origin ad-blocking.")
+            Text("Save your favorite websites to browse in isolated capsules with tracker protection and uBlock Origin ad-blocking.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -562,7 +514,7 @@ struct ContentView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "plus")
-                    Text("Add Web App")
+                    Text("New Capsule")
                 }
                 .font(.system(size: 15, weight: .semibold))
                 .padding(.horizontal, 20)
@@ -606,45 +558,6 @@ struct ContentView: View {
             }
             modelContext.delete(group)
             try? modelContext.save()
-        }
-    }
-    
-    private func startEmpty() {
-        withAnimation {
-            hasSeededDefaults = true
-        }
-    }
-    
-    private func loadDefaultApps() {
-        isSeedingDefaults = true
-        
-        let defaults = [
-            ("Google News", "https://news.google.com"),
-            ("YouTube", "https://www.youtube.com"),
-            ("Reddit", "https://www.reddit.com"),
-            ("Instagram", "https://www.instagram.com"),
-            ("DuckDuckGo", "https://start.duckduckgo.com"),
-            ("Gemini", "https://gemini.google.com")
-        ]
-        
-        Task {
-            for app in defaults {
-                guard let url = URL(string: app.1) else { continue }
-                let iconData = await FaviconFetcher.fetchIcon(for: url)
-                await MainActor.run {
-                    let use_reader: Bool = (app.1 == "https://news.google.com") ? true : false
-
-                    let newApp = WebAppItem(name: app.0, urlString: app.1, iconData: iconData, openLinksInSafariReaderMode: use_reader)
-                    modelContext.insert(newApp)
-                }
-            }
-            await MainActor.run {
-                try? modelContext.save()
-                withAnimation {
-                    hasSeededDefaults = true
-                    isSeedingDefaults = false
-                }
-            }
         }
     }
     
@@ -728,7 +641,7 @@ struct WebAppTileView: View {
                             Label("Clear Cookies & Cache...", systemImage: "arrow.clockwise.circle")
                         }
                         Button(role: .destructive, action: onDelete) {
-                            Label("Delete Web App", systemImage: "trash.fill")
+                            Label("Delete Capsule", systemImage: "trash.fill")
                         }
                     } label: {
                         Image(systemName: "gearshape.fill")
@@ -872,7 +785,7 @@ struct OpenURLSheet: View {
                             }
                         }
                     } header: {
-                        Text("Recommended Apps")
+                        Text("Recommended Capsules")
                     }
                 }
                 
@@ -886,7 +799,7 @@ struct OpenURLSheet: View {
                             }
                         }
                     } header: {
-                        Text("Other Apps")
+                        Text("Other Capsules")
                     }
                 }
             }

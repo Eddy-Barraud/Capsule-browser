@@ -471,7 +471,7 @@ struct TopControlsBar: View {
                 HStack(spacing: 4) {
                     Image(systemName: "square.grid.2x2.fill")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("Apps")
+                    Text("Capsules")
                         .font(.system(size: 11, weight: .medium))
                 }
                 .padding(.horizontal, 9)
@@ -479,7 +479,7 @@ struct TopControlsBar: View {
                 .liquidGlassButton(cornerRadius: 10)
             }
             .buttonStyle(.plain)
-            .help("Back to Apps Home Screen")
+            .help("Back to Capsules")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

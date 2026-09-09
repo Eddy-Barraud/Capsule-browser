@@ -28,8 +28,8 @@ struct AddWebAppSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Web App Details")) {
-                    TextField("App Name (e.g. GitHub, Twitter)", text: $name)
+                Section(header: Text("Capsule Details")) {
+                    TextField("Site Name (e.g. GitHub, Wikipedia)", text: $name)
                     
                     TextField("Website URL", text: $urlString)
                         #if os(iOS)
@@ -68,7 +68,7 @@ struct AddWebAppSheet: View {
                     }
                 }
             }
-            .navigationTitle("Add Web App")
+            .navigationTitle("New Capsule")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
