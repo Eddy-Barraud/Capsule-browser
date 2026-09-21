@@ -93,7 +93,8 @@ final class IsolatedCookieManager {
         }
     }
     
-    func clearData(for item: WebAppItem, dataStore: WKWebsiteDataStore, context: ModelContext) async {
+    /// Selectively wipes all cookies, cache, local storage, and website data for a specific webapp
+    func clearData(for item: WebAppItem, context: ModelContext) async {
         #if DEBUG
         print("[IsolatedCookieManager] Clearing all data for \(item.name)...")
         #endif
@@ -102,16 +103,36 @@ final class IsolatedCookieManager {
         item.isolatedCookiesData = nil
         try? context.save()
         
-        // 2. Remove all related records from WKWebsiteDataStore
-        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
-        let records = await dataStore.dataRecords(ofTypes: dataTypes)
+        guard item.modelContext != nil else {
+            // Ephemeral capsule uses nonPersistent data store; no disk store to remove
+            return
+        }
         
-        if let host = URL(string: item.urlString)?.host {
-            let matchingRecords = records.filter { $0.displayName.contains(host) }
-            await dataStore.removeData(ofTypes: dataTypes, for: matchingRecords)
+        if let group = item.group {
+            // Grouped capsule: Clean only this app's domain records from the shared group data store
+            let groupStore = WKWebsiteDataStore(forIdentifier: group.id)
+            let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+            let records = await groupStore.dataRecords(ofTypes: dataTypes)
+            
+            if let host = URL(string: item.urlString)?.host {
+                let matchingRecords = records.filter { $0.displayName.contains(host) }
+                await groupStore.removeData(ofTypes: dataTypes, for: matchingRecords)
+            } else {
+                let dateFrom = Date(timeIntervalSince1970: 0)
+                await groupStore.removeData(ofTypes: dataTypes, modifiedSince: dateFrom)
+            }
         } else {
-            let dateFrom = Date(timeIntervalSince1970: 0)
-            await dataStore.removeData(ofTypes: dataTypes, modifiedSince: dateFrom)
+            // Standalone capsule: completely remove the dedicated on-disk website data store
+            do {
+                try await WKWebsiteDataStore.remove(forIdentifier: item.id)
+                #if DEBUG
+                print("[IsolatedCookieManager] Successfully removed WKWebsiteDataStore for standalone app \(item.id)")
+                #endif
+            } catch {
+                #if DEBUG
+                print("[IsolatedCookieManager] Error removing WKWebsiteDataStore for \(item.id): \(error)")
+                #endif
+            }
         }
     }
 }

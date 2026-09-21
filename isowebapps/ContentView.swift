@@ -597,12 +597,13 @@ struct ContentView: View {
     
     private func clearAppData(_ item: WebAppItem) {
         Task {
-            let dataStore = WKWebsiteDataStore.nonPersistent()
-            await IsolatedCookieManager.shared.clearData(for: item, dataStore: dataStore, context: modelContext)
+            await IsolatedCookieManager.shared.clearData(for: item, context: modelContext)
         }
     }
     
     private func deleteApp(_ item: WebAppItem) {
+        let itemId = item.id
+        let isStandalone = (item.group == nil)
         withAnimation {
             modelContext.delete(item)
             do {
@@ -613,9 +614,15 @@ struct ContentView: View {
                 #endif
             }
         }
+        if isStandalone {
+            Task {
+                try? await WKWebsiteDataStore.remove(forIdentifier: itemId)
+            }
+        }
     }
     
     private func deleteGroup(_ group: WebAppGroup) {
+        let groupId = group.id
         withAnimation {
             if let items = group.items {
                 for app in items {
@@ -624,6 +631,9 @@ struct ContentView: View {
             }
             modelContext.delete(group)
             try? modelContext.save()
+        }
+        Task {
+            try? await WKWebsiteDataStore.remove(forIdentifier: groupId)
         }
     }
     

@@ -81,8 +81,18 @@ extension IsolatedWebViewRepresentable {
     func createConfiguredWebView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         
-        // 1. Isolate website data store per app instance
-        let dataStore = WKWebsiteDataStore.nonPersistent()
+        // 1. Configure website data store:
+        // Ephemeral capsules (e.g. launched from search bar) have no modelContext -> use nonPersistent().
+        // Persistent capsules use WKWebsiteDataStore(forIdentifier:) with the group ID if grouped,
+        // or the app item ID if standalone, guaranteeing on-disk isolation and persistence of
+        // cookies, localStorage, and IndexedDB across app relaunches.
+        let dataStore: WKWebsiteDataStore
+        if appItem.modelContext == nil {
+            dataStore = WKWebsiteDataStore.nonPersistent()
+        } else {
+            let storeId = appItem.group?.id ?? appItem.id
+            dataStore = WKWebsiteDataStore(forIdentifier: storeId)
+        }
         configuration.websiteDataStore = dataStore
         
         // 2. Enable HTML5 Fullscreen & Media Playback Capabilities
@@ -241,10 +251,8 @@ extension IsolatedWebViewRepresentable {
             return (title: title, url: urlString, text: pageText)
         }
         
-        // 3. Restore isolated cookies and load start page (last opened URL or configured home URL)
         // 3. Restore isolated cookies (including grouped apps if applicable) and load start page
         Task { @MainActor in
-            await IsolatedCookieManager.shared.restoreCookies(for: appItem, into: dataStore.httpCookieStore)
             let groupedItems = appItem.group?.items ?? []
             await IsolatedCookieManager.shared.restoreCookies(for: appItem, groupedItems: groupedItems, into: dataStore.httpCookieStore)
             let startURLString = appItem.lastOpenedURLString ?? appItem.urlString
@@ -329,6 +337,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     }
     
     func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
+        guard appItem.modelContext != nil else { return }
         Task { @MainActor in
             await IsolatedCookieManager.shared.persistCookies(
                 for: appItem,
@@ -448,13 +457,16 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         navigationState.canGoForward = webView.canGoForward
         if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
             navigationState.currentURLString = urlString
-            // Persist the last opened URL for this web app
-            appItem.lastOpenedURLString = urlString
-            appItem.lastVisited = Date()
-            try? modelContext.save()
+            // Persist the last opened URL for this web app if persistent
+            if appItem.modelContext != nil {
+                appItem.lastOpenedURLString = urlString
+                appItem.lastVisited = Date()
+                try? modelContext.save()
+            }
         }
         
         // Persist cookies after navigation completes
+        guard appItem.modelContext != nil else { return }
         Task { @MainActor in
             await IsolatedCookieManager.shared.persistCookies(
                 for: appItem,

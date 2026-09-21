@@ -289,8 +289,7 @@ struct WebAppContainerView: View {
         
         if appItem.deleteCookiesOnClose {
             Task {
-                let dataStore = WKWebsiteDataStore.nonPersistent()
-                await IsolatedCookieManager.shared.clearData(for: appItem, dataStore: dataStore, context: modelContext)
+                await IsolatedCookieManager.shared.clearData(for: appItem, context: modelContext)
             }
         }
         
