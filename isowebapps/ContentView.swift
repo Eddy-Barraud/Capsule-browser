@@ -209,7 +209,7 @@ struct ContentView: View {
     
     // Liquid Glass Home Screen
     private var homeScreenView: some View {
-        let currentHomeItems = allHomeItems
+        _ = allHomeItems
         return NavigationStack {
             ZStack(alignment: .bottom) {
                 ScrollView {

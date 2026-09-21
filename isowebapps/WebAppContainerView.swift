@@ -136,7 +136,7 @@ struct WebAppContainerView: View {
                 NSWorkspace.shared.open(url)
             }
         }
-        .onChange(of: navigationState.currentURLString) { newURL in
+        .onChange(of: navigationState.currentURLString) { _, newURL in
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
                 editableURLString = newURL
             }
