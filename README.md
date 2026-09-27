@@ -1,4 +1,5 @@
 # Capsule Browser
+[![Build, Sign & Release DMG](https://github.com/Eddy-Barraud/Capsule-browser/actions/workflows/release.yml/badge.svg)](https://github.com/Eddy-Barraud/Capsule-browser/actions/workflows/release.yml)
 
 **Capsule Browser** is a privacy-first web application container for macOS and iOS that transforms websites into independent, isolated web apps.
 
