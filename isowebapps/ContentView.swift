@@ -488,7 +488,6 @@ struct ContentView: View {
                             .font(.system(size: 15, weight: .semibold))
                             #if os(macOS)
                             .padding(8)
-                            .liquidGlassButton(cornerRadius: 12)
                             #endif
                     }
                     .buttonStyle(.plain)
@@ -517,10 +516,9 @@ struct ContentView: View {
                         #endif
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             #if os(macOS)
                             .padding(8)
-                            .liquidGlassButton(cornerRadius: 12)
                             #endif
                     }
                     .buttonStyle(.plain)
