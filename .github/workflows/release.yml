@@ -73,6 +73,7 @@ jobs:
             -destination "generic/platform=macOS" \
             -archivePath "$RUNNER_TEMP/Capsule-Browser.xcarchive" \
             -configuration Release \
+            MACOSX_DEPLOYMENT_TARGET=14.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="-"
 
