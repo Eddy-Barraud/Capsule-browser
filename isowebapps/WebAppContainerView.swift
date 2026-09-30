@@ -121,7 +121,10 @@ struct WebAppContainerView: View {
                         appItem: appItem,
                         initialURLString: initialURLString,
                         navigationState: navigationState,
-                        modelContext: modelContext
+                        modelContext: modelContext,
+                        onOpenNewWindowOrTab: { url in
+                            handleOpenNewWindowOrTab(url: url)
+                        }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture {
@@ -147,10 +150,16 @@ struct WebAppContainerView: View {
             }
         }
         .onAppear {
+            isSummarizationAvailable = AISummarizer.isAvailable
             navigationState.isUBlockEnabled = appItem.isUBlockEnabled
-            let initialURL = appItem.lastOpenedURLString ?? appItem.urlString
+            let initialURL = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
             navigationState.currentURLString = initialURL
             editableURLString = initialURL
+            if let domain = WebAppNamingHelper.domainName(from: initialURL) {
+                onActiveDomainChange?(domain)
+            } else {
+                onActiveDomainChange?(activeDomainTitle)
+            }
             
             navigationState.onOpenSafari = { url in
                 NSWorkspace.shared.open(url)
@@ -158,10 +167,16 @@ struct WebAppContainerView: View {
             navigationState.onOpenSafariReader = { url in
                 NSWorkspace.shared.open(url)
             }
+            navigationState.onOpenNewWindowOrTab = { url in
+                handleOpenNewWindowOrTab(url: url)
+            }
         }
         .onChange(of: navigationState.currentURLString) { _, newURL in
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
                 editableURLString = newURL
+            }
+            if let domain = WebAppNamingHelper.domainName(from: newURL) {
+                onActiveDomainChange?(domain)
             }
             if isShowingSummary {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -265,36 +280,6 @@ struct WebAppContainerView: View {
             editableURLString = initialURL
             onActiveDomainChange?(activeDomainTitle)
             
-            #if os(macOS)
-            navigationState.onOpenNewWindowOrTab = { url in
-                let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
-                let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
-                
-                switch mode {
-                case .tabs:
-                    let payload = CapsuleWindowPayload(
-                        appId: appItem.modelContext != nil ? appItem.id : nil,
-                        urlString: url.absoluteString,
-                        name: appItem.name,
-                        isSecondaryWindow: true,
-                        openAsTab: true
-                    )
-                    openWindow(id: "capsuleWindow", value: payload)
-                case .separateWindows:
-                    let payload = CapsuleWindowPayload(
-                        appId: appItem.modelContext != nil ? appItem.id : nil,
-                        urlString: url.absoluteString,
-                        name: appItem.name,
-                        isSecondaryWindow: true,
-                        openAsTab: false
-                    )
-                    openWindow(id: "capsuleWindow", value: payload)
-                case .singleWindow:
-                    navigationState.onLoadURL?(url)
-                }
-            }
-            #endif
-            
             navigationState.onOpenSafari = { url in
                 #if os(iOS)
                 safariURL = IdentifiableURL(url: url, entersReader: false)
@@ -358,10 +343,44 @@ struct WebAppContainerView: View {
         .background(
             WindowAccessor { window in
                 window.title = activeDomainTitle
+                window.tab.title = activeDomainTitle
             }
         )
         #endif
     }
+    
+    #if os(macOS)
+    private func handleOpenNewWindowOrTab(url: URL) {
+        let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
+        let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
+        #if DEBUG
+        print("[WebAppContainerView] handleOpenNewWindowOrTab url: \(url), mode: \(mode)")
+        #endif
+        
+        switch mode {
+        case .tabs:
+            let payload = CapsuleWindowPayload(
+                appId: appItem.modelContext != nil ? appItem.id : nil,
+                urlString: url.absoluteString,
+                name: appItem.name,
+                isSecondaryWindow: true,
+                openAsTab: true
+            )
+            openWindow(id: "capsuleWindow", value: payload)
+        case .separateWindows:
+            let payload = CapsuleWindowPayload(
+                appId: appItem.modelContext != nil ? appItem.id : nil,
+                urlString: url.absoluteString,
+                name: appItem.name,
+                isSecondaryWindow: true,
+                openAsTab: false
+            )
+            openWindow(id: "capsuleWindow", value: payload)
+        case .singleWindow:
+            navigationState.onLoadURL?(url)
+        }
+    }
+    #endif
     
     private func handleDismiss() {
         #if os(macOS)

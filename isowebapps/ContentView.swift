@@ -64,6 +64,7 @@ struct ContentView: View {
                         activeDomainTitle = newDomain
                         #if os(macOS)
                         MainWindowTracker.shared.mainWindow?.title = newDomain
+                        MainWindowTracker.shared.mainWindow?.tab.title = newDomain
                         #endif
                     },
                     onDismiss: {
@@ -72,6 +73,7 @@ struct ContentView: View {
                             activeDomainTitle = ""
                             #if os(macOS)
                             MainWindowTracker.shared.mainWindow?.title = "Capsule Browser"
+                            MainWindowTracker.shared.mainWindow?.tab.title = "Capsule Browser"
                             #endif
                         }
                     }
@@ -466,6 +468,11 @@ struct ContentView: View {
                     Button {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             windowPresentationMode = windowPresentationMode.next
+                            if windowPresentationMode == .tabs {
+                                MainWindowTracker.shared.mainWindow?.tabbingMode = .preferred
+                            } else {
+                                MainWindowTracker.shared.mainWindow?.tabbingMode = .disallowed
+                            }
                         }
                     } label: {
                         Image(systemName: windowPresentationMode.iconName)
@@ -537,8 +544,14 @@ struct ContentView: View {
                 WindowAccessor { window in
                     MainWindowTracker.shared.mainWindow = window
                     window.tabbingIdentifier = "CapsuleBrowserWindow"
+                    if windowPresentationMode == .tabs {
+                        window.tabbingMode = .preferred
+                    } else {
+                        window.tabbingMode = .disallowed
+                    }
                     if selectedWebApp == nil {
                         window.title = "Capsule Browser"
+                        window.tab.title = "Capsule Browser"
                     }
                 }
             )

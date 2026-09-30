@@ -114,24 +114,33 @@ final class MainWindowTracker {
     }
 }
 
+final class WindowAccessorView: NSView {
+    var onWindow: ((NSWindow) -> Void)?
+    
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let window = self.window {
+            onWindow?(window)
+        }
+    }
+}
+
 struct WindowAccessor: NSViewRepresentable {
     let onWindow: (NSWindow) -> Void
     
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            if let window = view.window {
-                onWindow(window)
-            }
+    func makeNSView(context: Context) -> WindowAccessorView {
+        let view = WindowAccessorView()
+        view.onWindow = onWindow
+        if let window = view.window {
+            onWindow(window)
         }
         return view
     }
     
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            if let window = nsView.window {
-                onWindow(window)
-            }
+    func updateNSView(_ nsView: WindowAccessorView, context: Context) {
+        nsView.onWindow = onWindow
+        if let window = nsView.window {
+            onWindow(window)
         }
     }
 }
@@ -168,6 +177,7 @@ struct CapsuleWindowHostView: View {
             onActiveDomainChange: { newDomain in
                 currentDomainTitle = newDomain
                 hostingWindow?.title = newDomain
+                hostingWindow?.tab.title = newDomain
             },
             onDismiss: {
                 MainWindowTracker.shared.focusMainWindow()
@@ -191,19 +201,44 @@ struct CapsuleWindowHostView: View {
                 hostingWindow = window
                 let titleToSet = currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle
                 window.title = titleToSet
+                window.tab.title = titleToSet
                 guard !hasConfiguredWindow else { return }
                 hasConfiguredWindow = true
                 
                 if payload.openAsTab {
                     window.tabbingMode = .preferred
                     window.tabbingIdentifier = "CapsuleBrowserWindow"
-                    if let targetWindow = MainWindowTracker.shared.mainWindow ?? NSApp.windows.first(where: {
-                        $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel)
-                    }) {
-                        targetWindow.addTabbedWindow(window, ordered: .above)
+                    
+                    let keyWindow = NSApp.keyWindow
+                    let targetWindow: NSWindow?
+                    if let kw = keyWindow, kw !== window, !kw.isMiniaturized, !(kw is NSPanel), kw.tabbingIdentifier == "CapsuleBrowserWindow" {
+                        targetWindow = kw
+                    } else if let main = MainWindowTracker.shared.mainWindow, main !== window, !main.isMiniaturized, !(main is NSPanel) {
+                        targetWindow = main
+                    } else {
+                        targetWindow = NSApp.windows.first(where: {
+                            $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel) && $0.tabbingIdentifier == "CapsuleBrowserWindow"
+                        }) ?? NSApp.windows.first(where: {
+                            $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel)
+                        })
+                    }
+                    
+                    if let target = targetWindow {
+                        target.addTabbedWindow(window, ordered: .above)
+                        target.tabGroup?.selectedWindow = window
+                        window.makeKeyAndOrderFront(nil)
+                        DispatchQueue.main.async {
+                            target.tabGroup?.selectedWindow = window
+                            window.makeKeyAndOrderFront(nil)
+                        }
+                    } else {
+                        window.makeKeyAndOrderFront(nil)
                     }
                 } else {
                     window.tabbingMode = .disallowed
+                    window.cascadeTopLeft(from: NSZeroPoint)
+                    window.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
                 }
             }
         )

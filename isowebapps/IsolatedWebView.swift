@@ -24,6 +24,7 @@ struct IsolatedWebViewRepresentable: UIViewRepresentable {
     var initialURLString: String? = nil
     @ObservedObject var navigationState: WebViewNavigationState
     let modelContext: ModelContext
+    var onOpenNewWindowOrTab: ((URL) -> Void)? = nil
     
     func makeUIView(context: Context) -> WKWebView {
         let webView = createConfiguredWebView(context: context)
@@ -31,11 +32,13 @@ struct IsolatedWebViewRepresentable: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        // Sync states if required
+        context.coordinator.onOpenNewWindowOrTab = onOpenNewWindowOrTab
     }
     
     func makeCoordinator() -> WebViewCoordinator {
-        WebViewCoordinator(appItem: appItem, navigationState: navigationState, modelContext: modelContext)
+        let coordinator = WebViewCoordinator(appItem: appItem, navigationState: navigationState, modelContext: modelContext)
+        coordinator.onOpenNewWindowOrTab = onOpenNewWindowOrTab
+        return coordinator
     }
     
     static func dismantleUIView(_ uiView: WKWebView, coordinator: WebViewCoordinator) {
@@ -54,8 +57,11 @@ class IsolatedWKWebView: WKWebView {
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
         let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
-        if modeRaw == "tabs" {
-            for item in menu.items {
+        #if DEBUG
+        print("[IsolatedWKWebView] willOpenMenu called! mode: \(modeRaw), menu items count: \(menu.items.count)")
+        #endif
+        for item in menu.items {
+            if modeRaw == "tabs" {
                 if item.identifier?.rawValue == "WKMenuItemIdentifierOpenLinkInNewWindow" || item.title.contains("New Window") {
                     item.title = item.title.replacingOccurrences(of: "New Window", with: "New Tab")
                 }
@@ -69,6 +75,7 @@ struct IsolatedWebViewRepresentable: NSViewRepresentable {
     var initialURLString: String? = nil
     @ObservedObject var navigationState: WebViewNavigationState
     let modelContext: ModelContext
+    var onOpenNewWindowOrTab: ((URL) -> Void)? = nil
     
     func makeNSView(context: Context) -> WKWebView {
         let webView = createConfiguredWebView(context: context)
@@ -77,11 +84,13 @@ struct IsolatedWebViewRepresentable: NSViewRepresentable {
     }
     
     func updateNSView(_ nsView: WKWebView, context: Context) {
-        // Sync states if required
+        context.coordinator.onOpenNewWindowOrTab = onOpenNewWindowOrTab
     }
     
     func makeCoordinator() -> WebViewCoordinator {
-        WebViewCoordinator(appItem: appItem, navigationState: navigationState, modelContext: modelContext)
+        let coordinator = WebViewCoordinator(appItem: appItem, navigationState: navigationState, modelContext: modelContext)
+        coordinator.onOpenNewWindowOrTab = onOpenNewWindowOrTab
+        return coordinator
     }
     
     static func dismantleNSView(_ nsView: WKWebView, coordinator: WebViewCoordinator) {
@@ -293,6 +302,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     let navigationState: WebViewNavigationState
     let modelContext: ModelContext
     weak var webView: WKWebView?
+    var onOpenNewWindowOrTab: ((URL) -> Void)?
     private var backForwardObserver: NSKeyValueObservation?
     private var canGoForwardObserver: NSKeyValueObservation?
     private var urlObserver: NSKeyValueObservation?
@@ -384,9 +394,15 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        #if DEBUG
+        print("[IsolatedWebView] decidePolicyFor: targetFrame nil: \(navigationAction.targetFrame == nil), url: \(String(describing: navigationAction.request.url)), navType: \(navigationAction.navigationType.rawValue)")
+        #endif
         // Defer handling of target="_blank" (new window) links to createWebViewWith
         // to prevent the WKWebView from going blank when we cancel the navigation.
         if navigationAction.targetFrame == nil {
+            #if DEBUG
+            print("[IsolatedWebView] decidePolicyFor: targetFrame is nil, returning .allow to let createWebViewWith handle it")
+            #endif
             decisionHandler(.allow)
             return
         }
@@ -398,11 +414,17 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
             // If the link is on an external domain or is a known article redirector (like Google News /read/...),
             // open it in Safari Reader mode and cancel navigation inside the isolated WKWebView.
             if (isUserClick || isExternalRedirect) && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
+                #if DEBUG
+                print("[IsolatedWebView] decidePolicyFor: external domain, canceling and opening in Safari Reader")
+                #endif
                 decisionHandler(.cancel)
                 openInSafariReader(url: url)
                 return
             }
         }
+        #if DEBUG
+        print("[IsolatedWebView] decidePolicyFor: allowing navigation in current webview to \(String(describing: navigationAction.request.url))")
+        #endif
         decisionHandler(.allow)
     }
     
@@ -509,23 +531,55 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     
     // Handle target="_blank", popup windows, and "Open Link in New Window" context menu actions
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        #if DEBUG
+        print("[IsolatedWebView] createWebViewWith called! targetFrame is nil: \(navigationAction.targetFrame == nil), url: \(String(describing: navigationAction.request.url))")
+        #endif
         if navigationAction.targetFrame == nil {
             if let url = navigationAction.request.url {
+                #if os(macOS)
+                let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
+                let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
+                let handler = onOpenNewWindowOrTab ?? navigationState.onOpenNewWindowOrTab
+                
+                if mode != .singleWindow {
+                    #if DEBUG
+                    print("[IsolatedWebView] Mode is \(mode), invoking new window/tab handler for: \(url)")
+                    #endif
+                    if let handler = handler {
+                        DispatchQueue.main.async {
+                            handler(url)
+                        }
+                    } else {
+                        #if DEBUG
+                        print("[IsolatedWebView] Warning: onOpenNewWindowOrTab handler is nil in mode \(mode)")
+                        #endif
+                    }
+                    return nil
+                }
+                
+                // In single window mode on macOS:
+                if appItem.openLinksInSafariReaderMode && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
+                    #if DEBUG
+                    print("[IsolatedWebView] Single window mode: opening in Safari Reader")
+                    #endif
+                    openInSafariReader(url: url)
+                } else {
+                    #if DEBUG
+                    print("[IsolatedWebView] Single window mode: loading in current webview")
+                    #endif
+                    webView.load(navigationAction.request)
+                }
+                #else
                 if appItem.openLinksInSafariReaderMode && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
                     openInSafariReader(url: url)
                 } else {
-                    #if os(macOS)
-                    if let onOpenNewWindowOrTab = navigationState.onOpenNewWindowOrTab {
-                        DispatchQueue.main.async {
-                            onOpenNewWindowOrTab(url)
-                        }
-                    } else {
-                        webView.load(navigationAction.request)
-                    }
-                    #else
                     webView.load(navigationAction.request)
-                    #endif
                 }
+                #endif
+            } else {
+                #if DEBUG
+                print("[IsolatedWebView] navigationAction.request.url is NIL!")
+                #endif
             }
         }
         return nil
