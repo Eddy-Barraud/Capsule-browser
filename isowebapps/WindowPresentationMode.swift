@@ -101,8 +101,9 @@ final class MainWindowTracker {
             !($0 is NSPanel) && $0.isVisible && $0.tabbingIdentifier == "CapsuleBrowserWindow"
         }) ?? NSApp.windows.first(where: { !($0 is NSPanel) }) else { return }
         
-        if let tabGroup = window.tabGroup, let current = NSApp.keyWindow, tabGroup.windows.contains(current) {
+        if let tabGroup = window.tabGroup, tabGroup.windows.count > 1 {
             tabGroup.selectedWindow = window
+            window.makeKeyAndOrderFront(nil)
         } else {
             if window.isMiniaturized {
                 window.deminiaturize(nil)
@@ -139,9 +140,13 @@ struct CapsuleWindowHostView: View {
     let payload: CapsuleWindowPayload
     @Environment(\.modelContext) private var modelContext
     @Query private var allApps: [WebAppItem]
+    @State private var cachedAppItem: WebAppItem?
     @State private var hasConfiguredWindow = false
     
     private var resolvedAppItem: WebAppItem {
+        if let cached = cachedAppItem {
+            return cached
+        }
         if let appId = payload.appId, let found = allApps.first(where: { $0.id == appId }) {
             return found
         }
@@ -157,6 +162,15 @@ struct CapsuleWindowHostView: View {
             }
         )
         .navigationTitle(resolvedAppItem.name)
+        .onAppear {
+            if cachedAppItem == nil {
+                if let appId = payload.appId, let found = allApps.first(where: { $0.id == appId }) {
+                    cachedAppItem = found
+                } else {
+                    cachedAppItem = WebAppItem(name: payload.name ?? "Capsule", urlString: payload.urlString ?? "about:blank")
+                }
+            }
+        }
         .background(
             WindowAccessor { window in
                 guard !hasConfiguredWindow else { return }
@@ -165,7 +179,7 @@ struct CapsuleWindowHostView: View {
                 if payload.openAsTab {
                     window.tabbingMode = .preferred
                     window.tabbingIdentifier = "CapsuleBrowserWindow"
-                    if let targetWindow = NSApp.windows.first(where: {
+                    if let targetWindow = MainWindowTracker.shared.mainWindow ?? NSApp.windows.first(where: {
                         $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel)
                     }) {
                         targetWindow.addTabbedWindow(window, ordered: .above)

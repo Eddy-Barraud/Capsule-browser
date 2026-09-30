@@ -71,7 +71,6 @@ struct IsolatedWebViewRepresentable: NSViewRepresentable {
         print("[IsolatedWebView] Dismantling NSView and stopping webView loading")
         #endif
         nsView.stopLoading()
-        nsView.loadHTMLString("", baseURL: nil)
         coordinator.cleanup()
     }
 }

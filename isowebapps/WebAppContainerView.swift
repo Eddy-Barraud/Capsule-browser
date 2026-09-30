@@ -277,6 +277,12 @@ struct WebAppContainerView: View {
             }
         }
         .onDisappear {
+            #if os(macOS)
+            if isSecondaryWindow {
+                // Secondary tabs/windows remain alive in the background; do not stop loading or blank the web view
+                return
+            }
+            #endif
             summaryTask?.cancel()
             navigationState.onStopLoading?()
         }
@@ -298,18 +304,21 @@ struct WebAppContainerView: View {
     }
     
     private func handleDismiss() {
+        #if os(macOS)
+        if isSecondaryWindow {
+            #if DEBUG
+            print("[WebAppContainerView] Secondary window/tab: focusing main window without stopping web page")
+            #endif
+            MainWindowTracker.shared.focusMainWindow()
+            return
+        }
+        #endif
+        
         #if DEBUG
         print("[WebAppContainerView] Exiting web app back to Home Screen (isSecondaryWindow: \(isSecondaryWindow))")
         #endif
         summaryTask?.cancel()
         navigationState.onStopLoading?()
-        
-        #if os(macOS)
-        if isSecondaryWindow {
-            MainWindowTracker.shared.focusMainWindow()
-            return
-        }
-        #endif
         
         if appItem.deleteCookiesOnClose {
             Task {
