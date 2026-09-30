@@ -47,7 +47,7 @@ struct isowebappsApp: App {
         .modelContainer(sharedModelContainer)
         
         #if os(macOS)
-        WindowGroup("Capsule", id: "capsuleWindow", for: CapsuleWindowPayload.self) { $payload in
+        WindowGroup(id: "capsuleWindow", for: CapsuleWindowPayload.self) { $payload in
             if let payload {
                 CapsuleWindowHostView(payload: payload)
                     .frame(minWidth: 800, minHeight: 600)

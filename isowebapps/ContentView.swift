@@ -42,6 +42,7 @@ struct ContentView: View {
     @AppStorage("windowPresentationMode") private var windowPresentationMode: WindowPresentationMode = .singleWindow
     @Environment(\.openWindow) private var openWindow
     #endif
+    @State private var activeDomainTitle: String = ""
     
     #if os(iOS)
     let columns = [
@@ -59,17 +60,29 @@ struct ContentView: View {
                 // Active Isolated Web App Container View
                 WebAppContainerView(
                     appItem: activeApp,
+                    onActiveDomainChange: { newDomain in
+                        activeDomainTitle = newDomain
+                        #if os(macOS)
+                        MainWindowTracker.shared.mainWindow?.title = newDomain
+                        #endif
+                    },
                     onDismiss: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             selectedWebApp = nil
+                            activeDomainTitle = ""
+                            #if os(macOS)
+                            MainWindowTracker.shared.mainWindow?.title = "Capsule Browser"
+                            #endif
                         }
                     }
                 )
                 .id(activeApp.id)
+                .navigationTitle(activeDomainTitle.isEmpty ? (WebAppNamingHelper.domainName(from: activeApp.urlString) ?? activeApp.name) : activeDomainTitle)
                 .transition(.asymmetric(insertion: .scale(scale: 0.95).combined(with: .opacity), removal: .opacity))
             } else {
                 // Home Screen Grid
                 homeScreenView
+                    .navigationTitle("Capsule Browser")
                     .transition(.opacity)
             }
         }
@@ -524,6 +537,9 @@ struct ContentView: View {
                 WindowAccessor { window in
                     MainWindowTracker.shared.mainWindow = window
                     window.tabbingIdentifier = "CapsuleBrowserWindow"
+                    if selectedWebApp == nil {
+                        window.title = "Capsule Browser"
+                    }
                 }
             )
             #endif

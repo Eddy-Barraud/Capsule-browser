@@ -141,6 +141,8 @@ struct CapsuleWindowHostView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allApps: [WebAppItem]
     @State private var cachedAppItem: WebAppItem?
+    @State private var currentDomainTitle: String = ""
+    @State private var hostingWindow: NSWindow?
     @State private var hasConfiguredWindow = false
     
     private var resolvedAppItem: WebAppItem {
@@ -153,16 +155,29 @@ struct CapsuleWindowHostView: View {
         return WebAppItem(name: payload.name ?? "Capsule", urlString: payload.urlString ?? "about:blank")
     }
     
+    private var initialDomainTitle: String {
+        let rawURL = payload.urlString ?? resolvedAppItem.lastOpenedURLString ?? resolvedAppItem.urlString
+        return WebAppNamingHelper.domainName(from: rawURL) ?? resolvedAppItem.name
+    }
+    
     var body: some View {
         WebAppContainerView(
             appItem: resolvedAppItem,
+            initialURLString: payload.urlString,
             isSecondaryWindow: payload.isSecondaryWindow,
+            onActiveDomainChange: { newDomain in
+                currentDomainTitle = newDomain
+                hostingWindow?.title = newDomain
+            },
             onDismiss: {
                 MainWindowTracker.shared.focusMainWindow()
             }
         )
-        .navigationTitle(resolvedAppItem.name)
+        .navigationTitle(currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle)
         .onAppear {
+            if currentDomainTitle.isEmpty {
+                currentDomainTitle = initialDomainTitle
+            }
             if cachedAppItem == nil {
                 if let appId = payload.appId, let found = allApps.first(where: { $0.id == appId }) {
                     cachedAppItem = found
@@ -173,6 +188,9 @@ struct CapsuleWindowHostView: View {
         }
         .background(
             WindowAccessor { window in
+                hostingWindow = window
+                let titleToSet = currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle
+                window.title = titleToSet
                 guard !hasConfiguredWindow else { return }
                 hasConfiguredWindow = true
                 

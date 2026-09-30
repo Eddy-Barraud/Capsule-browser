@@ -33,16 +33,30 @@ class WebViewNavigationState: ObservableObject {
     var onOpenSafari: ((URL) -> Void)?
     var onOpenSafariReader: ((URL) -> Void)?
     var onCaptureFirstPagePDFText: (() async throws -> (title: String, url: String, text: String))?
+    var onOpenNewWindowOrTab: ((URL) -> Void)?
 }
 
 struct WebAppContainerView: View {
     let appItem: WebAppItem
+    var initialURLString: String? = nil
     var isSecondaryWindow: Bool = false
+    var onActiveDomainChange: ((String) -> Void)? = nil
     let onDismiss: () -> Void
+    
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
     
     @Environment(\.modelContext) private var modelContext
     @Query private var existingApps: [WebAppItem]
     @StateObject private var navigationState = WebViewNavigationState()
+    
+    private var activeDomainTitle: String {
+        let urlStr = !navigationState.currentURLString.isEmpty && navigationState.currentURLString != "about:blank"
+            ? navigationState.currentURLString
+            : (initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString)
+        return WebAppNamingHelper.domainName(from: urlStr) ?? appItem.name
+    }
     @State private var isURLExpanded = false
     @State private var isShowingShareSheet = false
     @State private var editableURLString: String = ""
@@ -58,8 +72,9 @@ struct WebAppContainerView: View {
     @State private var safariURL: IdentifiableURL? = nil
     
     var body: some View {
-        #if os(macOS)
-        GeometryReader { geo in
+        Group {
+            #if os(macOS)
+            GeometryReader { geo in
             HStack(spacing: 0) {
                 if isShowingSummary {
                     SummaryDropdownView(
@@ -104,6 +119,7 @@ struct WebAppContainerView: View {
                     // Web View Content
                     IsolatedWebViewRepresentable(
                         appItem: appItem,
+                        initialURLString: initialURLString,
                         navigationState: navigationState,
                         modelContext: modelContext
                     )
@@ -210,6 +226,7 @@ struct WebAppContainerView: View {
             // Web View Content
             IsolatedWebViewRepresentable(
                 appItem: appItem,
+                initialURLString: initialURLString,
                 navigationState: navigationState,
                 modelContext: modelContext
             )
@@ -243,9 +260,40 @@ struct WebAppContainerView: View {
         .onAppear {
             isSummarizationAvailable = AISummarizer.isAvailable
             navigationState.isUBlockEnabled = appItem.isUBlockEnabled
-            let initialURL = appItem.lastOpenedURLString ?? appItem.urlString
+            let initialURL = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
             navigationState.currentURLString = initialURL
             editableURLString = initialURL
+            onActiveDomainChange?(activeDomainTitle)
+            
+            #if os(macOS)
+            navigationState.onOpenNewWindowOrTab = { url in
+                let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
+                let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
+                
+                switch mode {
+                case .tabs:
+                    let payload = CapsuleWindowPayload(
+                        appId: appItem.modelContext != nil ? appItem.id : nil,
+                        urlString: url.absoluteString,
+                        name: appItem.name,
+                        isSecondaryWindow: true,
+                        openAsTab: true
+                    )
+                    openWindow(id: "capsuleWindow", value: payload)
+                case .separateWindows:
+                    let payload = CapsuleWindowPayload(
+                        appId: appItem.modelContext != nil ? appItem.id : nil,
+                        urlString: url.absoluteString,
+                        name: appItem.name,
+                        isSecondaryWindow: true,
+                        openAsTab: false
+                    )
+                    openWindow(id: "capsuleWindow", value: payload)
+                case .singleWindow:
+                    navigationState.onLoadURL?(url)
+                }
+            }
+            #endif
             
             navigationState.onOpenSafari = { url in
                 #if os(iOS)
@@ -265,6 +313,9 @@ struct WebAppContainerView: View {
         .onChange(of: navigationState.currentURLString) { newURL in
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
                 editableURLString = newURL
+            }
+            if let domain = WebAppNamingHelper.domainName(from: newURL) {
+                onActiveDomainChange?(domain)
             }
             if isShowingSummary {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -300,6 +351,15 @@ struct WebAppContainerView: View {
             SafariView(url: item.url, entersReaderIfAvailable: item.entersReader)
                 .ignoresSafeArea()
         }
+        #endif
+        }
+        .navigationTitle(activeDomainTitle)
+        #if os(macOS)
+        .background(
+            WindowAccessor { window in
+                window.title = activeDomainTitle
+            }
+        )
         #endif
     }
     

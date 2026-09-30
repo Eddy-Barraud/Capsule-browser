@@ -21,6 +21,7 @@ import SafariServices
 
 struct IsolatedWebViewRepresentable: UIViewRepresentable {
     let appItem: WebAppItem
+    var initialURLString: String? = nil
     @ObservedObject var navigationState: WebViewNavigationState
     let modelContext: ModelContext
     
@@ -47,8 +48,25 @@ struct IsolatedWebViewRepresentable: UIViewRepresentable {
     }
 }
 #else
+import AppKit
+
+class IsolatedWKWebView: WKWebView {
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
+        if modeRaw == "tabs" {
+            for item in menu.items {
+                if item.identifier?.rawValue == "WKMenuItemIdentifierOpenLinkInNewWindow" || item.title.contains("New Window") {
+                    item.title = item.title.replacingOccurrences(of: "New Window", with: "New Tab")
+                }
+            }
+        }
+    }
+}
+
 struct IsolatedWebViewRepresentable: NSViewRepresentable {
     let appItem: WebAppItem
+    var initialURLString: String? = nil
     @ObservedObject var navigationState: WebViewNavigationState
     let modelContext: ModelContext
     
@@ -151,8 +169,10 @@ extension IsolatedWebViewRepresentable {
             configuration.applicationNameForUserAgent = "isowebapps/\(appVersion)"
         }
         
+        #if os(macOS)
+        let webView = IsolatedWKWebView(frame: .zero, configuration: configuration)
+        #else
         let webView = WKWebView(frame: .zero, configuration: configuration)
-        #if os(iOS)
         webView.scrollView.keyboardDismissMode = .interactive
         #endif
         
@@ -254,7 +274,7 @@ extension IsolatedWebViewRepresentable {
         Task { @MainActor in
             let groupedItems = appItem.group?.items ?? []
             await IsolatedCookieManager.shared.restoreCookies(for: appItem, groupedItems: groupedItems, into: dataStore.httpCookieStore)
-            let startURLString = appItem.lastOpenedURLString ?? appItem.urlString
+            let startURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
             if let url = URL(string: startURLString) {
                 #if DEBUG
                 print("[IsolatedWebView] Starting initial load for: \(url) (configured home: \(appItem.urlString))")
@@ -494,7 +514,17 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
                 if appItem.openLinksInSafariReaderMode && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
                     openInSafariReader(url: url)
                 } else {
-                    openInSafari(url: url)
+                    #if os(macOS)
+                    if let onOpenNewWindowOrTab = navigationState.onOpenNewWindowOrTab {
+                        DispatchQueue.main.async {
+                            onOpenNewWindowOrTab(url)
+                        }
+                    } else {
+                        webView.load(navigationAction.request)
+                    }
+                    #else
+                    webView.load(navigationAction.request)
+                    #endif
                 }
             }
         }
