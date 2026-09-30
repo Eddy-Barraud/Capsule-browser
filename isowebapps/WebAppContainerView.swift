@@ -31,6 +31,7 @@ class WebViewNavigationState: ObservableObject {
     var onStopLoading: (() -> Void)?
     var onToggleUBlock: ((Bool) -> Void)?
     var onOpenSafari: ((URL) -> Void)?
+    var onOpenSafariReader: ((URL) -> Void)?
     var onCaptureFirstPagePDFText: (() async throws -> (title: String, url: String, text: String))?
 }
 
@@ -134,6 +135,9 @@ struct WebAppContainerView: View {
             editableURLString = initialURL
             
             navigationState.onOpenSafari = { url in
+                NSWorkspace.shared.open(url)
+            }
+            navigationState.onOpenSafariReader = { url in
                 NSWorkspace.shared.open(url)
             }
         }
@@ -242,7 +246,14 @@ struct WebAppContainerView: View {
             
             navigationState.onOpenSafari = { url in
                 #if os(iOS)
-                safariURL = IdentifiableURL(url: url)
+                safariURL = IdentifiableURL(url: url, entersReader: false)
+                #else
+                NSWorkspace.shared.open(url)
+                #endif
+            }
+            navigationState.onOpenSafariReader = { url in
+                #if os(iOS)
+                safariURL = IdentifiableURL(url: url, entersReader: true)
                 #else
                 NSWorkspace.shared.open(url)
                 #endif
@@ -277,7 +288,7 @@ struct WebAppContainerView: View {
             }
         }
         .sheet(item: $safariURL) { item in
-            SafariView(url: item.url)
+            SafariView(url: item.url, entersReaderIfAvailable: item.entersReader)
                 .ignoresSafeArea()
         }
         #endif
@@ -326,7 +337,7 @@ struct WebAppContainerView: View {
         guard let url = URL(string: activeURLString), url.scheme?.hasPrefix("http") == true else { return }
         
         #if os(iOS)
-        safariURL = IdentifiableURL(url: url)
+        safariURL = IdentifiableURL(url: url, entersReader: true)
         #else
         NSWorkspace.shared.open(url)
         #endif
@@ -959,6 +970,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 struct IdentifiableURL: Identifiable {
     let id = UUID()
     let url: URL
+    var entersReader: Bool = false
 }
 
 #if os(iOS)
@@ -966,10 +978,11 @@ import SafariServices
 
 struct SafariView: UIViewControllerRepresentable {
     let url: URL
+    var entersReaderIfAvailable: Bool = false
 
     func makeUIViewController(context: Context) -> SFSafariViewController {
         let config = SFSafariViewController.Configuration()
-        config.entersReaderIfAvailable = true
+        config.entersReaderIfAvailable = entersReaderIfAvailable
         return SFSafariViewController(url: url, configuration: config)
     }
 

@@ -441,6 +441,12 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         // Dispatch to main queue asynchronously to allow the WKNavigationDelegate callback
         // to finish returning .cancel, avoiding WebKit state inconsistencies that cause blank pages.
         DispatchQueue.main.async {
+            self.navigationState.onOpenSafariReader?(url)
+        }
+    }
+    
+    private func openInSafari(url: URL) {
+        DispatchQueue.main.async {
             self.navigationState.onOpenSafari?(url)
         }
     }
@@ -482,14 +488,14 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         navigationState.canGoForward = webView.canGoForward
     }
     
-    // Handle target="_blank" and popup windows inside the same isolated webview
+    // Handle target="_blank", popup windows, and "Open Link in New Window" context menu actions
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil {
             if let url = navigationAction.request.url {
                 if appItem.openLinksInSafariReaderMode && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
                     openInSafariReader(url: url)
                 } else {
-                    webView.load(navigationAction.request)
+                    openInSafari(url: url)
                 }
             }
         }
