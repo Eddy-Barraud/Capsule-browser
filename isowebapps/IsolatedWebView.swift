@@ -501,6 +501,33 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         }
         return nil
     }
+    
+    // MARK: - WKUIDelegate: Media Capture Permissions (Camera & Microphone)
+    
+    @available(macOS 12.0, iOS 15.0, *)
+    func webView(
+        _ webView: WKWebView,
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        #if DEBUG
+        let typeDescription: String
+        switch type {
+        case .camera:
+            typeDescription = "camera"
+        case .microphone:
+            typeDescription = "microphone"
+        case .cameraAndMicrophone:
+            typeDescription = "camera & microphone"
+        @unknown default:
+            typeDescription = "unknown media type"
+        }
+        print("[IsolatedWebView] Granting media capture permission for origin: \(origin.host), type: \(typeDescription)")
+        #endif
+        decisionHandler(.grant)
+    }
 }
 
 // MARK: - URL Root Domain Helper

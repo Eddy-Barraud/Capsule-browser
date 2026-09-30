@@ -28,5 +28,9 @@
 		<string>processing</string>
 		<string>fetch</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Capsule Browser requires camera access for video conferencing, web calls, and media capture in web capsules.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Capsule Browser requires microphone access for audio and video calls in web capsules.</string>
 </dict>
 </plist>
