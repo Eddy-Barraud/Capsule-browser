@@ -45,5 +45,16 @@ struct isowebappsApp: App {
         .windowResizability(.contentMinSize)
         #endif
         .modelContainer(sharedModelContainer)
+        
+        #if os(macOS)
+        WindowGroup("Capsule", id: "capsuleWindow", for: CapsuleWindowPayload.self) { $payload in
+            if let payload {
+                CapsuleWindowHostView(payload: payload)
+                    .frame(minWidth: 800, minHeight: 600)
+            }
+        }
+        .windowResizability(.contentMinSize)
+        .modelContainer(sharedModelContainer)
+        #endif
     }
 }

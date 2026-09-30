@@ -38,6 +38,11 @@ struct ContentView: View {
     @State private var isInitializing = true
     @State private var isReordering = false
     
+    #if os(macOS)
+    @AppStorage("windowPresentationMode") private var windowPresentationMode: WindowPresentationMode = .singleWindow
+    @Environment(\.openWindow) private var openWindow
+    #endif
+    
     #if os(iOS)
     let columns = [
         GridItem(.flexible(), spacing: 20, alignment: .top)
@@ -97,38 +102,13 @@ struct ContentView: View {
                         try? modelContext.save()
                         isShowingOpenURLSheet = false
                         pendingOpenURL = nil
-                        
-                        if selectedWebApp != nil {
-                            selectedWebApp = nil
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation {
-                                    selectedWebApp = app
-                                }
-                            }
-                        } else {
-                            withAnimation {
-                                selectedWebApp = app
-                            }
-                        }
+                        openCapsule(app, clearLastOpenedURL: false)
                     },
                     onSelectEphemeral: {
                         guard let host = URL(string: targetURLString)?.host else { return }
-                        let ephemeralApp = WebAppItem(name: host, urlString: targetURLString)
                         isShowingOpenURLSheet = false
                         pendingOpenURL = nil
-                        
-                        if selectedWebApp != nil {
-                            selectedWebApp = nil
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation {
-                                    selectedWebApp = ephemeralApp
-                                }
-                            }
-                        } else {
-                            withAnimation {
-                                selectedWebApp = ephemeralApp
-                            }
-                        }
+                        openEphemeralCapsule(name: host, urlString: targetURLString)
                     },
                     onCancel: {
                         isShowingOpenURLSheet = false
@@ -237,16 +217,10 @@ struct ContentView: View {
                                         WebAppGroupTileView(
                                             group: group,
                                             onStartApp: { app in
-                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                    app.lastOpenedURLString = nil
-                                                    try? modelContext.save()
-                                                    selectedWebApp = app
-                                                }
+                                                openCapsule(app, clearLastOpenedURL: true)
                                             },
                                             onResumeApp: { app in
-                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                    selectedWebApp = app
-                                                }
+                                                openCapsule(app, clearLastOpenedURL: false)
                                             },
                                             onClearDataApp: { app in
                                                 itemToClearData = app
@@ -290,16 +264,10 @@ struct ContentView: View {
                                         WebAppTileView(
                                             app: app,
                                             onStart: {
-                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                    app.lastOpenedURLString = nil
-                                                    try? modelContext.save()
-                                                    selectedWebApp = app
-                                                }
+                                                openCapsule(app, clearLastOpenedURL: true)
                                             },
                                             onResume: {
-                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                    selectedWebApp = app
-                                                }
+                                                openCapsule(app, clearLastOpenedURL: false)
                                             },
                                             onClearData: {
                                                 itemToClearData = app
@@ -481,6 +449,20 @@ struct ContentView: View {
                     }
                     #endif
                     
+                    #if os(macOS)
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            windowPresentationMode = windowPresentationMode.next
+                        }
+                    } label: {
+                        Image(systemName: windowPresentationMode.iconName)
+                            .font(.system(size: 15, weight: .semibold))
+                            .padding(8)
+                    }
+                    .buttonStyle(.plain)
+                    .help(windowPresentationMode.tooltip)
+                    #endif
+                    
                     Button {
                         isShowingUBlockSettings = true
                     } label: {
@@ -537,6 +519,14 @@ struct ContentView: View {
                 )
                 .ignoresSafeArea()
             )
+            #if os(macOS)
+            .background(
+                WindowAccessor { window in
+                    MainWindowTracker.shared.mainWindow = window
+                    window.tabbingIdentifier = "CapsuleBrowserWindow"
+                }
+            )
+            #endif
         }
     }
     
@@ -649,11 +639,83 @@ struct ContentView: View {
             urlString = "https://duckduckgo.com/?q=\(encodedQuery)"
         }
         
-        let ephemeralApp = WebAppItem(name: "Search", urlString: urlString)
-        withAnimation {
-            selectedWebApp = ephemeralApp
-            quickSearchText = ""
+        quickSearchText = ""
+        openEphemeralCapsule(name: "Search", urlString: urlString)
+    }
+    
+    // MARK: - Capsule Launching
+    
+    private func openCapsule(_ app: WebAppItem, clearLastOpenedURL: Bool = false) {
+        if clearLastOpenedURL {
+            app.lastOpenedURLString = nil
+            try? modelContext.save()
         }
+        
+        #if os(macOS)
+        switch windowPresentationMode {
+        case .singleWindow:
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                selectedWebApp = app
+            }
+        case .separateWindows:
+            let payload = CapsuleWindowPayload(
+                appId: app.id,
+                urlString: app.lastOpenedURLString ?? app.urlString,
+                name: app.name,
+                isSecondaryWindow: true,
+                openAsTab: false
+            )
+            openWindow(id: "capsuleWindow", value: payload)
+        case .tabs:
+            let payload = CapsuleWindowPayload(
+                appId: app.id,
+                urlString: app.lastOpenedURLString ?? app.urlString,
+                name: app.name,
+                isSecondaryWindow: true,
+                openAsTab: true
+            )
+            openWindow(id: "capsuleWindow", value: payload)
+        }
+        #else
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            selectedWebApp = app
+        }
+        #endif
+    }
+    
+    private func openEphemeralCapsule(name: String, urlString: String) {
+        #if os(macOS)
+        switch windowPresentationMode {
+        case .singleWindow:
+            let ephemeralApp = WebAppItem(name: name, urlString: urlString)
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                selectedWebApp = ephemeralApp
+            }
+        case .separateWindows:
+            let payload = CapsuleWindowPayload(
+                appId: nil,
+                urlString: urlString,
+                name: name,
+                isSecondaryWindow: true,
+                openAsTab: false
+            )
+            openWindow(id: "capsuleWindow", value: payload)
+        case .tabs:
+            let payload = CapsuleWindowPayload(
+                appId: nil,
+                urlString: urlString,
+                name: name,
+                isSecondaryWindow: true,
+                openAsTab: true
+            )
+            openWindow(id: "capsuleWindow", value: payload)
+        }
+        #else
+        let ephemeralApp = WebAppItem(name: name, urlString: urlString)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            selectedWebApp = ephemeralApp
+        }
+        #endif
     }
 }
 

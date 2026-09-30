@@ -37,6 +37,7 @@ class WebViewNavigationState: ObservableObject {
 
 struct WebAppContainerView: View {
     let appItem: WebAppItem
+    var isSecondaryWindow: Bool = false
     let onDismiss: () -> Void
     
     @Environment(\.modelContext) private var modelContext
@@ -88,6 +89,7 @@ struct WebAppContainerView: View {
                         navigationState: navigationState,
                         isGeneratingSummary: isGeneratingSummary,
                         isSummarizationAvailable: isSummarizationAvailable,
+                        isSecondaryWindow: isSecondaryWindow,
                         onDismiss: handleDismiss,
                         onToggleShield: toggleUBlockProtection,
                         onSummarize: handleSummarizeTap,
@@ -172,6 +174,7 @@ struct WebAppContainerView: View {
                 navigationState: navigationState,
                 isGeneratingSummary: isGeneratingSummary,
                 isSummarizationAvailable: isSummarizationAvailable,
+                isSecondaryWindow: isSecondaryWindow,
                 onDismiss: handleDismiss,
                 onToggleShield: toggleUBlockProtection,
                 onSummarize: handleSummarizeTap,
@@ -296,10 +299,17 @@ struct WebAppContainerView: View {
     
     private func handleDismiss() {
         #if DEBUG
-        print("[WebAppContainerView] Exiting web app back to Home Screen")
+        print("[WebAppContainerView] Exiting web app back to Home Screen (isSecondaryWindow: \(isSecondaryWindow))")
         #endif
         summaryTask?.cancel()
         navigationState.onStopLoading?()
+        
+        #if os(macOS)
+        if isSecondaryWindow {
+            MainWindowTracker.shared.focusMainWindow()
+            return
+        }
+        #endif
         
         if appItem.deleteCookiesOnClose {
             Task {
@@ -423,6 +433,7 @@ struct TopControlsBar: View {
     @ObservedObject var navigationState: WebViewNavigationState
     var isGeneratingSummary: Bool = false
     var isSummarizationAvailable: Bool = false
+    var isSecondaryWindow: Bool = false
     let onDismiss: () -> Void
     let onToggleShield: () -> Void
     let onSummarize: () -> Void
@@ -535,7 +546,7 @@ struct TopControlsBar: View {
                 .liquidGlassButton(cornerRadius: 10)
             }
             .buttonStyle(.plain)
-            .help("Back to Capsules")
+            .help(isSecondaryWindow ? "Focus Capsules home window" : "Back to Capsules")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
