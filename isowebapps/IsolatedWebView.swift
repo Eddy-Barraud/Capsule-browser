@@ -54,6 +54,17 @@ struct IsolatedWebViewRepresentable: UIViewRepresentable {
 import AppKit
 
 class IsolatedWKWebView: WKWebView {
+    private(set) var isSleeping: Bool = false
+    private var activityAssertionToken: NSObjectProtocol?
+    private var notificationObservers: [NSObjectProtocol] = []
+    private var tabGroupObservation: NSKeyValueObservation?
+    private var windowTabGroupObservation: NSKeyValueObservation?
+    
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        setupWindowTracking()
+    }
+    
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
         let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
@@ -67,6 +78,221 @@ class IsolatedWKWebView: WKWebView {
                 }
             }
         }
+    }
+    
+    // MARK: - Window & Tab Group Lifecycle Tracking
+    
+    private func setupWindowTracking() {
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        notificationObservers.removeAll()
+        tabGroupObservation?.invalidate()
+        tabGroupObservation = nil
+        windowTabGroupObservation?.invalidate()
+        windowTabGroupObservation = nil
+        
+        guard let window = self.window else {
+            putToSleep()
+            return
+        }
+        
+        let nc = NotificationCenter.default
+        let notifications: [Notification.Name] = [
+            NSWindow.didBecomeKeyNotification,
+            NSWindow.didResignKeyNotification,
+            NSWindow.didBecomeMainNotification,
+            NSWindow.didResignMainNotification,
+            NSWindow.didMiniaturizeNotification,
+            NSWindow.didDeminiaturizeNotification,
+            NSWindow.didChangeOcclusionStateNotification
+        ]
+        
+        for name in notifications {
+            let obs = nc.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                self?.evaluateSleepWakeStatus()
+            }
+            notificationObservers.append(obs)
+        }
+        
+        // Observe preference changes so toggling Sleeping Tabs in settings takes effect immediately
+        let userDefaultsObs = nc.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.evaluateSleepWakeStatus()
+        }
+        notificationObservers.append(userDefaultsObs)
+        
+        // Observe tabGroup changes on the window
+        windowTabGroupObservation = window.observe(\.tabGroup, options: [.initial, .new]) { [weak self] win, _ in
+            self?.setupTabGroupObservation(for: win)
+        }
+        
+        setupTabGroupObservation(for: window)
+        evaluateSleepWakeStatus()
+    }
+    
+    private func setupTabGroupObservation(for window: NSWindow) {
+        tabGroupObservation?.invalidate()
+        tabGroupObservation = window.tabGroup?.observe(\.selectedWindow, options: [.initial, .new]) { [weak self] _, _ in
+            self?.evaluateSleepWakeStatus()
+        }
+    }
+    
+    // MARK: - Sleep & Wake Evaluation
+    
+    func evaluateSleepWakeStatus() {
+        guard let window = self.window else {
+            putToSleep()
+            return
+        }
+        
+        let isSleepingTabsEnabled = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
+        if !isSleepingTabsEnabled {
+            wakeUp()
+            return
+        }
+        
+        // If window is miniaturized or occluded (completely covered/invisible), put it to sleep
+        if window.isMiniaturized || !window.occlusionState.contains(.visible) {
+            putToSleep()
+            return
+        }
+        
+        // If part of a tab group:
+        if let tabGroup = window.tabGroup, let selected = tabGroup.selectedWindow {
+            if selected == window {
+                wakeUp()
+            } else {
+                putToSleep()
+            }
+            return
+        }
+        
+        // Standalone or separate window mode
+        wakeUp()
+    }
+    
+    // MARK: - State Transitions
+    
+    func putToSleep() {
+        guard !isSleeping else { return }
+        isSleeping = true
+        #if DEBUG
+        print("[IsolatedWKWebView] Tab sleeping: \(self.url?.host ?? "untitled")")
+        #endif
+        
+        releaseForegroundActivityToken()
+        
+        // Suspend media playback unless active audio/music is playing
+        if !hasActiveAudioPlayback {
+            setAllMediaPlaybackSuspended(true)
+        }
+        
+        // Dispatch Page Visibility API 'hidden' event to suspend rAF, intervals, and DOM animation loops
+        evaluateJavaScript("""
+        if (document.hidden !== true) {
+            Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+            Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+            document.dispatchEvent(new Event('visibilitychange'));
+        }
+        """, completionHandler: nil)
+    }
+    
+    func wakeUp() {
+        let wasSleeping = isSleeping
+        isSleeping = false
+        
+        if wasSleeping {
+            #if DEBUG
+            print("[IsolatedWKWebView] Tab waking up: \(self.url?.host ?? "untitled")")
+            #endif
+            
+            // Resume media playback
+            setAllMediaPlaybackSuspended(false)
+            
+            // Dispatch Page Visibility API 'visible' event to resume page loops
+            evaluateJavaScript("""
+            if (document.hidden !== false) {
+                Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+                Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+                document.dispatchEvent(new Event('visibilitychange'));
+            }
+            """, completionHandler: nil)
+        }
+        
+        // If foreground key window, prioritize threads and CPU scheduling
+        if window?.isKeyWindow == true {
+            claimForegroundActivityToken()
+        } else {
+            releaseForegroundActivityToken()
+        }
+    }
+    
+    func reapplySleepingStateIfNeeded() {
+        guard isSleeping else { return }
+        if !hasActiveAudioPlayback {
+            setAllMediaPlaybackSuspended(true)
+        }
+        evaluateJavaScript("""
+        if (document.hidden !== true) {
+            Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+            Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+            document.dispatchEvent(new Event('visibilitychange'));
+        }
+        """, completionHandler: nil)
+    }
+    
+    // MARK: - Resource & Priority Management
+    
+    private func claimForegroundActivityToken() {
+        guard activityAssertionToken == nil else { return }
+        activityAssertionToken = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical],
+            reason: "Active Capsule Foreground Web Tab"
+        )
+    }
+    
+    private func releaseForegroundActivityToken() {
+        if let token = activityAssertionToken {
+            ProcessInfo.processInfo.endActivity(token)
+            activityAssertionToken = nil
+        }
+    }
+    
+    private var hasActiveAudioPlayback: Bool {
+        let isPlayingAudioSel = NSSelectorFromString("_isPlayingAudio")
+        if responds(to: isPlayingAudioSel) {
+            typealias Getter = @convention(c) (AnyObject, Selector) -> Bool
+            if let method = class_getMethodImplementation(type(of: self), isPlayingAudioSel) {
+                let fn = unsafeBitCast(method, to: Getter.self)
+                if fn(self, isPlayingAudioSel) {
+                    return true
+                }
+            }
+        }
+        
+        let nowPlayingSel = NSSelectorFromString("_hasActiveNowPlayingSession")
+        if responds(to: nowPlayingSel) {
+            typealias Getter = @convention(c) (AnyObject, Selector) -> Bool
+            if let method = class_getMethodImplementation(type(of: self), nowPlayingSel) {
+                let fn = unsafeBitCast(method, to: Getter.self)
+                if fn(self, nowPlayingSel) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+    
+    func cleanup() {
+        releaseForegroundActivityToken()
+        tabGroupObservation?.invalidate()
+        tabGroupObservation = nil
+        windowTabGroupObservation?.invalidate()
+        windowTabGroupObservation = nil
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        notificationObservers.removeAll()
+    }
+    
+    deinit {
+        cleanup()
     }
 }
 
@@ -97,6 +323,9 @@ struct IsolatedWebViewRepresentable: NSViewRepresentable {
         #if DEBUG
         print("[IsolatedWebView] Dismantling NSView and stopping webView loading")
         #endif
+        if let isolatedWV = nsView as? IsolatedWKWebView {
+            isolatedWV.cleanup()
+        }
         nsView.stopLoading()
         coordinator.cleanup()
     }
@@ -126,6 +355,9 @@ extension IsolatedWebViewRepresentable {
         preferences.isElementFullscreenEnabled = true
         #if os(macOS)
         preferences.setValue(true, forKey: "fullScreenEnabled")
+        // Automatic WebKit DOM timer throttling for hidden/occluded background pages
+        preferences.setValue(true, forKey: "hiddenPageDOMTimerThrottlingEnabled")
+        preferences.setValue(true, forKey: "hiddenPageDOMTimerThrottlingAutoIncreases")
         #endif
         configuration.preferences = preferences
         
@@ -521,6 +753,12 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
                 context: modelContext
             )
         }
+        
+        #if os(macOS)
+        if let isolatedWV = webView as? IsolatedWKWebView {
+            isolatedWV.reapplySleepingStateIfNeeded()
+        }
+        #endif
     }
     
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {

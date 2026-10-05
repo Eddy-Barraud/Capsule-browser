@@ -51,6 +51,9 @@ struct UBlockSettingsView: View {
     @AppStorage("ublock_filter_french") private var filterFrench = false
     @AppStorage("ublock_cosmetic_hiding") private var cosmeticHiding = true
     @AppStorage("ublock_scriptlet_defusers") private var scriptletDefusers = true
+    #if os(macOS)
+    @AppStorage("sleepingTabsEnabled") private var sleepingTabsEnabled = true
+    #endif
     
     @ObservedObject private var manager = UBlockOriginExtensionManager.shared
     
@@ -131,6 +134,16 @@ struct UBlockSettingsView: View {
                     Toggle("Cosmetic Element Hiding (Collapse Ad Banners)", isOn: $cosmeticHiding)
                     Toggle("Scriptlet Defusers (Neutralize Anti-Adblock)", isOn: $scriptletDefusers)
                 }
+                
+                #if os(macOS)
+                // Performance & Sleeping Tabs
+                Section(header: Text("Performance & Memory")) {
+                    Toggle("Sleeping Tabs & Background Throttling", isOn: $sleepingTabsEnabled)
+                    Text("Freezes background tabs and windows to reduce CPU and memory usage, dedicating maximum performance to the active capsule. Audio tabs continue playing in the background.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                #endif
                 
                 // Manual Recompilation Trigger
                 Section {
