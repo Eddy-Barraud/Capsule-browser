@@ -89,6 +89,18 @@ struct CapsuleWindowPayload: Codable, Hashable, Identifiable {
         self.openAsTab = openAsTab
         self.instanceId = instanceId
     }
+    
+    static var defaultNewTabPayload: CapsuleWindowPayload {
+        let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
+        let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
+        return CapsuleWindowPayload(
+            appId: nil,
+            urlString: "https://duckduckgo.com",
+            name: "DuckDuckGo",
+            isSecondaryWindow: true,
+            openAsTab: (mode == .tabs)
+        )
+    }
 }
 
 @MainActor
@@ -211,41 +223,46 @@ struct CapsuleWindowHostView: View {
                     window.tabbingMode = .preferred
                     window.tabbingIdentifier = "CapsuleBrowserWindow"
                     
-                    let keyWindow = NSApp.keyWindow
-                    let targetWindow: NSWindow?
-                    if let kw = keyWindow, kw !== window, !kw.isMiniaturized, !(kw is NSPanel), kw.tabbingIdentifier == "CapsuleBrowserWindow" {
-                        targetWindow = kw
-                    } else if let main = MainWindowTracker.shared.mainWindow, main !== window, !main.isMiniaturized, !(main is NSPanel) {
-                        targetWindow = main
-                    } else {
-                        targetWindow = NSApp.windows.first(where: {
-                            $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel) && $0.tabbingIdentifier == "CapsuleBrowserWindow"
-                        }) ?? NSApp.windows.first(where: {
-                            $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel)
-                        })
-                    }
-                    
-                    if let target = targetWindow {
-                        let targetFrame = target.frame
-                        window.setFrame(targetFrame, display: false)
-                        target.addTabbedWindow(window, ordered: .above)
-                        target.tabGroup?.selectedWindow = window
+                    if let tg = window.tabGroup, tg.windows.count > 1 {
+                        tg.selectedWindow = window
                         window.makeKeyAndOrderFront(nil)
-                        DispatchQueue.main.async {
-                            target.setFrame(targetFrame, display: true)
-                            window.setFrame(targetFrame, display: true)
+                    } else {
+                        let keyWindow = NSApp.keyWindow
+                        let targetWindow: NSWindow?
+                        if let kw = keyWindow, kw !== window, !kw.isMiniaturized, !(kw is NSPanel), kw.tabbingIdentifier == "CapsuleBrowserWindow" {
+                            targetWindow = kw
+                        } else if let main = MainWindowTracker.shared.mainWindow, main !== window, !main.isMiniaturized, !(main is NSPanel) {
+                            targetWindow = main
+                        } else {
+                            targetWindow = NSApp.windows.first(where: {
+                                $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel) && $0.tabbingIdentifier == "CapsuleBrowserWindow"
+                            }) ?? NSApp.windows.first(where: {
+                                $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel)
+                            })
+                        }
+                        
+                        if let target = targetWindow {
+                            let targetFrame = target.frame
+                            window.setFrame(targetFrame, display: false)
+                            target.addTabbedWindow(window, ordered: .above)
                             target.tabGroup?.selectedWindow = window
                             window.makeKeyAndOrderFront(nil)
+                            DispatchQueue.main.async {
+                                target.setFrame(targetFrame, display: true)
+                                window.setFrame(targetFrame, display: true)
+                                target.tabGroup?.selectedWindow = window
+                                window.makeKeyAndOrderFront(nil)
+                            }
+                        } else {
+                            window.makeKeyAndOrderFront(nil)
                         }
-                    } else {
-                        window.makeKeyAndOrderFront(nil)
                     }
                 } else {
                     window.tabbingMode = .disallowed
                     window.cascadeTopLeft(from: NSZeroPoint)
                     window.makeKeyAndOrderFront(nil)
-                    NSApp.activate(ignoringOtherApps: true)
                 }
+                NSApp.activate(ignoringOtherApps: true)
             }
         )
     }

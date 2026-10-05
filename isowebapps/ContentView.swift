@@ -41,6 +41,7 @@ struct ContentView: View {
     #if os(macOS)
     @AppStorage("windowPresentationMode") private var windowPresentationMode: WindowPresentationMode = .singleWindow
     @Environment(\.openWindow) private var openWindow
+    @State private var hostingWindow: NSWindow?
     #endif
     @State private var activeDomainTitle: String = ""
     
@@ -57,23 +58,36 @@ struct ContentView: View {
     var body: some View {
         Group {
             if let activeApp = selectedWebApp {
+                #if os(macOS)
+                let isSecondary = (hostingWindow != nil && MainWindowTracker.shared.mainWindow != nil && hostingWindow !== MainWindowTracker.shared.mainWindow)
+                #else
+                let isSecondary = false
+                #endif
+                
                 // Active Isolated Web App Container View
                 WebAppContainerView(
                     appItem: activeApp,
+                    isSecondaryWindow: isSecondary,
                     onActiveDomainChange: { newDomain in
                         activeDomainTitle = newDomain
                         #if os(macOS)
-                        MainWindowTracker.shared.mainWindow?.title = newDomain
-                        MainWindowTracker.shared.mainWindow?.tab.title = newDomain
+                        hostingWindow?.title = newDomain
+                        hostingWindow?.tab.title = newDomain
                         #endif
                     },
                     onDismiss: {
+                        #if os(macOS)
+                        if isSecondary {
+                            MainWindowTracker.shared.focusMainWindow()
+                            return
+                        }
+                        #endif
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             selectedWebApp = nil
                             activeDomainTitle = ""
                             #if os(macOS)
-                            MainWindowTracker.shared.mainWindow?.title = "Capsule Browser"
-                            MainWindowTracker.shared.mainWindow?.tab.title = "Capsule Browser"
+                            hostingWindow?.title = "Capsule Browser"
+                            hostingWindow?.tab.title = "Capsule Browser"
                             #endif
                         }
                     }
@@ -542,7 +556,15 @@ struct ContentView: View {
             #if os(macOS)
             .background(
                 WindowAccessor { window in
-                    MainWindowTracker.shared.mainWindow = window
+                    hostingWindow = window
+                    if MainWindowTracker.shared.mainWindow == nil || MainWindowTracker.shared.mainWindow === window {
+                        MainWindowTracker.shared.mainWindow = window
+                    } else if MainWindowTracker.shared.mainWindow !== window {
+                        // Opened as a secondary window/tab while main window had focus
+                        if selectedWebApp == nil {
+                            selectedWebApp = WebAppItem(name: "DuckDuckGo", urlString: "https://duckduckgo.com")
+                        }
+                    }
                     window.tabbingIdentifier = "CapsuleBrowserWindow"
                     if windowPresentationMode == .tabs {
                         window.tabbingMode = .preferred

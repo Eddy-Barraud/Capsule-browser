@@ -15,6 +15,10 @@ import SwiftData
 
 @main
 struct isowebappsApp: App {
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
+
     /// Shared SwiftData model container configured for multi-device sync
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -49,14 +53,41 @@ struct isowebappsApp: App {
         
         #if os(macOS)
         WindowGroup(id: "capsuleWindow", for: CapsuleWindowPayload.self) { $payload in
-            if let payload {
-                CapsuleWindowHostView(payload: payload)
-                    .frame(minWidth: 800, minHeight: 600)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            CapsuleWindowHostView(payload: payload ?? .defaultNewTabPayload)
+                .frame(minWidth: 800, minHeight: 600)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .defaultSize(width: 800, height: 600)
         .modelContainer(sharedModelContainer)
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Tab") {
+                    let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
+                    let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
+                    let payload = CapsuleWindowPayload(
+                        appId: nil,
+                        urlString: "https://duckduckgo.com",
+                        name: "DuckDuckGo",
+                        isSecondaryWindow: true,
+                        openAsTab: (mode == .tabs)
+                    )
+                    openWindow(id: "capsuleWindow", value: payload)
+                }
+                .keyboardShortcut("t", modifiers: .command)
+                
+                Button("New Window") {
+                    let payload = CapsuleWindowPayload(
+                        appId: nil,
+                        urlString: "https://duckduckgo.com",
+                        name: "DuckDuckGo",
+                        isSecondaryWindow: true,
+                        openAsTab: false
+                    )
+                    openWindow(id: "capsuleWindow", value: payload)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+            }
+        }
         #endif
     }
 }
