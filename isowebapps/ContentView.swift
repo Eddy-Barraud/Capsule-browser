@@ -559,6 +559,7 @@ struct ContentView: View {
                     hostingWindow = window
                     if MainWindowTracker.shared.mainWindow == nil || MainWindowTracker.shared.mainWindow === window {
                         MainWindowTracker.shared.mainWindow = window
+                        window.delegate = MainWindowTracker.shared
                     } else if MainWindowTracker.shared.mainWindow !== window {
                         // Opened as a secondary window/tab while main window had focus
                         if selectedWebApp == nil {

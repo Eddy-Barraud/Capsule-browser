@@ -104,7 +104,7 @@ struct CapsuleWindowPayload: Codable, Hashable, Identifiable {
 }
 
 @MainActor
-final class MainWindowTracker {
+final class MainWindowTracker: NSObject, NSWindowDelegate {
     static let shared = MainWindowTracker()
     weak var mainWindow: NSWindow?
     
@@ -123,6 +123,19 @@ final class MainWindowTracker {
             window.makeKeyAndOrderFront(nil)
         }
         NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    // MARK: - NSWindowDelegate
+    
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // Prevent closing the home screen tab when multiple tabs are open in the tab bar
+        if let tabGroup = sender.tabGroup, tabGroup.windows.count > 1 {
+            #if DEBUG
+            print("[MainWindowTracker] Prevented closing the home screen tab while other tabs are open.")
+            #endif
+            return false
+        }
+        return true
     }
 }
 
