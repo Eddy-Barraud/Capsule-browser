@@ -183,6 +183,8 @@ struct CapsuleWindowHostView: View {
                 MainWindowTracker.shared.focusMainWindow()
             }
         )
+        .frame(minWidth: 800, minHeight: 600)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle(currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle)
         .onAppear {
             if currentDomainTitle.isEmpty {
@@ -224,10 +226,14 @@ struct CapsuleWindowHostView: View {
                     }
                     
                     if let target = targetWindow {
+                        let targetFrame = target.frame
+                        window.setFrame(targetFrame, display: false)
                         target.addTabbedWindow(window, ordered: .above)
                         target.tabGroup?.selectedWindow = window
                         window.makeKeyAndOrderFront(nil)
                         DispatchQueue.main.async {
+                            target.setFrame(targetFrame, display: true)
+                            window.setFrame(targetFrame, display: true)
                             target.tabGroup?.selectedWindow = window
                             window.makeKeyAndOrderFront(nil)
                         }

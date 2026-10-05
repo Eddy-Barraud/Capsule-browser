@@ -39,10 +39,11 @@ struct isowebappsApp: App {
             ContentView()
                 #if os(macOS)
                 .frame(minWidth: 800, minHeight: 600)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 #endif
         }
         #if os(macOS)
-        .windowResizability(.contentMinSize)
+        .defaultSize(width: 800, height: 600)
         #endif
         .modelContainer(sharedModelContainer)
         
@@ -51,9 +52,10 @@ struct isowebappsApp: App {
             if let payload {
                 CapsuleWindowHostView(payload: payload)
                     .frame(minWidth: 800, minHeight: 600)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .windowResizability(.contentMinSize)
+        .defaultSize(width: 800, height: 600)
         .modelContainer(sharedModelContainer)
         #endif
     }
