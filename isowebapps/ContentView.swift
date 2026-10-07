@@ -35,6 +35,7 @@ struct ContentView: View {
     @State private var isShowingDeleteConfirmation = false
     @State private var groupToDelete: WebAppGroup?
     @State private var isShowingDeleteGroupConfirmation = false
+    @State private var groupToEdit: WebAppGroup?
     @State private var isInitializing = true
     @State private var isReordering = false
     
@@ -117,6 +118,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isShowingAddGroupSheet) {
             AddGroupSheet()
+        }
+        .sheet(item: $groupToEdit) { group in
+            GroupSettingsSheet(group: group)
         }
         .sheet(isPresented: $isShowingUBlockSettings) {
             UBlockSettingsView()
@@ -258,6 +262,9 @@ struct ContentView: View {
                                             onDeleteApp: { app in
                                                 itemToDelete = app
                                                 isShowingDeleteConfirmation = true
+                                            },
+                                            onEditGroup: {
+                                                groupToEdit = group
                                             },
                                             onDeleteGroup: {
                                                 groupToDelete = group
