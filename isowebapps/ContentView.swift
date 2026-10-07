@@ -123,7 +123,7 @@ struct ContentView: View {
             GroupSettingsSheet(group: group)
         }
         .sheet(isPresented: $isShowingUBlockSettings) {
-            UBlockSettingsView()
+            GeneralSettingsView()
         }
         .sheet(isPresented: $isShowingOpenURLSheet) {
             if let targetURLString = pendingOpenURL {
@@ -514,7 +514,7 @@ struct ContentView: View {
                             #endif
                     }
                     .buttonStyle(.plain)
-                    .help("uBlock Origin Lite Settings")
+                    .help("General Settings & Content Blocker")
                     
                     Menu {
                         Button {
