@@ -32,6 +32,22 @@ public enum BlockingMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Snapshot of settings that require compiling WebKit rule lists when modified
+private struct RuleSettingsSnapshot: Equatable {
+    var blockingMode: BlockingMode
+    var filterUblockFilters: Bool
+    var filterUblockBadware: Bool
+    var filterEasyList: Bool
+    var filterEasyPrivacy: Bool
+    var filterAdGuardMobile: Bool
+    var filterURLhaus: Bool
+    var filterAnnoyances: Bool
+    var filterBlockLAN: Bool
+    var filterFrench: Bool
+    var cosmeticHiding: Bool
+    var scriptletDefusers: Bool
+}
+
 /// Compatibility alias in case of legacy references
 typealias UBlockSettingsView = GeneralSettingsView
 
@@ -63,6 +79,31 @@ struct GeneralSettingsView: View {
     
     @State private var isRecompiling = false
     @State private var recompileSuccess = false
+    
+    // Snapshot of rule settings at open/last compile time
+    @State private var savedSnapshot: RuleSettingsSnapshot?
+    
+    private var currentSnapshot: RuleSettingsSnapshot {
+        RuleSettingsSnapshot(
+            blockingMode: blockingMode,
+            filterUblockFilters: filterUblockFilters,
+            filterUblockBadware: filterUblockBadware,
+            filterEasyList: filterEasyList,
+            filterEasyPrivacy: filterEasyPrivacy,
+            filterAdGuardMobile: filterAdGuardMobile,
+            filterURLhaus: filterURLhaus,
+            filterAnnoyances: filterAnnoyances,
+            filterBlockLAN: filterBlockLAN,
+            filterFrench: filterFrench,
+            cosmeticHiding: cosmeticHiding,
+            scriptletDefusers: scriptletDefusers
+        )
+    }
+    
+    private var hasUncompiledChanges: Bool {
+        guard let saved = savedSnapshot else { return false }
+        return saved != currentSnapshot
+    }
     
     var body: some View {
         #if os(macOS)
@@ -217,35 +258,6 @@ struct GeneralSettingsView: View {
                         }
                         .toggleStyle(.checkbox)
                     }
-                    
-                    // Recompile action card
-                    macOSSectionCard(
-                        title: "Apply Rule Changes",
-                        systemImage: "arrow.triangle.2.circlepath"
-                    ) {
-                        HStack {
-                            Text("Recompiles WebKit rulesets with your currently enabled filter lists.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button {
-                                recompileRules()
-                            } label: {
-                                HStack(spacing: 6) {
-                                    if isRecompiling {
-                                        ProgressView()
-                                            .scaleEffect(0.7)
-                                    }
-                                    Text(recompileSuccess ? "Rules Updated ✓" : "Apply & Recompile")
-                                        .font(.subheadline.bold())
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(isRecompiling)
-                        }
-                    }
                 }
                 .padding(24)
             }
@@ -254,20 +266,55 @@ struct GeneralSettingsView: View {
             Divider()
             
             // Pinned Bottom Bar
-            HStack {
-                Spacer()
-                Button("Done") {
-                    dismiss()
+            HStack(spacing: 12) {
+                if hasUncompiledChanges {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("List settings changed. Compile rules to apply.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
+                
+                Spacer()
+                
+                if hasUncompiledChanges {
+                    Button {
+                        recompileRules()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isRecompiling {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            }
+                            Text(isRecompiling ? "Compiling Rules..." : "Compile new rules")
+                                .bold()
+                        }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .disabled(isRecompiling)
+                } else {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                }
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .frame(minWidth: 540, idealWidth: 580, maxWidth: 650, minHeight: 520, idealHeight: 620, maxHeight: 780)
+        .onAppear {
+            if savedSnapshot == nil {
+                savedSnapshot = currentSnapshot
+            }
+        }
     }
     
     private func modeDescription(for mode: WindowPresentationMode) -> String {
@@ -312,6 +359,7 @@ struct GeneralSettingsView: View {
             }
             
             content()
+                .frame(maxWidth: .infinity, alignment: .leading)
             
             if let footer {
                 Text(footer)
@@ -321,6 +369,7 @@ struct GeneralSettingsView: View {
             }
         }
         .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
         .cornerRadius(10)
         .overlay(
@@ -406,34 +455,35 @@ struct GeneralSettingsView: View {
                     Toggle("Cosmetic Element Hiding (Collapse Ad Banners)", isOn: $cosmeticHiding)
                     Toggle("Scriptlet Defusers (Neutralize Anti-Adblock)", isOn: $scriptletDefusers)
                 }
-                
-                // Manual Recompilation Trigger
-                Section {
-                    Button {
-                        recompileRules()
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if isRecompiling {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                    .padding(.trailing, 4)
-                            }
-                            Text(recompileSuccess ? "Rules Updated ✓" : "Apply & Recompile Rules")
-                                .bold()
-                            Spacer()
-                        }
-                    }
-                    .disabled(isRecompiling)
-                }
             }
             .navigationTitle("General Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
+                    if hasUncompiledChanges {
+                        Button {
+                            recompileRules()
+                        } label: {
+                            HStack(spacing: 4) {
+                                if isRecompiling {
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                }
+                                Text(isRecompiling ? "Compiling..." : "Compile new rules")
+                                    .bold()
+                            }
+                        }
+                        .disabled(isRecompiling)
+                    } else {
+                        Button("Done") {
+                            dismiss()
+                        }
                     }
+                }
+            }
+            .onAppear {
+                if savedSnapshot == nil {
+                    savedSnapshot = currentSnapshot
                 }
             }
         }
@@ -450,6 +500,7 @@ struct GeneralSettingsView: View {
             await MainActor.run {
                 isRecompiling = false
                 recompileSuccess = true
+                savedSnapshot = currentSnapshot
             }
         }
     }
