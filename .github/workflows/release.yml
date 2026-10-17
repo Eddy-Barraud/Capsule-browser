@@ -160,10 +160,15 @@ jobs:
         run: |
           xcrun stapler staple "$RUNNER_TEMP/dmg-output/Capsule-Browser.dmg"
 
+      - name: Extract Last Commit Message
+        run: |
+          git log -1 --pretty=%B > "$RUNNER_TEMP/release_notes.md"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ runner.temp }}/dmg-output/Capsule-Browser.dmg
+          body_path: ${{ runner.temp }}/release_notes.md
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
