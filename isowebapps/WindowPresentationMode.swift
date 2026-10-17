@@ -93,10 +93,13 @@ struct CapsuleWindowPayload: Codable, Hashable, Identifiable {
     static var defaultNewTabPayload: CapsuleWindowPayload {
         let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
         let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
+        let rawEngine = UserDefaults.standard.string(forKey: SearchEngine.storageKey) ?? SearchEngine.duckDuckGo.rawValue
+        let engine = SearchEngine(rawValue: rawEngine) ?? .duckDuckGo
+        let customURL = UserDefaults.standard.string(forKey: SearchEngine.customURLStorageKey) ?? ""
         return CapsuleWindowPayload(
             appId: nil,
-            urlString: "https://duckduckgo.com",
-            name: "DuckDuckGo",
+            urlString: engine.homeURLString(customTemplate: customURL),
+            name: engine.displayName,
             isSecondaryWindow: true,
             openAsTab: (mode == .tabs)
         )
@@ -104,9 +107,24 @@ struct CapsuleWindowPayload: Codable, Hashable, Identifiable {
 }
 
 @MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainWindowTracker.shared.handleDockReopen(hasVisibleWindows: flag)
+        return true
+    }
+}
+
+@MainActor
 final class MainWindowTracker: NSObject, NSWindowDelegate {
     static let shared = MainWindowTracker()
+    static let mainWindowDidCloseNotification = Notification.Name("MainWindowTrackerMainWindowDidClose")
+    
     weak var mainWindow: NSWindow?
+    private(set) var isReopeningFromDock: Bool = false
+    
+    private override init() {
+        super.init()
+    }
     
     func focusMainWindow() {
         guard let window = mainWindow ?? NSApp.windows.first(where: {
@@ -125,6 +143,19 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
     
+    func handleDockReopen(hasVisibleWindows flag: Bool) {
+        if !flag {
+            isReopeningFromDock = true
+            if let currentMain = mainWindow, !currentMain.isVisible {
+                mainWindow = nil
+            }
+            NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: nil)
+            DispatchQueue.main.async { [weak self] in
+                self?.isReopeningFromDock = false
+            }
+        }
+    }
+    
     // MARK: - NSWindowDelegate
     
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -136,6 +167,14 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
             return false
         }
         return true
+    }
+    
+    func windowWillClose(_ notification: Notification) {
+        guard let closingWindow = notification.object as? NSWindow else { return }
+        if closingWindow === mainWindow {
+            mainWindow = nil
+            NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: closingWindow)
+        }
     }
 }
 

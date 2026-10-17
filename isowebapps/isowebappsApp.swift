@@ -16,6 +16,7 @@ import SwiftData
 @main
 struct isowebappsApp: App {
     #if os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
     #endif
 
@@ -62,24 +63,16 @@ struct isowebappsApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Tab") {
-                    let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
-                    let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
-                    let payload = CapsuleWindowPayload(
-                        appId: nil,
-                        urlString: "https://duckduckgo.com",
-                        name: "DuckDuckGo",
-                        isSecondaryWindow: true,
-                        openAsTab: (mode == .tabs)
-                    )
-                    openWindow(id: "capsuleWindow", value: payload)
+                    openWindow(id: "capsuleWindow", value: CapsuleWindowPayload.defaultNewTabPayload)
                 }
                 .keyboardShortcut("t", modifiers: .command)
                 
                 Button("New Window") {
+                    let defaultPayload = CapsuleWindowPayload.defaultNewTabPayload
                     let payload = CapsuleWindowPayload(
                         appId: nil,
-                        urlString: "https://duckduckgo.com",
-                        name: "DuckDuckGo",
+                        urlString: defaultPayload.urlString,
+                        name: defaultPayload.name,
                         isSecondaryWindow: true,
                         openAsTab: false
                     )

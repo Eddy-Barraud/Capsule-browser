@@ -115,6 +115,17 @@ struct ContentView: View {
                 }
             }
         }
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: MainWindowTracker.mainWindowDidCloseNotification)) { notification in
+            let closedWindow = notification.object as? NSWindow
+            if closedWindow == nil || closedWindow === hostingWindow || hostingWindow === MainWindowTracker.shared.mainWindow {
+                selectedWebApp = nil
+                activeDomainTitle = ""
+                hostingWindow?.title = "Capsule Browser"
+                hostingWindow?.tab.title = "Capsule Browser"
+            }
+        }
+        #endif
         .sheet(isPresented: $isShowingAddSheet) {
             AddWebAppSheet()
         }
@@ -566,11 +577,13 @@ struct ContentView: View {
             .background(
                 WindowAccessor { window in
                     hostingWindow = window
-                    if MainWindowTracker.shared.mainWindow == nil || MainWindowTracker.shared.mainWindow === window {
-                        MainWindowTracker.shared.mainWindow = window
-                        window.delegate = MainWindowTracker.shared
-                    } else if MainWindowTracker.shared.mainWindow !== window {
-                        // Opened as a secondary window/tab while main window had focus
+                    let tracker = MainWindowTracker.shared
+                    let currentMain = tracker.mainWindow
+                    if currentMain == nil || currentMain === window || !(currentMain?.isVisible ?? false) || tracker.isReopeningFromDock {
+                        tracker.mainWindow = window
+                        window.delegate = tracker
+                    } else if currentMain !== window {
+                        // Opened as a secondary window/tab while main window was visible and active
                         if selectedWebApp == nil {
                             selectedWebApp = WebAppItem(
                                 name: defaultSearchEngine.displayName,
