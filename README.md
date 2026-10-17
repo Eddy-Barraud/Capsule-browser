@@ -12,7 +12,7 @@
 * **🛡️ Integrated uBlock Origin Lite:** Native WebKit content-blocking rulesets, cosmetic element hiding, scriptlet defusers, and dedicated YouTube ad-blocking scripts.
 * **☁️ Optional iCloud Sync:** Local-only storage by default. Enable iCloud Sync anytime in Settings with guided local/cloud migration and per-capsule conflict resolution.
 
-<div align="center"><img src="ios-screenshots/home_screen_wiki.png" width=30%><img src="ios-screenshots/webview_wiki_cg_reader.png" width=30%><img src="ios-screenshots/ublock_settings.png" width=30%></div>
+<div align="center"><img src="screenshots/home_screen_wiki.png" width=30%><img src="screenshots/webview_wiki_cg_reader.png" width=30%><img src="screenshots/ublock_settings.png" width=30%></div>
 
 ---
 
