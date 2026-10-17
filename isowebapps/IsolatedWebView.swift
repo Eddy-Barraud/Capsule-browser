@@ -495,13 +495,23 @@ extension IsolatedWebViewRepresentable {
                 }
             }
             
-            // 2. Extract content from the first page only
+            // 2. Extract content from the first 3 pages
             guard let document = PDFDocument(data: pdfData),
-                  let firstPage = document.page(at: 0) else {
+                  document.pageCount > 0 else {
                 throw WebPageSummaryError.pdfExtractionFailed
             }
             
-            var pageText = firstPage.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let maxPages = min(3, document.pageCount)
+            var extractedPages: [String] = []
+            for pageIndex in 0..<maxPages {
+                if let page = document.page(at: pageIndex),
+                   let text = page.string?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !text.isEmpty {
+                    extractedPages.append(text)
+                }
+            }
+            
+            var pageText = extractedPages.joined(separator: "\n\n")
             if pageText.isEmpty {
                 // Fallback: If PDF text layer is empty or rasterized, extract DOM innerText
                 let evaluated = try? await webView.evaluateJavaScript("document.body.innerText") as? String

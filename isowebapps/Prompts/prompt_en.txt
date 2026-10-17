@@ -1,0 +1,6 @@
+Web Page Title: {{TITLE}}
+
+First page content:
+{{CONTENT}}
+
+Provide a clear and concise summary of this content in a maximum of 4 sentences.

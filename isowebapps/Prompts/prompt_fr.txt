@@ -1,0 +1,6 @@
+Titre de la page web : {{TITLE}}
+
+Contenu de la première page :
+{{CONTENT}}
+
+Fournis un résumé clair et concis de ce contenu en un maximum de 4 phrases.

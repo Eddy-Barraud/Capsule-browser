@@ -1,0 +1,6 @@
+Título de la página web: {{TITLE}}
+
+Contenido de la primera página:
+{{CONTENT}}
+
+Proporciona un resumen claro y conciso de este contenido en un máximo de 4 frases.
