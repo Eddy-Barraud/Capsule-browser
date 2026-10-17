@@ -128,6 +128,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/dmg-source"
           cp -R "$RUNNER_TEMP/Export/Capsule Browser.app" "$RUNNER_TEMP/dmg-source/"
+          [ -f LICENSE ] && cp LICENSE "$RUNNER_TEMP/dmg-source/LICENSE.txt"
+          [ -f shared/uBOL-home/LICENSE ] && cp shared/uBOL-home/LICENSE "$RUNNER_TEMP/dmg-source/LICENSE-uBOL.txt"
           ln -s /Applications "$RUNNER_TEMP/dmg-source/Applications"
           
           mkdir -p "$RUNNER_TEMP/dmg-output"
@@ -160,9 +162,14 @@ jobs:
         run: |
           xcrun stapler staple "$RUNNER_TEMP/dmg-output/Capsule-Browser.dmg"
 
-      - name: Extract Last Commit Message
+      - name: Extract Last Commit Message & Append Credits
         run: |
-          git log -1 --pretty=%B > "$RUNNER_TEMP/release_notes.md"
+          {
+            git log -1 --pretty=%B
+            echo ""
+            echo "---"
+            echo "**Credits & License:** Licensed under [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html). Bundled ad-blocking rulesets are powered by [uBlock Origin Lite (uBOL-home)](https://github.com/uBlockOrigin/uBOL-home) by Raymond Hill (\`gorhill\`) and filter list maintainers (EasyList, EasyPrivacy, AdGuard, Peter Lowe, URLhaus)."
+          } > "$RUNNER_TEMP/release_notes.md"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

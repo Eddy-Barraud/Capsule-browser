@@ -55,3 +55,10 @@ xcodebuild -project isowebapps.xcodeproj -target "Capsule Browser" -sdk iphonesi
 - `AISummarizer.swift` & `Prompts/`: On-device Apple Intelligence summarization with localized prompts (`en`, `fr`, `es`).
 - `GeneralSettingsView.swift`: Settings for iCloud Sync, Default Search Engine, macOS window modes, sleeping tabs, and uBlock Origin Lite filter lists.
 - `UBlockOriginExtensionManager.swift` & `UBlockRuleCompiler.swift`: Compiles uBlock DNR rulesets into native `WKContentRuleList` instances.
+
+## Credits & License
+
+- **Copyright © 2026 Eddy Barraud.** Licensed under the **GNU General Public License v3.0 (GPLv3)** — see [LICENSE](LICENSE) for full details.
+- **uBlock Origin Lite (`uBOL-home`):** Ad-blocking rulesets and scriptlets are powered by [uBlock Origin Lite](https://github.com/uBlockOrigin/uBOL-home) by **Raymond Hill (`gorhill`)** and contributors, licensed under [GPLv3](shared/uBOL-home/LICENSE).
+- **Filter Lists:** Includes rules compiled from EasyList, EasyPrivacy, AdGuard, Peter Lowe's Ad and tracking server list, and URLhaus (abuse.ch), maintained by their respective authors.
+

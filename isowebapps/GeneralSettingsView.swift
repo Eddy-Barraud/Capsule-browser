@@ -477,6 +477,29 @@ struct GeneralSettingsView: View {
                         }
                         .toggleStyle(.checkbox)
                     }
+                    
+                    // Credits & License
+                    macOSSectionCard(
+                        title: "Credits & License",
+                        systemImage: "doc.text.fill"
+                    ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Copyright © 2026 Eddy Barraud. Capsule Browser is free and open-source software licensed under the GNU General Public License v3.0 (GPLv3).")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            
+                            Text("Content blocking rulesets and scriptlets are powered by uBlock Origin Lite (uBOL-home) by Raymond Hill (gorhill) and filter list maintainers (EasyList, EasyPrivacy, AdGuard, Peter Lowe, URLhaus), licensed under GPLv3.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            
+                            HStack(spacing: 16) {
+                                Link("uBlock Origin Lite (GitHub)", destination: URL(string: "https://github.com/uBlockOrigin/uBOL-home")!)
+                                Link("GPLv3 License", destination: URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!)
+                            }
+                            .font(.caption.weight(.medium))
+                            .padding(.top, 2)
+                        }
+                    }
                 }
                 .padding(24)
             }
@@ -714,6 +737,19 @@ struct GeneralSettingsView: View {
                 Section(header: Text("Page Cleanup & Defusers")) {
                     Toggle("Cosmetic Element Hiding (Collapse Ad Banners)", isOn: $cosmeticHiding)
                     Toggle("Scriptlet Defusers (Neutralize Anti-Adblock)", isOn: $scriptletDefusers)
+                }
+                
+                // Credits & License
+                Section(
+                    header: Text("Credits & License"),
+                    footer: Text("Copyright © 2026 Eddy Barraud. Capsule Browser is licensed under GPLv3. Content blocking rulesets are powered by uBlock Origin Lite (uBOL-home) by Raymond Hill (gorhill) and filter list maintainers (EasyList, EasyPrivacy, AdGuard, Peter Lowe, URLhaus).")
+                ) {
+                    Link(destination: URL(string: "https://github.com/uBlockOrigin/uBOL-home")!) {
+                        Label("uBlock Origin Lite (GitHub)", systemImage: "link")
+                    }
+                    Link(destination: URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!) {
+                        Label("GNU General Public License v3.0", systemImage: "doc.text")
+                    }
                 }
             }
             .navigationTitle("General Settings")
