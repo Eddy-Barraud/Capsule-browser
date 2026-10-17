@@ -879,18 +879,9 @@ struct MacOSSolidBottomBar: View {
     }
     
     private func submitURL() {
-        var text = editableURLString.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
-        if !text.lowercased().hasPrefix("http://") && !text.lowercased().hasPrefix("https://") {
-            if text.contains(".") && !text.contains(" ") {
-                text = "https://" + text
-            } else {
-                text = "https://duckduckgo.com/?q=" + text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
-            }
-        }
-        if let url = URL(string: text) {
-            navigationState.onLoadURL?(url)
-        }
+        guard let resolved = SearchEngine.resolveInput(editableURLString),
+              let url = URL(string: resolved) else { return }
+        navigationState.onLoadURL?(url)
     }
 }
 #endif
@@ -1030,26 +1021,16 @@ struct IOSSolidBottomBar: View {
     private func submitURL() {
         isURLFocused = false
         isURLExpanded = false
-        var text = editableURLString.trimmingCharacters(in: .whitespaces)
-            if !text.isEmpty {
-                if !text.lowercased().hasPrefix("http://") && !text.lowercased().hasPrefix("https://") {
-                    if text.contains(".") && !text.contains(" ") {
-                        text = "https://" + text
-                    } else {
-                        text = "https://duckduckgo.com/?q=" + text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
-                    }
-                }
-                if let url = URL(string: text) {
-                    navigationState.onLoadURL?(url)
-                }
-            }
-        }
+        guard let resolved = SearchEngine.resolveInput(editableURLString),
+              let url = URL(string: resolved) else { return }
+        navigationState.onLoadURL?(url)
     }
     
     private func cleanHost(from urlString: String) -> String {
         guard let url = URL(string: urlString) else { return urlString }
         return url.host ?? urlString
     }
+}
 
 #endif
 

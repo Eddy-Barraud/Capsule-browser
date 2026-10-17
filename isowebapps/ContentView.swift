@@ -39,6 +39,8 @@ struct ContentView: View {
     @State private var isInitializing = true
     @State private var isReordering = false
     
+    @AppStorage(SearchEngine.storageKey) private var defaultSearchEngine: SearchEngine = .duckDuckGo
+    @AppStorage(SearchEngine.customURLStorageKey) private var customSearchEngineURL: String = ""
     #if os(macOS)
     @AppStorage("windowPresentationMode") private var windowPresentationMode: WindowPresentationMode = .singleWindow
     @Environment(\.openWindow) private var openWindow
@@ -357,7 +359,7 @@ struct ContentView: View {
                     TextField(
                         "",
                         text: $quickSearchText,
-                        prompt: Text("Search DuckDuckGo or enter URL...")
+                        prompt: Text("Search \(defaultSearchEngine.displayName) or enter URL...")
                             .foregroundColor(.primary.opacity(0.6))
                     )
                         .textFieldStyle(.plain)
@@ -570,7 +572,10 @@ struct ContentView: View {
                     } else if MainWindowTracker.shared.mainWindow !== window {
                         // Opened as a secondary window/tab while main window had focus
                         if selectedWebApp == nil {
-                            selectedWebApp = WebAppItem(name: "DuckDuckGo", urlString: "https://duckduckgo.com")
+                            selectedWebApp = WebAppItem(
+                                name: defaultSearchEngine.displayName,
+                                urlString: defaultSearchEngine.homeURLString(customTemplate: customSearchEngineURL)
+                            )
                         }
                     }
                     window.tabbingIdentifier = "CapsuleBrowserWindow"
@@ -685,19 +690,7 @@ struct ContentView: View {
     }
     
     private func performQuickSearch() {
-        let query = quickSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return }
-        
-        let urlString: String
-        if query.lowercased().hasPrefix("http://") || query.lowercased().hasPrefix("https://") {
-            urlString = query
-        } else if query.contains(".") && !query.contains(" ") {
-            urlString = "https://\(query)"
-        } else {
-            guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return }
-            urlString = "https://duckduckgo.com/?q=\(encodedQuery)"
-        }
-        
+        guard let urlString = SearchEngine.resolveInput(quickSearchText) else { return }
         quickSearchText = ""
         openEphemeralCapsule(name: "Search", urlString: urlString)
     }
