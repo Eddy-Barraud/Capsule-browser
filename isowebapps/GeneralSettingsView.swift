@@ -181,12 +181,30 @@ struct GeneralSettingsView: View {
     @AppStorage("ublock_scriptlet_defusers") private var scriptletDefusers = true
     
     @ObservedObject private var manager = UBlockOriginExtensionManager.shared
+    @ObservedObject private var syncManager = CloudSyncManager.shared
     
     @State private var isRecompiling = false
     @State private var recompileSuccess = false
+    @State private var isShowingActivateICloudAlert = false
+    @State private var isShowingDeactivateICloudAlert = false
     
     // Snapshot of rule settings at open/last compile time
     @State private var savedSnapshot: RuleSettingsSnapshot?
+    
+    private var iCloudToggleBinding: Binding<Bool> {
+        Binding(
+            get: { syncManager.isICloudSyncEnabled },
+            set: { newValue in
+                if newValue != syncManager.isICloudSyncEnabled {
+                    if newValue {
+                        isShowingActivateICloudAlert = true
+                    } else {
+                        isShowingDeactivateICloudAlert = true
+                    }
+                }
+            }
+        )
+    }
     
     private var currentSnapshot: RuleSettingsSnapshot {
         RuleSettingsSnapshot(
@@ -211,11 +229,36 @@ struct GeneralSettingsView: View {
     }
     
     var body: some View {
-        #if os(macOS)
-        macOSLayout
-        #else
-        iOSLayout
-        #endif
+        Group {
+            #if os(macOS)
+            macOSLayout
+            #else
+            iOSLayout
+            #endif
+        }
+        .alert("Enable iCloud Sync", isPresented: $isShowingActivateICloudAlert) {
+            Button("Upload Local Data to iCloud") {
+                syncManager.activateUploadingLocalDataToCloud()
+            }
+            Button("Delete Local Data & Switch to iCloud", role: .destructive) {
+                syncManager.activateDeletingLocalDataAndSwitchToCloud()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Would you like to upload your current local capsules to iCloud, or delete your local app data and switch to your iCloud copy?")
+        }
+        .alert("Disable iCloud Sync", isPresented: $isShowingDeactivateICloudAlert) {
+            Button("Keep Current Data Locally") {
+                syncManager.deactivateKeepingCurrentDataLocally()
+            }
+            Button("Start with Empty Local Data", role: .destructive) {
+                syncManager.deactivateStartingWithEmptyLocalData()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Would you like to store your current capsules and groups into local app data, or start again with empty local data?")
+        }
+        .iCloudSyncConflictAlert(syncManager: syncManager)
     }
     
     // MARK: - macOS Layout
@@ -246,6 +289,38 @@ struct GeneralSettingsView: View {
             // Scrollable Settings Content with Visible Scrollbar
             ScrollView(.vertical) {
                 VStack(spacing: 18) {
+                    // iCloud Sync
+                    macOSSectionCard(
+                        title: "iCloud Sync",
+                        systemImage: syncManager.isICloudSyncEnabled ? "icloud.fill" : "icloud.slash",
+                        badge: syncManager.isICloudSyncEnabled ? "Enabled" : "Local Only",
+                        footer: "Synchronize your capsules, groups, and isolated cookies across your devices using iCloud."
+                    ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
+                                Toggle("Sync Capsules with iCloud", isOn: iCloudToggleBinding)
+                                    .toggleStyle(.checkbox)
+                                    .disabled(syncManager.isSyncingWithCloud)
+                                
+                                if syncManager.isSyncingWithCloud {
+                                    ProgressView()
+                                        .scaleEffect(0.65)
+                                    Text("Checking iCloud capsules...")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            
+                            Text(
+                                syncManager.isICloudSyncEnabled
+                                    ? "Your capsules are currently synced with iCloud."
+                                    : "iCloud sync is off by default. Your capsules are stored only on this device."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    
                     // Default Search Engine
                     macOSSectionCard(
                         title: "Default Search Engine",
@@ -544,6 +619,28 @@ struct GeneralSettingsView: View {
                         }
                     }
                     .padding(.vertical, 4)
+                }
+                
+                // iCloud Sync
+                Section(
+                    header: Text("iCloud Sync"),
+                    footer: Text(
+                        syncManager.isICloudSyncEnabled
+                            ? "Your capsules, groups, and isolated cookies are synced across your devices via iCloud."
+                            : "iCloud sync is off by default. Your capsules are stored only on this device."
+                    )
+                ) {
+                    Toggle("Sync Capsules with iCloud", isOn: iCloudToggleBinding)
+                        .disabled(syncManager.isSyncingWithCloud)
+                    
+                    if syncManager.isSyncingWithCloud {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("Checking iCloud capsules...")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 
                 // Default Search Engine

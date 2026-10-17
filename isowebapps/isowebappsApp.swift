@@ -20,28 +20,14 @@ struct isowebappsApp: App {
     @Environment(\.openWindow) private var openWindow
     #endif
 
-    /// Shared SwiftData model container configured for multi-device sync
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            WebAppItem.self,
-            WebAppGroup.self,
-        ])
-        let modelConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: false,
-            cloudKitDatabase: .automatic
-        )
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    @StateObject private var cloudSyncManager = CloudSyncManager.shared
 
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .id(cloudSyncManager.containerRefreshID)
+                .environmentObject(cloudSyncManager)
+                .iCloudSyncConflictAlert(syncManager: cloudSyncManager)
                 #if os(macOS)
                 .frame(minWidth: 800, minHeight: 600)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -50,16 +36,18 @@ struct isowebappsApp: App {
         #if os(macOS)
         .defaultSize(width: 800, height: 600)
         #endif
-        .modelContainer(sharedModelContainer)
+        .modelContainer(cloudSyncManager.activeContainer)
         
         #if os(macOS)
         WindowGroup(id: "capsuleWindow", for: CapsuleWindowPayload.self) { $payload in
             CapsuleWindowHostView(payload: payload ?? .defaultNewTabPayload)
+                .id(cloudSyncManager.containerRefreshID)
+                .environmentObject(cloudSyncManager)
                 .frame(minWidth: 800, minHeight: 600)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .defaultSize(width: 800, height: 600)
-        .modelContainer(sharedModelContainer)
+        .modelContainer(cloudSyncManager.activeContainer)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Tab") {
