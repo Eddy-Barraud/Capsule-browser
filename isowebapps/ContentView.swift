@@ -520,7 +520,7 @@ struct ContentView: View {
                     Button {
                         isShowingUBlockSettings = true
                     } label: {
-                        Image(systemName: "shield.lefthalf.filled")
+                        Image(systemName: "gearshape.2.fill")
                             .font(.system(size: 15, weight: .semibold))
                             #if os(macOS)
                             .padding(8)
