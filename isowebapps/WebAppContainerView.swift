@@ -529,7 +529,8 @@ struct TopControlsBar: View {
     var onAddCapsule: (() -> Void)? = nil
     
     private var isYouTube: Bool {
-        appItem.urlString.lowercased().contains("youtube.com")
+        appItem.urlString.lowercased().contains("youtube.com") ||
+        navigationState.currentURLString.lowercased().contains("youtube.com")
     }
     
     var body: some View {
@@ -561,21 +562,26 @@ struct TopControlsBar: View {
             // Shield Button (Next to Summarize Button)
             Button(action: onToggleShield) {
                 HStack(spacing: 5) {
-                    Image(systemName: isYouTube ? "play.rectangle.fill" : (navigationState.isUBlockEnabled ? "shield.fill" : "shield.slash.fill"))
+                    Image(systemName: isYouTube
+                          ? (navigationState.isUBlockEnabled ? "play.rectangle.fill" : "play.slash.fill")
+                          : (navigationState.isUBlockEnabled ? "shield.fill" : "shield.slash.fill"))
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(isYouTube ? .red : (navigationState.isUBlockEnabled ? .blue : .secondary))
+                        .foregroundColor(isYouTube
+                                         ? (navigationState.isUBlockEnabled ? .red : .secondary)
+                                         : (navigationState.isUBlockEnabled ? .blue : .secondary))
                     
-                    Text(isYouTube ? "Ad-Free" : (navigationState.isUBlockEnabled ? "uBlock ON" : "uBlock OFF"))
+                    Text(isYouTube
+                         ? (navigationState.isUBlockEnabled ? "Ad-Free" : "Ad-Free OFF")
+                         : (navigationState.isUBlockEnabled ? "uBlock ON" : "uBlock OFF"))
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(isYouTube ? .primary : (navigationState.isUBlockEnabled ? .primary : .secondary))
+                        .foregroundColor(navigationState.isUBlockEnabled ? .primary : .secondary)
                 }
                 .padding(.horizontal, 9)
                 .frame(height: 32)
                 .liquidGlassButton(cornerRadius: 10)
             }
             .buttonStyle(.plain)
-            .disabled(isYouTube)
-            .help(isYouTube ? "YouTube ad-blocking active" : "Toggle uBlock Origin protection")
+            .help(isYouTube ? "Toggle YouTube ad-blocking and script injection" : "Toggle uBlock Origin protection")
             
             Spacer()
             

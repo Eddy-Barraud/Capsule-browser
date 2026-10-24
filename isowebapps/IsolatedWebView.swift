@@ -380,34 +380,14 @@ extension IsolatedWebViewRepresentable {
         #endif
         
         // 3. Conditional Content Blocking & YouTube Scripts
-        let isYouTube = appItem.urlString.lowercased().contains("youtube.com")
-        
-        if isYouTube {
-            // For YouTube: use dedicated lightweight script & native player controls instead of uBlock
-            let ytPlaceholderScript = WKUserScript(
-                source: YouTubeScripts.ytPlaceholderAndAdBlockScript,
+        if appItem.isUBlockEnabled {
+            UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
+            let ytAdBlockScript = WKUserScript(
+                source: YouTubeScripts.adBlockScript,
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true
             )
-            configuration.userContentController.addUserScript(ytPlaceholderScript)
-
-            #if os(macOS)
-            let ytNativeControlsUserScript = WKUserScript(
-                source: YouTubeScripts.ytNativeControlsScript,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true
-            )
-            configuration.userContentController.addUserScript(ytNativeControlsUserScript)
-            #endif
-        } else if appItem.isUBlockEnabled {
-            // For other websites: load standard uBlock Origin rules and cosmetic scripts if enabled
-            UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
-        }
-        
-        // 4. Configure Application User Agent
-        if isYouTube {
-            let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-            configuration.applicationNameForUserAgent = "isowebapps/\(appVersion)"
+            configuration.userContentController.addUserScript(ytAdBlockScript)
         }
         
         #if os(macOS)
@@ -417,13 +397,11 @@ extension IsolatedWebViewRepresentable {
         webView.scrollView.keyboardDismissMode = .interactive
         #endif
         
-        if !isYouTube {
-            #if os(macOS)
-            webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15"
-            #else
-            webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1"
-            #endif
-        }
+        #if os(macOS)
+        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15"
+        #else
+        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1"
+        #endif
         
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
@@ -466,16 +444,21 @@ extension IsolatedWebViewRepresentable {
             webView?.stopLoading()
             webView?.loadHTMLString("", baseURL: nil)
         }
-        navigationState.onToggleUBlock = { [weak webView, weak contextCoordinator = context.coordinator] isEnabled in
-            guard let webView = webView, let coordinator = contextCoordinator else { return }
+        navigationState.onToggleUBlock = { [weak webView] isEnabled in
+            guard let webView = webView else { return }
             let config = webView.configuration
-            let isYT = coordinator.appItem.urlString.lowercased().contains("youtube.com")
-            guard !isYT else { return }
             
             if isEnabled {
                 UBlockOriginExtensionManager.shared.applyToConfiguration(config)
+                let ytAdBlockScript = WKUserScript(
+                    source: YouTubeScripts.adBlockScript,
+                    injectionTime: .atDocumentEnd,
+                    forMainFrameOnly: true
+                )
+                config.userContentController.addUserScript(ytAdBlockScript)
             } else {
                 UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
+                webView.evaluateJavaScript(YouTubeScripts.cleanupScript, completionHandler: nil)
             }
             webView.reload()
         }
