@@ -545,6 +545,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     let modelContext: ModelContext
     weak var webView: WKWebView?
     var onOpenNewWindowOrTab: ((URL) -> Void)?
+    private var hasCommittedAnyPage: Bool = false
     private var backForwardObserver: NSKeyValueObservation?
     private var canGoForwardObserver: NSKeyValueObservation?
     private var urlObserver: NSKeyValueObservation?
@@ -651,7 +652,9 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         
         if appItem.openLinksInSafariReaderMode, let url = navigationAction.request.url {
             let isUserClick = navigationAction.navigationType == .linkActivated
-            let isExternalRedirect = navigationAction.navigationType == .other && webView.url != nil && webView.url?.absoluteString != "about:blank"
+            let isExternalRedirect = navigationAction.navigationType == .other && (
+                !hasCommittedAnyPage || (webView.url != nil && webView.url?.absoluteString != "about:blank")
+            )
             
             // If the link is on an external domain or is a known article redirector (like Google News /read/...),
             // open it in Safari Reader mode and cancel navigation inside the isolated WKWebView.
@@ -661,6 +664,17 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
                 #endif
                 decisionHandler(.cancel)
                 openInSafariReader(url: url)
+                #if os(macOS)
+                // If this secondary tab/window was just spawned for a redirect link and hasn't rendered any page yet,
+                // close the empty redirect tab/window automatically.
+                if !hasCommittedAnyPage {
+                    DispatchQueue.main.async { [weak webView] in
+                        if let window = webView?.window, window !== MainWindowTracker.shared.mainWindow {
+                            window.close()
+                        }
+                    }
+                }
+                #endif
                 return
             }
         }
@@ -736,6 +750,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
+            hasCommittedAnyPage = true
             navigationState.currentURLString = urlString
         }
     }
@@ -784,6 +799,16 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         #endif
         if navigationAction.targetFrame == nil {
             if let url = navigationAction.request.url {
+                // If "Open Links in Safari Reader" is enabled and the target URL is external (or a known redirector),
+                // open it directly in Safari Reader without spawning an empty tab or window first.
+                if appItem.openLinksInSafariReaderMode && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
+                    #if DEBUG
+                    print("[IsolatedWebView] createWebViewWith: external/redirect URL with Safari Reader enabled, opening directly in Safari: \(url)")
+                    #endif
+                    openInSafariReader(url: url)
+                    return nil
+                }
+                
                 #if os(macOS)
                 let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
                 let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
@@ -804,26 +829,12 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
                     }
                     return nil
                 }
-                
-                // In single window mode on macOS:
-                if appItem.openLinksInSafariReaderMode && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
-                    #if DEBUG
-                    print("[IsolatedWebView] Single window mode: opening in Safari Reader")
-                    #endif
-                    openInSafariReader(url: url)
-                } else {
-                    #if DEBUG
-                    print("[IsolatedWebView] Single window mode: loading in current webview")
-                    #endif
-                    webView.load(navigationAction.request)
-                }
-                #else
-                if appItem.openLinksInSafariReaderMode && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
-                    openInSafariReader(url: url)
-                } else {
-                    webView.load(navigationAction.request)
-                }
                 #endif
+                
+                #if DEBUG
+                print("[IsolatedWebView] Single window mode: loading in current webview")
+                #endif
+                webView.load(navigationAction.request)
             } else {
                 #if DEBUG
                 print("[IsolatedWebView] navigationAction.request.url is NIL!")
