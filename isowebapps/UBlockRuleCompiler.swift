@@ -31,6 +31,15 @@ public final class UBlockRuleCompiler {
                 continue
             }
             
+            // Skip DNR rules that rely on conditions unsupported by WebKit Content Blockers.
+            // Compiling these without their narrowing conditions causes broad false-positive blocks.
+            if condition["responseHeaders"] != nil ||
+               condition["excludedRequestDomains"] != nil ||
+               condition["regexFilter"] != nil ||
+               condition["excludedResourceTypes"] != nil {
+                continue
+            }
+            
             // Map action
             var wkAction: [String: Any] = [:]
             switch actionType {
@@ -45,11 +54,12 @@ public final class UBlockRuleCompiler {
             // Map condition (trigger)
             var wkTrigger: [String: Any] = [:]
             
-            if let initiatorDomains = condition["initiatorDomains"] as? [String], !initiatorDomains.isEmpty {
+            if let initiatorDomains = condition["initiatorDomains"] as? [String] {
                 let validDomains = sanitizeDomains(initiatorDomains)
-                if !validDomains.isEmpty {
-                    wkTrigger["if-domain"] = validDomains
-                }
+                // If initiatorDomains was specified in DNR (e.g. bare TLDs like ["de"] or ["pl"])
+                // but none are valid WebKit domains, skip the rule instead of making it global!
+                guard !validDomains.isEmpty else { continue }
+                wkTrigger["if-domain"] = validDomains
             }
             
             if let excludedInitiatorDomains = condition["excludedInitiatorDomains"] as? [String], !excludedInitiatorDomains.isEmpty {
@@ -67,7 +77,7 @@ public final class UBlockRuleCompiler {
                 }
             }
             
-            if let resourceTypes = condition["resourceTypes"] as? [String], !resourceTypes.isEmpty {
+            if let resourceTypes = condition["resourceTypes"] as? [String] {
                 var wkResourceTypes: [String] = []
                 for res in resourceTypes {
                     switch res {
@@ -83,13 +93,24 @@ public final class UBlockRuleCompiler {
                     default: break
                     }
                 }
-                if !wkResourceTypes.isEmpty {
-                    wkTrigger["resource-type"] = wkResourceTypes
+                // Note: in DNR, "ping" maps to "raw" in WebKit, which also matches XHR/fetch!
+                // If a rule only targets "ping" without a specific urlFilter or requestDomains,
+                // skip it so we don't block all third-party XHR/fetch requests.
+                if resourceTypes == ["ping"] && condition["urlFilter"] == nil && condition["requestDomains"] == nil {
+                    continue
                 }
+                guard !wkResourceTypes.isEmpty else { continue }
+                wkTrigger["resource-type"] = Array(Set(wkResourceTypes))
             }
             
-            if let requestDomains = condition["requestDomains"] as? [String], !requestDomains.isEmpty {
+            let rawUrlFilter = condition["urlFilter"] as? String
+            
+            if let requestDomains = condition["requestDomains"] as? [String] {
                 let validRequestDomains = sanitizeDomains(requestDomains)
+                // If requestDomains was specified (e.g. bare TLD ["com"] or ["video"])
+                // but none are valid hostnames with a dot, skip the rule completely!
+                guard !validRequestDomains.isEmpty else { continue }
+                
                 for domain in validRequestDomains {
                     var domainTrigger = wkTrigger
                     let cleanDomain = domain.hasPrefix("*") ? String(domain.dropFirst()) : domain
@@ -103,22 +124,34 @@ public final class UBlockRuleCompiler {
                             escaped.append(char)
                         }
                     }
-                    domainTrigger["url-filter"] = "^https?://[^/]*" + escaped
+                    
+                    // If the DNR rule has both requestDomains and urlFilter, preserve the urlFilter path if simple,
+                    // otherwise anchor to the requestDomain.
+                    if let uf = rawUrlFilter, !uf.isEmpty, uf != "*" {
+                        let convertedUF = convertUrlFilterToWebKitRegex(uf)
+                        if convertedUF != ".*" && !convertedUF.hasPrefix("^") {
+                            domainTrigger["url-filter"] = "^https?://[^/]*" + escaped + "[/?#:].*" + convertedUF
+                        } else {
+                            domainTrigger["url-filter"] = "^https?://[^/]*" + escaped + "[/?#:]"
+                        }
+                    } else {
+                        domainTrigger["url-filter"] = "^https?://[^/]*" + escaped + "[/?#:]"
+                    }
                     webkitRules.append([
                         "trigger": domainTrigger,
                         "action": wkAction
                     ])
                 }
-            } else if let urlFilter = condition["urlFilter"] as? String {
+            } else if let urlFilter = rawUrlFilter {
                 let convertedRegex = convertUrlFilterToWebKitRegex(urlFilter)
-                if !convertedRegex.isEmpty {
+                if !convertedRegex.isEmpty && convertedRegex != ".*" {
                     wkTrigger["url-filter"] = convertedRegex
                     webkitRules.append([
                         "trigger": wkTrigger,
                         "action": wkAction
                     ])
                 }
-            } else {
+            } else if wkTrigger["if-domain"] != nil {
                 wkTrigger["url-filter"] = ".*"
                 webkitRules.append([
                     "trigger": wkTrigger,
@@ -138,7 +171,7 @@ public final class UBlockRuleCompiler {
                 continue
             }
             // In WebKit Content Blockers, if-domain and unless-domain must contain a dot (domain.tld)
-            // Bare TLDs like "de" or "pl" are invalid in WebKit domain triggers.
+            // Bare TLDs like "de", "com", "video", or "pl" are invalid in WebKit domain triggers.
             guard domain.contains(".") else { continue }
             
             // Domain must only contain valid hostname chars (a-z, 0-9, ., -, *)
@@ -215,4 +248,3 @@ public final class UBlockRuleCompiler {
         return regex
     }
 }
-

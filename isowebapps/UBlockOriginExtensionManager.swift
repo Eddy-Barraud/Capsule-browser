@@ -35,7 +35,13 @@ public final class UBlockOriginExtensionManager: ObservableObject {
     /// Prepares content blocking rule lists and user scripts asynchronously during app startup
     public func prepare() async {
         guard !isInitialized else { return }
-        await loadRulesAndScriptsAsync(forceRecompile: false)
+        let currentCompilerVersion = 2
+        let savedCompilerVersion = UserDefaults.standard.integer(forKey: "ublock_compiler_version")
+        let needsForcedRecompile = (savedCompilerVersion < currentCompilerVersion)
+        await loadRulesAndScriptsAsync(forceRecompile: needsForcedRecompile)
+        if needsForcedRecompile {
+            UserDefaults.standard.set(currentCompilerVersion, forKey: "ublock_compiler_version")
+        }
         isInitialized = true
     }
     
@@ -187,6 +193,7 @@ public final class UBlockOriginExtensionManager: ObservableObject {
             // Inject essential cosmetic hiding CSS for common ad containers
             let globalHideCSS = """
             (function() {
+                if ((window.location.hostname || '').includes('youtube.com')) return;
                 const style = document.createElement('style');
                 style.type = 'text/css';
                 style.id = 'ublock-cosmetic-rules';
@@ -220,6 +227,7 @@ public final class UBlockOriginExtensionManager: ObservableObject {
             // Inject scriptlet defusers (Google IMA, Google Tag, etc.)
             let scriptletCode = """
             (function() {
+                if ((window.location.hostname || '').includes('youtube.com')) return;
                 window.google_ad_client = undefined;
                 window.adsbygoogle = window.adsbygoogle || [];
                 window.adsbygoogle.push = function() {};

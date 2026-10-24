@@ -252,7 +252,10 @@ final class WindowAccessorView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let window = self.window {
-            onWindow?(window)
+            DispatchQueue.main.async { [weak self, weak window] in
+                guard let window = window else { return }
+                self?.onWindow?(window)
+            }
         }
     }
 }
@@ -264,7 +267,10 @@ struct WindowAccessor: NSViewRepresentable {
         let view = WindowAccessorView()
         view.onWindow = onWindow
         if let window = view.window {
-            onWindow(window)
+            DispatchQueue.main.async { [weak window] in
+                guard let window = window else { return }
+                onWindow(window)
+            }
         }
         return view
     }
@@ -272,7 +278,10 @@ struct WindowAccessor: NSViewRepresentable {
     func updateNSView(_ nsView: WindowAccessorView, context: Context) {
         nsView.onWindow = onWindow
         if let window = nsView.window {
-            onWindow(window)
+            DispatchQueue.main.async { [weak window] in
+                guard let window = window else { return }
+                onWindow(window)
+            }
         }
     }
 }
@@ -332,10 +341,16 @@ struct CapsuleWindowHostView: View {
         }
         .background(
             WindowAccessor { window in
-                hostingWindow = window
+                if hostingWindow !== window {
+                    hostingWindow = window
+                }
                 let titleToSet = currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle
-                window.title = titleToSet
-                window.tab.title = titleToSet
+                if window.title != titleToSet {
+                    window.title = titleToSet
+                }
+                if window.tab.title != titleToSet {
+                    window.tab.title = titleToSet
+                }
                 guard !hasConfiguredWindow else { return }
                 hasConfiguredWindow = true
                 

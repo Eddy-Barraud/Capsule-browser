@@ -379,15 +379,9 @@ extension IsolatedWebViewRepresentable {
         configuration.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
         #endif
         
-        // 3. Conditional Content Blocking & YouTube Scripts
+        // 3. Conditional Content Blocking
         if appItem.isUBlockEnabled {
             UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
-            let ytAdBlockScript = WKUserScript(
-                source: YouTubeScripts.adBlockScript,
-                injectionTime: .atDocumentEnd,
-                forMainFrameOnly: true
-            )
-            configuration.userContentController.addUserScript(ytAdBlockScript)
         }
         
         #if os(macOS)
@@ -450,15 +444,8 @@ extension IsolatedWebViewRepresentable {
             
             if isEnabled {
                 UBlockOriginExtensionManager.shared.applyToConfiguration(config)
-                let ytAdBlockScript = WKUserScript(
-                    source: YouTubeScripts.adBlockScript,
-                    injectionTime: .atDocumentEnd,
-                    forMainFrameOnly: true
-                )
-                config.userContentController.addUserScript(ytAdBlockScript)
             } else {
                 UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
-                webView.evaluateJavaScript(YouTubeScripts.cleanupScript, completionHandler: nil)
             }
             webView.reload()
         }

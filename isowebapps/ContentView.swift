@@ -576,7 +576,9 @@ struct ContentView: View {
             #if os(macOS)
             .background(
                 WindowAccessor { window in
-                    hostingWindow = window
+                    if hostingWindow !== window {
+                        hostingWindow = window
+                    }
                     let tracker = MainWindowTracker.shared
                     let currentMain = tracker.mainWindow
                     if currentMain == nil || currentMain === window || !(currentMain?.isVisible ?? false) || tracker.isReopeningFromDock {
@@ -601,8 +603,12 @@ struct ContentView: View {
                         window.tabbingMode = .disallowed
                     }
                     if selectedWebApp == nil {
-                        window.title = "Capsule Browser"
-                        window.tab.title = "Capsule Browser"
+                        if window.title != "Capsule Browser" {
+                            window.title = "Capsule Browser"
+                        }
+                        if window.tab.title != "Capsule Browser" {
+                            window.tab.title = "Capsule Browser"
+                        }
                     }
                 }
             )
