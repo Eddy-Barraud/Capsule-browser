@@ -9,16 +9,6 @@ struct WebAppGroupTileView: View {
     let onEditGroup: () -> Void
     let onDeleteGroup: () -> Void
     
-    #if os(iOS)
-    let columns = [
-        GridItem(.flexible(), spacing: 20, alignment: .top)
-    ]
-    #else
-    let columns = [
-        GridItem(.flexible(), spacing: 20, alignment: .top)
-    ]
-    #endif
-    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
@@ -46,7 +36,7 @@ struct WebAppGroupTileView: View {
             .padding(.top, 16)
             
             if let items = group.items, !items.isEmpty {
-                LazyVGrid(columns: columns, spacing: 16) {
+                VStack(spacing: 16) {
                     ForEach(items.sorted(by: { $0.displayOrder < $1.displayOrder })) { app in
                         WebAppTileView(
                             app: app,
@@ -89,7 +79,6 @@ struct WebAppGroupTileView: View {
             RoundedRectangle(cornerRadius: 32)
                 .stroke(Color.white.opacity(0.2), lineWidth: 1)
         )
-        .compositingGroup()
     }
 }
 

@@ -54,7 +54,7 @@ struct ContentView: View {
     ]
     #else
     let columns = [
-        GridItem(.adaptive(minimum: 300, maximum: 350), spacing: 20, alignment: .top)
+        GridItem(.adaptive(minimum: 340, maximum: 520), spacing: 20, alignment: .top)
     ]
     #endif
     
@@ -235,8 +235,7 @@ struct ContentView: View {
     
     // Liquid Glass Home Screen
     private var homeScreenView: some View {
-        _ = allHomeItems
-        return NavigationStack {
+        NavigationStack {
             ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -586,15 +585,11 @@ struct ContentView: View {
                         window.delegate = tracker
                         tracker.applySavedSizeIfNeeded(to: window)
                     } else if currentMain !== window {
-                        window.delegate = tracker
-                        tracker.applySavedSizeIfNeeded(to: window)
-                        // Opened as a secondary window/tab while main window was visible and active
-                        if selectedWebApp == nil {
-                            selectedWebApp = WebAppItem(
-                                name: defaultSearchEngine.displayName,
-                                urlString: defaultSearchEngine.homeURLString(customTemplate: customSearchEngineURL)
-                            )
-                        }
+                        // Prevent duplicate main ContentView windows restored or spawned by macOS on reopen
+                        window.delegate = nil
+                        window.close()
+                        tracker.focusMainWindow()
+                        return
                     }
                     window.tabbingIdentifier = "CapsuleBrowserWindow"
                     if windowPresentationMode == .tabs {
@@ -793,6 +788,27 @@ struct ContentView: View {
     }
 }
 
+// In-memory cache of decoded PlatformImages keyed by capsule UUID + icon byte count
+// so scrolling the Home Screen never decodes PNG/ICO Data on the main thread.
+enum IconImageCache {
+    private static let cache: NSCache<NSString, PlatformImage> = {
+        let c = NSCache<NSString, PlatformImage>()
+        c.countLimit = 256
+        return c
+    }()
+    
+    static func image(for id: UUID, data: Data?) -> PlatformImage? {
+        guard let data = data, !data.isEmpty else { return nil }
+        let key = "\(id.uuidString)-\(data.count)" as NSString
+        if let cached = cache.object(forKey: key) {
+            return cached
+        }
+        guard let decoded = PlatformImage(data: data) else { return nil }
+        cache.setObject(decoded, forKey: key)
+        return decoded
+    }
+}
+
 // Tile View for Each Web App with Liquid Glass Design
 struct WebAppTileView: View {
     @Environment(\.colorScheme) var colorScheme
@@ -807,8 +823,7 @@ struct WebAppTileView: View {
             // Left Column: App Logo (Clickable for Start)
             Button(action: onStart) {
                 ZStack {
-                    if let iconData = app.iconData,
-                       let platformImage = PlatformImage(data: iconData) {
+                    if let platformImage = IconImageCache.image(for: app.id, data: app.iconData) {
                         Image(platformImage: platformImage)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
@@ -871,16 +886,16 @@ struct WebAppTileView: View {
                     )
                 }
                 
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Button(action: onStart) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 5) {
                             Image(systemName: "play.fill")
                             Text("Start")
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.8)
+                                .minimumScaleFactor(0.85)
                         }
                         .font(.system(size: 14, weight: .semibold))
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity, minHeight: 44) // iOS accessibility size
                         .liquidGlassButton(cornerRadius: 12)
@@ -888,14 +903,14 @@ struct WebAppTileView: View {
                     .buttonStyle(.plain)
                     
                     Button(action: onResume) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 5) {
                             Image(systemName: "arrow.uturn.forward")
                             Text("Resume")
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.8)
+                                .minimumScaleFactor(0.85)
                         }
                         .font(.system(size: 14, weight: .semibold))
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity, minHeight: 44) // iOS accessibility size
                         .liquidGlassButton(cornerRadius: 12)
@@ -906,7 +921,6 @@ struct WebAppTileView: View {
         }
         .padding(16)
         .liquidGlassCard(cornerRadius: 24)
-        .compositingGroup()
     }
 }
 
@@ -1105,8 +1119,7 @@ struct OpenURLSheet: View {
     
     private func appRow(_ app: WebAppItem) -> some View {
         HStack {
-            if let iconData = app.iconData,
-               let platformImage = PlatformImage(data: iconData) {
+            if let platformImage = IconImageCache.image(for: app.id, data: app.iconData) {
                 Image(platformImage: platformImage)
                     .resizable()
                     .frame(width: 24, height: 24)

@@ -23,12 +23,8 @@ struct LiquidGlassCardModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(
                         colorScheme == .dark
-                        ? Color(white: 0.15).opacity(0.65)
-                        : Color.white.opacity(0.65)
-                    )
-                    .background(
-                        .ultraThinMaterial,
-                        in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        ? Color(white: 0.18).opacity(0.88)
+                        : Color.white.opacity(0.88)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)

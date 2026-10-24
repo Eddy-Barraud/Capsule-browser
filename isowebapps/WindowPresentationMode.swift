@@ -108,6 +108,11 @@ struct CapsuleWindowPayload: Codable, Hashable, Identifiable {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        UserDefaults.standard.register(defaults: ["NSQuitAlwaysKeepsWindows": false])
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+    
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.registerForRemoteNotifications()
     }
@@ -129,7 +134,9 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     
     weak var mainWindow: NSWindow?
     private(set) var isReopeningFromDock: Bool = false
+    private(set) var isClosingAllTabs: Bool = false
     private var configuredWindows = NSHashTable<NSWindow>.weakObjects()
+    private var closeHookedWindows = NSHashTable<NSWindow>.weakObjects()
     
     private override init() {
         super.init()
@@ -158,6 +165,8 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     }
     
     func applySavedSizeIfNeeded(to window: NSWindow) {
+        window.isRestorable = false
+        installCloseButtonHookIfNeeded(on: window)
         guard !configuredWindows.contains(window) else { return }
         configuredWindows.add(window)
         
@@ -183,6 +192,46 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         window.setFrame(frame, display: true)
     }
     
+    func installCloseButtonHookIfNeeded(on window: NSWindow) {
+        guard !closeHookedWindows.contains(window) else { return }
+        closeHookedWindows.add(window)
+        if let closeButton = window.standardWindowButton(.closeButton) {
+            closeButton.target = self
+            closeButton.action = #selector(handleTrafficLightCloseButton(_:))
+        }
+    }
+    
+    @objc private func handleTrafficLightCloseButton(_ sender: NSButton) {
+        guard let clickedWindow = sender.window else { return }
+        closeAllTabsAndMainWindow(startingFrom: clickedWindow)
+    }
+    
+    func closeAllTabsAndMainWindow(startingFrom window: NSWindow) {
+        guard !isClosingAllTabs else { return }
+        isClosingAllTabs = true
+        defer { isClosingAllTabs = false }
+        
+        persistWindowSize(from: window)
+        
+        let tabsToClose = window.tabGroup?.windows ?? [window]
+        for tabWin in tabsToClose where tabWin !== window && tabWin !== mainWindow {
+            tabWin.delegate = nil
+            tabWin.close()
+        }
+        if let main = mainWindow, main !== window {
+            mainWindow = nil
+            NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: main)
+            main.delegate = nil
+            main.close()
+        }
+        if window === mainWindow {
+            mainWindow = nil
+            NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: window)
+        }
+        window.delegate = nil
+        window.close()
+    }
+    
     func focusMainWindow() {
         guard let window = mainWindow ?? NSApp.windows.first(where: {
             !($0 is NSPanel) && $0.isVisible && $0.tabbingIdentifier == "CapsuleBrowserWindow"
@@ -203,11 +252,16 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     func handleDockReopen(hasVisibleWindows flag: Bool) {
         if !flag {
             isReopeningFromDock = true
+            // Close any hidden/lingering secondary capsule windows so reopening starts with only the main window
+            for win in NSApp.windows where !(win is NSPanel) && win !== mainWindow {
+                win.delegate = nil
+                win.close()
+            }
             if let currentMain = mainWindow, !currentMain.isVisible {
                 mainWindow = nil
             }
             NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: nil)
-            DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 self?.isReopeningFromDock = false
             }
         }
@@ -226,11 +280,11 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     }
     
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // Prevent closing the home screen tab when multiple tabs are open in the tab bar
-        if let tabGroup = sender.tabGroup, tabGroup.windows.count > 1 {
-            #if DEBUG
-            print("[MainWindowTracker] Prevented closing the home screen tab while other tabs are open.")
-            #endif
+        if isClosingAllTabs {
+            return true
+        }
+        if sender === mainWindow {
+            closeAllTabsAndMainWindow(startingFrom: sender)
             return false
         }
         return true
@@ -353,6 +407,8 @@ struct CapsuleWindowHostView: View {
                 }
                 guard !hasConfiguredWindow else { return }
                 hasConfiguredWindow = true
+                window.isRestorable = false
+                MainWindowTracker.shared.installCloseButtonHookIfNeeded(on: window)
                 
                 if payload.openAsTab {
                     window.tabbingMode = .preferred
