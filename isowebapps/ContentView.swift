@@ -582,7 +582,10 @@ struct ContentView: View {
                     if currentMain == nil || currentMain === window || !(currentMain?.isVisible ?? false) || tracker.isReopeningFromDock {
                         tracker.mainWindow = window
                         window.delegate = tracker
+                        tracker.applySavedSizeIfNeeded(to: window)
                     } else if currentMain !== window {
+                        window.delegate = tracker
+                        tracker.applySavedSizeIfNeeded(to: window)
                         // Opened as a secondary window/tab while main window was visible and active
                         if selectedWebApp == nil {
                             selectedWebApp = WebAppItem(

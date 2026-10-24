@@ -80,11 +80,13 @@ public struct CapsuleSyncConflict: Identifiable, Equatable {
 public final class CloudSyncManager: ObservableObject {
     public static let shared = CloudSyncManager()
     public static let storageKey = "iCloudSyncEnabled"
+    public static let cloudKitContainerIdentifier = "iCloud.fr.trevalim.isowebapps"
     
     @Published public private(set) var isICloudSyncEnabled: Bool
     @Published public private(set) var activeContainer: ModelContainer
     @Published public private(set) var containerRefreshID: UUID = UUID()
     @Published public private(set) var isSyncingWithCloud: Bool = false
+    @Published public private(set) var syncStatusError: String? = nil
     
     /// Sequential queue of same-name capsule conflicts presented one at a time.
     @Published public private(set) var pendingConflicts: [CapsuleSyncConflict] = []
@@ -98,6 +100,7 @@ public final class CloudSyncManager: ObservableObject {
     private var localContainerInstance: ModelContainer?
     private var cloudContainerInstance: ModelContainer?
     private var remoteChangeObserver: NSObjectProtocol?
+    private var remoteChangeDebounceTask: Task<Void, Never>?
     
     /// Tracks capsules uploaded in the current activation session so late CloudKit imports with matching names also trigger conflict resolution.
     private var uploadedSessionCapsules: [UUID: CapsuleSnapshot] = [:]
@@ -107,13 +110,35 @@ public final class CloudSyncManager: ObservableObject {
         WebAppGroup.self,
     ])
     
+    private static var localStoreURL: URL {
+        ensureApplicationSupportDirectory()
+        return URL.applicationSupportDirectory.appending(path: "LocalStore.store")
+    }
+    
+    private static var cloudStoreURL: URL {
+        ensureApplicationSupportDirectory()
+        return URL.applicationSupportDirectory.appending(path: "CloudStore.store")
+    }
+    
+    private static func ensureApplicationSupportDirectory() {
+        try? FileManager.default.createDirectory(
+            at: URL.applicationSupportDirectory,
+            withIntermediateDirectories: true
+        )
+    }
+    
     private init() {
         let enabled = UserDefaults.standard.object(forKey: Self.storageKey) as? Bool ?? false
         self.isICloudSyncEnabled = enabled
         
         if enabled {
-            let container = Self.makeCloudContainer()
-            self.cloudContainerInstance = container
+            let (container, errorMessage) = Self.makeCloudContainer()
+            self.syncStatusError = errorMessage
+            if errorMessage == nil {
+                self.cloudContainerInstance = container
+            } else {
+                self.localContainerInstance = container
+            }
             self.activeContainer = container
         } else {
             let container = Self.makeLocalContainer()
@@ -130,7 +155,7 @@ public final class CloudSyncManager: ObservableObject {
         let config = ModelConfiguration(
             "LocalStore",
             schema: appSchema,
-            isStoredInMemoryOnly: false,
+            url: localStoreURL,
             cloudKitDatabase: .none
         )
         do {
@@ -140,18 +165,95 @@ public final class CloudSyncManager: ObservableObject {
         }
     }
     
-    private static func makeCloudContainer() -> ModelContainer {
+    private static func makeCloudContainer() -> (container: ModelContainer, errorMessage: String?) {
+        migrateLegacyDefaultStoreIfNeeded()
+        
         let config = ModelConfiguration(
+            "CloudStore",
             schema: appSchema,
-            isStoredInMemoryOnly: false,
-            cloudKitDatabase: .automatic
+            url: cloudStoreURL,
+            cloudKitDatabase: .private(cloudKitContainerIdentifier)
         )
         do {
-            return try ModelContainer(for: appSchema, configurations: [config])
+            let container = try ModelContainer(for: appSchema, configurations: [config])
+            return (container, nil)
         } catch {
-            // Fallback to local container if CloudKit initialization fails in restricted environments
-            return makeLocalContainer()
+            let message = "iCloud Sync could not connect to \(cloudKitContainerIdentifier): \(error.localizedDescription)"
+            #if DEBUG
+            print("[CloudSyncManager] \(message)")
+            #endif
+            return (makeLocalContainer(), message)
         }
+    }
+    
+    /// One-time migration from the legacy unnamed `default.store` into `CloudStore.store` if needed.
+    private static func migrateLegacyDefaultStoreIfNeeded() {
+        let fm = FileManager.default
+        let targetURL = cloudStoreURL
+        guard !fm.fileExists(atPath: targetURL.path(percentEncoded: false)) else { return }
+        
+        let legacyURL = URL.applicationSupportDirectory.appending(path: "default.store")
+        guard fm.fileExists(atPath: legacyURL.path(percentEncoded: false)) else { return }
+        
+        let legacyConfig = ModelConfiguration(
+            schema: appSchema,
+            url: legacyURL,
+            cloudKitDatabase: .none
+        )
+        let targetConfig = ModelConfiguration(
+            "CloudStore",
+            schema: appSchema,
+            url: targetURL,
+            cloudKitDatabase: .none
+        )
+        
+        guard let legacyContainer = try? ModelContainer(for: appSchema, configurations: [legacyConfig]),
+              let targetContainer = try? ModelContainer(for: appSchema, configurations: [targetConfig]) else {
+            return
+        }
+        
+        let legacyContext = legacyContainer.mainContext
+        let targetContext = targetContainer.mainContext
+        
+        let existingTargetItems = (try? targetContext.fetch(FetchDescriptor<WebAppItem>())) ?? []
+        guard existingTargetItems.isEmpty else { return }
+        
+        let legacyGroups = (try? legacyContext.fetch(FetchDescriptor<WebAppGroup>())) ?? []
+        let legacyItems = (try? legacyContext.fetch(FetchDescriptor<WebAppItem>())) ?? []
+        guard !legacyGroups.isEmpty || !legacyItems.isEmpty else { return }
+        
+        var groupMap: [String: WebAppGroup] = [:]
+        for g in legacyGroups {
+            let copiedGroup = WebAppGroup(id: g.id, name: g.name, displayOrder: g.displayOrder)
+            copiedGroup.createdAt = g.createdAt
+            targetContext.insert(copiedGroup)
+            let key = normalizedName(g.name)
+            if !key.isEmpty {
+                groupMap[key] = copiedGroup
+            }
+        }
+        
+        for item in legacyItems {
+            let copiedItem = WebAppItem(
+                id: item.id,
+                name: item.name,
+                urlString: item.urlString,
+                lastOpenedURLString: item.lastOpenedURLString,
+                iconData: item.iconData,
+                createdAt: item.createdAt,
+                lastVisited: item.lastVisited,
+                isUBlockEnabled: item.isUBlockEnabled,
+                openLinksInSafariReaderMode: item.openLinksInSafariReaderMode,
+                deleteCookiesOnClose: item.deleteCookiesOnClose,
+                displayOrder: item.displayOrder,
+                isolatedCookiesData: item.isolatedCookiesData
+            )
+            if let gName = item.group?.name {
+                copiedItem.group = groupMap[normalizedName(gName)]
+            }
+            targetContext.insert(copiedItem)
+        }
+        try? targetContext.save()
     }
     
     private func getLocalContainer() -> ModelContainer {
@@ -167,8 +269,11 @@ public final class CloudSyncManager: ObservableObject {
         if let existing = cloudContainerInstance {
             return existing
         }
-        let created = Self.makeCloudContainer()
-        cloudContainerInstance = created
+        let (created, errorMessage) = Self.makeCloudContainer()
+        syncStatusError = errorMessage
+        if errorMessage == nil {
+            cloudContainerInstance = created
+        }
         return created
     }
     
@@ -190,6 +295,7 @@ public final class CloudSyncManager: ObservableObject {
         
         uploadedSessionCapsules.removeAll()
         clearConflicts()
+        syncStatusError = nil
         switchToContainer(localContainer, cloudEnabled: false)
     }
     
@@ -203,6 +309,7 @@ public final class CloudSyncManager: ObservableObject {
         
         uploadedSessionCapsules.removeAll()
         clearConflicts()
+        syncStatusError = nil
         switchToContainer(localContainer, cloudEnabled: false)
     }
     
@@ -219,7 +326,7 @@ public final class CloudSyncManager: ObservableObject {
         clearConflicts()
         
         let cloudContainer = getCloudContainer()
-        switchToContainer(cloudContainer, cloudEnabled: true)
+        switchToContainer(cloudContainer, cloudEnabled: syncStatusError == nil)
     }
     
     /// Activates iCloud sync, uploads local app data to iCloud, and queues any same-name capsule clashes for one-at-a-time user resolution.
@@ -230,6 +337,11 @@ public final class CloudSyncManager: ObservableObject {
         let localCapsules = fetchCapsuleSnapshots(from: localContext)
         
         let cloudContainer = getCloudContainer()
+        guard syncStatusError == nil else {
+            switchToContainer(localContainer, cloudEnabled: false)
+            return
+        }
+        
         switchToContainer(cloudContainer, cloudEnabled: true)
         
         guard !localGroups.isEmpty || !localCapsules.isEmpty else {
@@ -240,7 +352,7 @@ public final class CloudSyncManager: ObservableObject {
         
         Task { @MainActor in
             // Allow CloudKit container a brief window to load cached/imported records
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
             self.performLocalToCloudMerge(localGroups: localGroups, localCapsules: localCapsules)
             self.isSyncingWithCloud = false
         }
@@ -381,7 +493,7 @@ public final class CloudSyncManager: ObservableObject {
         }
     }
     
-    // MARK: - Late CloudKit Import Clash Detection
+    // MARK: - Late CloudKit Import Clash Detection & Remote Refresh
     
     private func setupRemoteChangeObserver() {
         remoteChangeObserver = NotificationCenter.default.addObserver(
@@ -390,23 +502,33 @@ public final class CloudSyncManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.checkForLateRemoteConflicts()
+                self?.scheduleRemoteChangeHandling()
             }
         }
     }
     
-    private func checkForLateRemoteConflicts() {
-        guard isICloudSyncEnabled, !uploadedSessionCapsules.isEmpty else { return }
+    private func scheduleRemoteChangeHandling() {
+        guard isICloudSyncEnabled else { return }
+        remoteChangeDebounceTask?.cancel()
+        remoteChangeDebounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            self?.handleRemoteStoreChange()
+        }
+    }
+    
+    private func handleRemoteStoreChange() {
+        guard isICloudSyncEnabled else { return }
         let cloudContext = getCloudContainer().mainContext
         guard let allCapsules = try? cloudContext.fetch(FetchDescriptor<WebAppItem>()) else { return }
         
         var newlyDetectedConflicts: [CapsuleSyncConflict] = []
         
+        // 1. Check capsules uploaded during the current activation session
         for (uploadedID, snapshot) in uploadedSessionCapsules {
             let key = Self.normalizedName(snapshot.name)
             guard !key.isEmpty else { continue }
             
-            // Check if a remote capsule with the same normalized name but different ID now exists in CloudStore
             if let remoteMatch = allCapsules.first(where: {
                 $0.id != uploadedID && Self.normalizedName($0.name) == key
             }) {
@@ -427,9 +549,38 @@ public final class CloudSyncManager: ObservableObject {
             }
         }
         
+        // 2. Also detect any same-name duplicate capsules arriving from another device
+        var seenByName: [String: WebAppItem] = [:]
+        for item in allCapsules.sorted(by: { $0.createdAt < $1.createdAt }) {
+            let key = Self.normalizedName(item.name)
+            guard !key.isEmpty else { continue }
+            if let earlierItem = seenByName[key], earlierItem.id != item.id {
+                let alreadyQueued = pendingConflicts.contains(where: {
+                    Self.normalizedName($0.localCapsule.name) == key
+                }) || newlyDetectedConflicts.contains(where: {
+                    Self.normalizedName($0.localCapsule.name) == key
+                })
+                if !alreadyQueued {
+                    newlyDetectedConflicts.append(
+                        CapsuleSyncConflict(
+                            localCapsule: CapsuleSnapshot(from: item),
+                            cloudCapsuleID: earlierItem.id,
+                            cloudCapsuleName: earlierItem.name,
+                            cloudCapsuleURL: earlierItem.urlString,
+                            insertedLocalCapsuleID: item.id
+                        )
+                    )
+                }
+            } else {
+                seenByName[key] = item
+            }
+        }
+        
         if !newlyDetectedConflicts.isEmpty {
             enqueueConflicts(newlyDetectedConflicts)
         }
+        
+        objectWillChange.send()
     }
     
     private func enqueueConflicts(_ conflicts: [CapsuleSyncConflict]) {
@@ -627,7 +778,7 @@ public struct ICloudSyncConflictAlertModifier: ViewModifier {
 public extension View {
     /// Presents a one-at-a-time resolution alert whenever `CloudSyncManager` detects same-name capsule sync clashes.
     @MainActor
-    func iCloudSyncConflictAlert(syncManager: CloudSyncManager = .shared) -> some View {
+    func iCloudSyncConflictAlert(syncManager: CloudSyncManager) -> some View {
         modifier(ICloudSyncConflictAlertModifier(syncManager: syncManager))
     }
 }

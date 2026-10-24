@@ -108,6 +108,10 @@ struct CapsuleWindowPayload: Codable, Hashable, Identifiable {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.registerForRemoteNotifications()
+    }
+    
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         MainWindowTracker.shared.handleDockReopen(hasVisibleWindows: flag)
         return true
@@ -118,12 +122,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 final class MainWindowTracker: NSObject, NSWindowDelegate {
     static let shared = MainWindowTracker()
     static let mainWindowDidCloseNotification = Notification.Name("MainWindowTrackerMainWindowDidClose")
+    static let savedWindowWidthKey = "savedWindowWidth"
+    static let savedWindowHeightKey = "savedWindowHeight"
+    static let minWindowWidth: CGFloat = 800
+    static let minWindowHeight: CGFloat = 600
     
     weak var mainWindow: NSWindow?
     private(set) var isReopeningFromDock: Bool = false
+    private var configuredWindows = NSHashTable<NSWindow>.weakObjects()
     
     private override init() {
         super.init()
+    }
+    
+    var savedWindowSize: CGSize {
+        let width = UserDefaults.standard.double(forKey: Self.savedWindowWidthKey)
+        let height = UserDefaults.standard.double(forKey: Self.savedWindowHeightKey)
+        let resolvedWidth = width >= Self.minWindowWidth ? width : Self.minWindowWidth
+        let resolvedHeight = height >= Self.minWindowHeight ? height : Self.minWindowHeight
+        return CGSize(width: resolvedWidth, height: resolvedHeight)
+    }
+    
+    func persistWindowSize(from window: NSWindow) {
+        guard !window.isMiniaturized,
+              !window.styleMask.contains(.fullScreen) else {
+            return
+        }
+        let contentSize = window.contentLayoutRect.size.width >= Self.minWindowWidth
+            ? window.contentLayoutRect.size
+            : window.frame.size
+        let width = max(Self.minWindowWidth, contentSize.width)
+        let height = max(Self.minWindowHeight, contentSize.height)
+        UserDefaults.standard.set(Double(width), forKey: Self.savedWindowWidthKey)
+        UserDefaults.standard.set(Double(height), forKey: Self.savedWindowHeightKey)
+    }
+    
+    func applySavedSizeIfNeeded(to window: NSWindow) {
+        guard !configuredWindows.contains(window) else { return }
+        configuredWindows.add(window)
+        
+        let targetSize = savedWindowSize
+        let currentSize = window.contentLayoutRect.size
+        guard abs(currentSize.width - targetSize.width) > 1 || abs(currentSize.height - targetSize.height) > 1 else {
+            return
+        }
+        
+        var frame = window.frame
+        let newFrameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: targetSize)).size
+        // Keep the top-left corner anchored (macOS coordinate system has origin at bottom-left)
+        frame.origin.y += (frame.size.height - newFrameSize.height)
+        frame.size = newFrameSize
+        
+        if let screenVisibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame {
+            frame.size.width = min(frame.size.width, screenVisibleFrame.width)
+            frame.size.height = min(frame.size.height, screenVisibleFrame.height)
+            frame.origin.x = max(screenVisibleFrame.minX, min(frame.origin.x, screenVisibleFrame.maxX - frame.size.width))
+            frame.origin.y = max(screenVisibleFrame.minY, min(frame.origin.y, screenVisibleFrame.maxY - frame.size.height))
+        }
+        
+        window.setFrame(frame, display: true)
     }
     
     func focusMainWindow() {
@@ -158,6 +215,16 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     
     // MARK: - NSWindowDelegate
     
+    func windowDidResize(_ notification: Notification) {
+        guard let resizedWindow = notification.object as? NSWindow else { return }
+        persistWindowSize(from: resizedWindow)
+    }
+    
+    func windowDidEndLiveResize(_ notification: Notification) {
+        guard let resizedWindow = notification.object as? NSWindow else { return }
+        persistWindowSize(from: resizedWindow)
+    }
+    
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         // Prevent closing the home screen tab when multiple tabs are open in the tab bar
         if let tabGroup = sender.tabGroup, tabGroup.windows.count > 1 {
@@ -171,6 +238,7 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     
     func windowWillClose(_ notification: Notification) {
         guard let closingWindow = notification.object as? NSWindow else { return }
+        persistWindowSize(from: closingWindow)
         if closingWindow === mainWindow {
             mainWindow = nil
             NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: closingWindow)
@@ -311,6 +379,8 @@ struct CapsuleWindowHostView: View {
                     }
                 } else {
                     window.tabbingMode = .disallowed
+                    window.delegate = MainWindowTracker.shared
+                    MainWindowTracker.shared.applySavedSizeIfNeeded(to: window)
                     window.cascadeTopLeft(from: NSZeroPoint)
                     window.makeKeyAndOrderFront(nil)
                 }

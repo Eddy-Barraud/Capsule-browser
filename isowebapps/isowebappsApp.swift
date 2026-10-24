@@ -12,6 +12,9 @@
 
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import UIKit
+#endif
 
 @main
 struct isowebappsApp: App {
@@ -31,10 +34,17 @@ struct isowebappsApp: App {
                 #if os(macOS)
                 .frame(minWidth: 800, minHeight: 600)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                #elseif os(iOS)
+                .onAppear {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
                 #endif
         }
         #if os(macOS)
-        .defaultSize(width: 800, height: 600)
+        .defaultSize(
+            width: MainWindowTracker.shared.savedWindowSize.width,
+            height: MainWindowTracker.shared.savedWindowSize.height
+        )
         #endif
         .modelContainer(cloudSyncManager.activeContainer)
         
@@ -46,7 +56,10 @@ struct isowebappsApp: App {
                 .frame(minWidth: 800, minHeight: 600)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .defaultSize(width: 800, height: 600)
+        .defaultSize(
+            width: MainWindowTracker.shared.savedWindowSize.width,
+            height: MainWindowTracker.shared.savedWindowSize.height
+        )
         .modelContainer(cloudSyncManager.activeContainer)
         .commands {
             CommandGroup(replacing: .newItem) {

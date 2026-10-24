@@ -318,6 +318,12 @@ struct GeneralSettingsView: View {
                             )
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            
+                            if let errorMessage = syncManager.syncStatusError {
+                                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
                         }
                     }
                     
@@ -663,6 +669,12 @@ struct GeneralSettingsView: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
+                    }
+                    
+                    if let errorMessage = syncManager.syncStatusError {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
                     }
                 }
                 
