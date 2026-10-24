@@ -47,6 +47,9 @@ struct ContentView: View {
     @State private var hostingWindow: NSWindow?
     #endif
     @State private var activeDomainTitle: String = ""
+    #if DEBUG
+    @State private var lastLoggedContainerSize: CGSize = .zero
+    #endif
     
     #if os(iOS)
     let columns = [
@@ -54,7 +57,7 @@ struct ContentView: View {
     ]
     #else
     let columns = [
-        GridItem(.adaptive(minimum: 340, maximum: 520), spacing: 20, alignment: .top)
+        GridItem(.adaptive(minimum: 360), spacing: 24, alignment: .top)
     ]
     #endif
     
@@ -109,11 +112,33 @@ struct ContentView: View {
             await UBlockOriginExtensionManager.shared.prepare()
         }
         .onAppear {
+            _ = CloudSyncManager.shared.deduplicateStore(in: modelContext)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 withAnimation {
                     isInitializing = false
                 }
             }
+        }
+        .onChange(of: webAppGroups.count) { _, _ in
+            if webAppGroups.count > deduplicatedGroups.count {
+                _ = CloudSyncManager.shared.deduplicateStore(in: modelContext)
+            }
+            #if DEBUG
+            if lastLoggedContainerSize != .zero {
+                logHomeLayoutMetrics(containerSize: lastLoggedContainerSize, reason: "webAppGroups.count changed")
+            }
+            #endif
+        }
+        .onChange(of: webApps.count) { _, _ in
+            let uniqueTotal = Set(webApps.map { $0.id }).count
+            if webApps.count > uniqueTotal {
+                _ = CloudSyncManager.shared.deduplicateStore(in: modelContext)
+            }
+            #if DEBUG
+            if lastLoggedContainerSize != .zero {
+                logHomeLayoutMetrics(containerSize: lastLoggedContainerSize, reason: "webApps.count changed")
+            }
+            #endif
         }
         #if os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: MainWindowTracker.mainWindowDidCloseNotification)) { notification in
@@ -227,17 +252,145 @@ struct ContentView: View {
         #endif
     }
 
+    private var deduplicatedGroups: [WebAppGroup] {
+        // Prefer keeping the group instance with the most items when duplicate IDs/names exist
+        let sortedByRichness = webAppGroups.sorted {
+            let count0 = ($0.items ?? []).count
+            let count1 = ($1.items ?? []).count
+            if count0 != count1 { return count0 > count1 }
+            return $0.createdAt < $1.createdAt
+        }
+        var seenIDs = Set<UUID>()
+        var seenNames = Set<String>()
+        var keptObjects = Set<ObjectIdentifier>()
+        for group in sortedByRichness {
+            let normName = group.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !seenIDs.contains(group.id) && (normName.isEmpty || !seenNames.contains(normName)) {
+                seenIDs.insert(group.id)
+                if !normName.isEmpty { seenNames.insert(normName) }
+                keptObjects.insert(ObjectIdentifier(group))
+            }
+        }
+        return webAppGroups.filter { keptObjects.contains(ObjectIdentifier($0)) }
+    }
+    
+    private func deduplicatedItems(for group: WebAppGroup) -> [WebAppItem] {
+        let normGroupName = group.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let matchingItems = webApps.filter { app in
+            guard let g = app.group else { return false }
+            if g.id == group.id { return true }
+            let gName = g.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return !normGroupName.isEmpty && gName == normGroupName
+        }
+        var seenIDs = Set<UUID>()
+        var seenNames = Set<String>()
+        var result: [WebAppItem] = []
+        for app in matchingItems.sorted(by: { $0.displayOrder < $1.displayOrder }) {
+            let normAppName = app.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !seenIDs.contains(app.id) && (normAppName.isEmpty || !seenNames.contains(normAppName)) {
+                seenIDs.insert(app.id)
+                if !normAppName.isEmpty { seenNames.insert(normAppName) }
+                result.append(app)
+            }
+        }
+        return result
+    }
+    
+    private var deduplicatedStandaloneApps: [WebAppItem] {
+        var groupedIDs = Set<UUID>()
+        var groupedNames = Set<String>()
+        for app in webApps where app.group != nil {
+            groupedIDs.insert(app.id)
+            let norm = app.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !norm.isEmpty { groupedNames.insert(norm) }
+        }
+        
+        var seenIDs = Set<UUID>()
+        var seenNames = Set<String>()
+        var result: [WebAppItem] = []
+        for app in webApps where app.group == nil {
+            let norm = app.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !groupedIDs.contains(app.id),
+                  (norm.isEmpty || !groupedNames.contains(norm)),
+                  !seenIDs.contains(app.id),
+                  (norm.isEmpty || !seenNames.contains(norm)) else {
+                continue
+            }
+            seenIDs.insert(app.id)
+            if !norm.isEmpty { seenNames.insert(norm) }
+            result.append(app)
+        }
+        return result
+    }
+
     private var allHomeItems: [HomeGridItem] {
-        let apps = webApps.filter { $0.group == nil }.map { HomeGridItem.app($0) }
-        let groups = webAppGroups.map { HomeGridItem.group($0) }
+        let apps = deduplicatedStandaloneApps.map { HomeGridItem.app($0) }
+        let groups = deduplicatedGroups.map { HomeGridItem.group($0) }
         return (apps + groups).sorted { $0.displayOrder < $1.displayOrder }
     }
+    
+    #if DEBUG
+    private func logHomeLayoutMetrics(containerSize: CGSize, reason: String) {
+        let horizontalPadding: CGFloat = 40 // .padding(.horizontal, 20) * 2
+        let availableWidth = max(0, containerSize.width - horizontalPadding)
+        #if os(macOS)
+        let minColWidth: CGFloat = 360
+        let maxColWidth: CGFloat = .infinity
+        let maxColDesc = "infinity"
+        let spacing: CGFloat = 24
+        #else
+        let minColWidth: CGFloat = availableWidth
+        let maxColWidth: CGFloat = availableWidth
+        let maxColDesc = String(format: "%.0f", maxColWidth)
+        let spacing: CGFloat = 20
+        #endif
+        
+        let rawColCount = Int((availableWidth + spacing) / (minColWidth + spacing))
+        let colCount = max(1, rawColCount)
+        let totalSpacing = CGFloat(colCount - 1) * spacing
+        let rawColWidth = (availableWidth - totalSpacing) / CGFloat(colCount)
+        let actualColWidth = min(maxColWidth, max(minColWidth, rawColWidth))
+        let unusedHorizontalSpace = max(0, availableWidth - (CGFloat(colCount) * actualColWidth + totalSpacing))
+        // Inside a group tile: 32pt group padding + 32pt tile padding + 80pt icon + 16pt icon spacing + 10pt button spacing = 170pt
+        let buttonWidthInGroup = max(0, (actualColWidth - 170) / 2.0)
+        
+        let uniqueGroups = deduplicatedGroups
+        let uniqueApps = deduplicatedStandaloneApps
+        
+        let groupIDCounts = Dictionary(grouping: webAppGroups, by: { $0.id }).filter { $0.value.count > 1 }
+        let appIDCounts = Dictionary(grouping: webApps, by: { $0.id }).filter { $0.value.count > 1 }
+        
+        print("""
+        ============================================================
+        [LayoutDebug] Home Screen Layout (\(reason))
+        - Container Size: \(Int(containerSize.width)) x \(Int(containerSize.height)) pt (available grid width: \(Int(availableWidth)) pt)
+        - Grid Config: adaptive(min: \(Int(minColWidth)), max: \(maxColDesc)), spacing: \(Int(spacing)) pt
+        - Computed Columns: \(colCount) column(s) x \(String(format: "%.1f", actualColWidth)) pt each (unused horizontal space: \(String(format: "%.1f", unusedHorizontalSpace)) pt)
+        - Est. Button Width in Group: \(String(format: "%.1f", buttonWidthInGroup)) pt per button (needs ~88 pt to avoid truncation)
+        - Groups in @Query: \(webAppGroups.count) raw -> \(uniqueGroups.count) deduplicated (duplicate group UUIDs: \(groupIDCounts.count))
+        - Apps in @Query: \(webApps.count) raw -> \(uniqueApps.count) standalone deduplicated (duplicate app UUIDs: \(appIDCounts.count))
+        """)
+        for (idx, group) in uniqueGroups.enumerated() {
+            let row = idx / colCount
+            let col = idx % colCount
+            let xOffset = 20 + CGFloat(col) * (actualColWidth + spacing)
+            let itemsCount = deduplicatedItems(for: group).count
+            print("  • Group[\(idx)] '\(group.name)' (id: \(group.id)) -> slot [row \(row), col \(col)], x=\(Int(xOffset))pt, width=\(Int(actualColWidth))pt, items=\(itemsCount)")
+        }
+        if !uniqueApps.isEmpty {
+            print("  • Standalone Capsules (\(uniqueApps.count)): \(uniqueApps.map { $0.name }.joined(separator: ", "))")
+        }
+        print("============================================================")
+    }
+    #endif
     
     // Liquid Glass Home Screen
     private var homeScreenView: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
                 ScrollView {
+                    let uniqueGroups = deduplicatedGroups
+                    let standaloneApps = deduplicatedStandaloneApps
                     VStack(alignment: .leading, spacing: 24) {
                     if isInitializing && webApps.isEmpty && webAppGroups.isEmpty {
                         VStack(spacing: 24) {
@@ -250,17 +403,18 @@ struct ContentView: View {
                             Spacer()
                         }
                         .frame(maxWidth: .infinity)
-                    } else if webApps.isEmpty && webAppGroups.isEmpty {
+                    } else if uniqueGroups.isEmpty && standaloneApps.isEmpty {
                         emptyStateView
                     } else {
                         VStack(alignment: .leading, spacing: 24) {
-                            if !webAppGroups.isEmpty {
-                                let groupItems = webAppGroups.map { HomeGridItem.group($0) }
+                            if !uniqueGroups.isEmpty {
+                                let groupItems = uniqueGroups.map { HomeGridItem.group($0) }
                                 LazyVGrid(columns: columns, spacing: 24) {
-                                    ForEach(webAppGroups) { group in
+                                    ForEach(uniqueGroups) { group in
                                         let item = HomeGridItem.group(group)
                                         WebAppGroupTileView(
                                             group: group,
+                                            resolvedItems: deduplicatedItems(for: group),
                                             onStartApp: { app in
                                                 openCapsule(app, clearLastOpenedURL: true)
                                             },
@@ -303,7 +457,6 @@ struct ContentView: View {
                                 }
                             }
                             
-                            let standaloneApps = webApps.filter { $0.group == nil }
                             if !standaloneApps.isEmpty {
                                 let appItems = standaloneApps.map { HomeGridItem.app($0) }
                                 LazyVGrid(columns: columns, spacing: 24) {
@@ -353,6 +506,23 @@ struct ContentView: View {
                 .padding(.bottom, 40)
                 .padding(.bottom, 100)
             }
+            #if DEBUG
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear {
+                            lastLoggedContainerSize = proxy.size
+                            logHomeLayoutMetrics(containerSize: proxy.size, reason: "initial appear")
+                        }
+                        .onChange(of: proxy.size) { _, newSize in
+                            if abs(newSize.width - lastLoggedContainerSize.width) >= 1 || abs(newSize.height - lastLoggedContainerSize.height) >= 1 {
+                                lastLoggedContainerSize = newSize
+                                logHomeLayoutMetrics(containerSize: newSize, reason: "window resized")
+                            }
+                        }
+                }
+            )
+            #endif
             .scrollDismissesKeyboard(.interactively)
             .onDrop(of: [.plainText], isTargeted: nil) { _ in
                 self.draggingItem = nil
@@ -888,14 +1058,14 @@ struct WebAppTileView: View {
                 
                 HStack(spacing: 10) {
                     Button(action: onStart) {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
                             Image(systemName: "play.fill")
                             Text("Start")
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.85)
+                                .minimumScaleFactor(0.8)
                         }
                         .font(.system(size: 14, weight: .semibold))
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity, minHeight: 44) // iOS accessibility size
                         .liquidGlassButton(cornerRadius: 12)
@@ -903,14 +1073,14 @@ struct WebAppTileView: View {
                     .buttonStyle(.plain)
                     
                     Button(action: onResume) {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
                             Image(systemName: "arrow.uturn.forward")
                             Text("Resume")
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.85)
+                                .minimumScaleFactor(0.8)
                         }
                         .font(.system(size: 14, weight: .semibold))
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity, minHeight: 44) // iOS accessibility size
                         .liquidGlassButton(cornerRadius: 12)
@@ -919,6 +1089,7 @@ struct WebAppTileView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .liquidGlassCard(cornerRadius: 24)
     }

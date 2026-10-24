@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WebAppGroupTileView: View {
     let group: WebAppGroup
+    var resolvedItems: [WebAppItem]? = nil
     let onStartApp: (WebAppItem) -> Void
     let onResumeApp: (WebAppItem) -> Void
     let onClearDataApp: (WebAppItem) -> Void
@@ -9,7 +10,21 @@ struct WebAppGroupTileView: View {
     let onEditGroup: () -> Void
     let onDeleteGroup: () -> Void
     
+    private var uniqueSortedItems: [WebAppItem] {
+        let source = resolvedItems ?? group.items ?? []
+        var seenIDs = Set<UUID>()
+        var result: [WebAppItem] = []
+        for app in source.sorted(by: { $0.displayOrder < $1.displayOrder }) {
+            if !seenIDs.contains(app.id) {
+                seenIDs.insert(app.id)
+                result.append(app)
+            }
+        }
+        return result
+    }
+    
     var body: some View {
+        let items = uniqueSortedItems
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Text(group.name)
@@ -35,9 +50,9 @@ struct WebAppGroupTileView: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
             
-            if let items = group.items, !items.isEmpty {
+            if !items.isEmpty {
                 VStack(spacing: 16) {
-                    ForEach(items.sorted(by: { $0.displayOrder < $1.displayOrder })) { app in
+                    ForEach(items) { app in
                         WebAppTileView(
                             app: app,
                             onStart: { onStartApp(app) },
@@ -70,6 +85,7 @@ struct WebAppGroupTileView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 32)
                 .fill(.ultraThinMaterial)

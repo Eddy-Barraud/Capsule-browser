@@ -146,6 +146,7 @@ public final class CloudSyncManager: ObservableObject {
             self.activeContainer = container
         }
         
+        deduplicateStore(in: self.activeContainer.mainContext)
         setupRemoteChangeObserver()
     }
     
@@ -520,6 +521,7 @@ public final class CloudSyncManager: ObservableObject {
     private func handleRemoteStoreChange() {
         guard isICloudSyncEnabled else { return }
         let cloudContext = getCloudContainer().mainContext
+        _ = deduplicateStore(in: cloudContext)
         guard let allCapsules = try? cloudContext.fetch(FetchDescriptor<WebAppItem>()) else { return }
         
         var newlyDetectedConflicts: [CapsuleSyncConflict] = []
@@ -602,10 +604,130 @@ public final class CloudSyncManager: ObservableObject {
     // MARK: - Helpers
     
     private func switchToContainer(_ container: ModelContainer, cloudEnabled: Bool) {
+        _ = deduplicateStore(in: container.mainContext)
         UserDefaults.standard.set(cloudEnabled, forKey: Self.storageKey)
         isICloudSyncEnabled = cloudEnabled
         activeContainer = container
         containerRefreshID = UUID()
+    }
+    
+    /// Automatically merges and deletes duplicate `WebAppGroup` and `WebAppItem` records
+    /// that share the same `id` (or groups sharing the same normalized name), which can occur
+    /// when CloudKit imports records that were already migrated locally.
+    @discardableResult
+    public func deduplicateActiveStore() -> Bool {
+        return deduplicateStore(in: activeContainer.mainContext)
+    }
+    
+    @discardableResult
+    public func deduplicateStore(in context: ModelContext) -> Bool {
+        let allGroups = (try? context.fetch(FetchDescriptor<WebAppGroup>())) ?? []
+        let allItems = (try? context.fetch(FetchDescriptor<WebAppItem>())) ?? []
+        
+        var didChange = false
+        var removedGroupCount = 0
+        var removedItemCount = 0
+        
+        // 1. Deduplicate WebAppGroups by ID first, then by normalized name.
+        // Sort so the group with the most attached items (or earliest createdAt) is kept as primary.
+        let sortedGroups = allGroups.sorted {
+            let count0 = ($0.items ?? []).count
+            let count1 = ($1.items ?? []).count
+            if count0 != count1 { return count0 > count1 }
+            return $0.createdAt < $1.createdAt
+        }
+        
+        var canonicalGroupByID: [UUID: WebAppGroup] = [:]
+        var canonicalGroupByName: [String: WebAppGroup] = [:]
+        var duplicateGroups: [(duplicate: WebAppGroup, canonical: WebAppGroup)] = []
+        
+        for group in sortedGroups {
+            let normName = Self.normalizedName(group.name)
+            if let existingByID = canonicalGroupByID[group.id] {
+                duplicateGroups.append((group, existingByID))
+            } else if !normName.isEmpty, let existingByName = canonicalGroupByName[normName] {
+                duplicateGroups.append((group, existingByName))
+            } else {
+                canonicalGroupByID[group.id] = group
+                if !normName.isEmpty {
+                    canonicalGroupByName[normName] = group
+                }
+            }
+        }
+        
+        let deletedGroupIDs = Set(duplicateGroups.map { ObjectIdentifier($0.duplicate) })
+        
+        // Reassign any items pointing to duplicate groups before deleting them
+        for (duplicate, canonical) in duplicateGroups {
+            if let dupItems = duplicate.items {
+                for item in dupItems {
+                    item.group = canonical
+                }
+            }
+            for item in allItems where item.group != nil && ObjectIdentifier(item.group!) == ObjectIdentifier(duplicate) {
+                item.group = canonical
+            }
+            context.delete(duplicate)
+            removedGroupCount += 1
+            didChange = true
+        }
+        
+        for item in allItems {
+            if let g = item.group, deletedGroupIDs.contains(ObjectIdentifier(g)) {
+                if let canonical = canonicalGroupByID[g.id] ?? canonicalGroupByName[Self.normalizedName(g.name)] {
+                    item.group = canonical
+                    didChange = true
+                }
+            }
+        }
+        
+        // 2. Deduplicate WebAppItems that share the exact same UUID
+        var itemsByID: [UUID: [WebAppItem]] = [:]
+        for item in allItems {
+            itemsByID[item.id, default: []].append(item)
+        }
+        
+        for (_, groupOfSameID) in itemsByID where groupOfSameID.count > 1 {
+            let sorted = groupOfSameID.sorted { a, b in
+                let aHasGroup = (a.group != nil && !deletedGroupIDs.contains(ObjectIdentifier(a.group!)))
+                let bHasGroup = (b.group != nil && !deletedGroupIDs.contains(ObjectIdentifier(b.group!)))
+                if aHasGroup != bHasGroup { return aHasGroup }
+                let aHasIcon = (a.iconData != nil)
+                let bHasIcon = (b.iconData != nil)
+                if aHasIcon != bHasIcon { return aHasIcon }
+                return (a.lastVisited ?? a.createdAt) > (b.lastVisited ?? b.createdAt)
+            }
+            
+            guard let primary = sorted.first else { continue }
+            for duplicate in sorted.dropFirst() {
+                if primary.group == nil, let dupGroup = duplicate.group, !deletedGroupIDs.contains(ObjectIdentifier(dupGroup)) {
+                    primary.group = canonicalGroupByID[dupGroup.id] ?? canonicalGroupByName[Self.normalizedName(dupGroup.name)] ?? dupGroup
+                }
+                if primary.iconData == nil, let dupIcon = duplicate.iconData {
+                    primary.iconData = dupIcon
+                }
+                if primary.isolatedCookiesData == nil, let dupCookies = duplicate.isolatedCookiesData {
+                    primary.isolatedCookiesData = dupCookies
+                }
+                if primary.lastOpenedURLString == nil, let dupLastURL = duplicate.lastOpenedURLString {
+                    primary.lastOpenedURLString = dupLastURL
+                }
+                if primary.lastVisited == nil, let dupVisited = duplicate.lastVisited {
+                    primary.lastVisited = dupVisited
+                }
+                context.delete(duplicate)
+                removedItemCount += 1
+                didChange = true
+            }
+        }
+        
+        if didChange {
+            try? context.save()
+            #if DEBUG
+            print("[CloudSyncManager] Deduplicated store: removed \(removedGroupCount) duplicate group(s) and \(removedItemCount) duplicate capsule(s).")
+            #endif
+        }
+        return didChange
     }
     
     private static func normalizedName(_ name: String) -> String {
