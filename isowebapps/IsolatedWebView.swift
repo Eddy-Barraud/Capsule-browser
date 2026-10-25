@@ -333,6 +333,17 @@ struct IsolatedWebViewRepresentable: NSViewRepresentable {
 #endif
 
 extension IsolatedWebViewRepresentable {
+    /// Generates a randomized User-Agent for YouTube capsules in the format:
+    /// 6 random lowercase letters + space + (XX.X)
+    /// Example: "kepsse (31.4)"
+    static func generateRandomYouTubeUserAgent() -> String {
+        let letters = "abcdefghijklmnopqrstuvwxyz"
+        let randomLetters = String((0..<6).compactMap { _ in letters.randomElement() })
+        let major = Int.random(in: 10...99)
+        let minor = Int.random(in: 0...9)
+        return "\(randomLetters) (\(major).\(minor))"
+    }
+    
     func createConfiguredWebView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         
@@ -391,11 +402,23 @@ extension IsolatedWebViewRepresentable {
         webView.scrollView.keyboardDismissMode = .interactive
         #endif
         
-        #if os(macOS)
-        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15"
-        #else
-        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1"
-        #endif
+        let targetURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
+        let isYouTube = appItem.urlString.localizedCaseInsensitiveContains("youtube.com") ||
+                        targetURLString.localizedCaseInsensitiveContains("youtube.com")
+        
+        if isYouTube {
+            let youtubeUA = Self.generateRandomYouTubeUserAgent()
+            webView.customUserAgent = youtubeUA
+            #if DEBUG
+            print("[IsolatedWebView] YouTube capsule opened (\(appItem.name)). Assigned random User-Agent: \(youtubeUA)")
+            #endif
+        } else {
+            #if os(macOS)
+            webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15"
+            #else
+            webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1"
+            #endif
+        }
         
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
@@ -429,6 +452,13 @@ extension IsolatedWebViewRepresentable {
             #if DEBUG
             print("[IsolatedWebView] Loading custom URL: \(url)")
             #endif
+            if url.absoluteString.localizedCaseInsensitiveContains("youtube.com") {
+                let youtubeUA = Self.generateRandomYouTubeUserAgent()
+                webView?.customUserAgent = youtubeUA
+                #if DEBUG
+                print("[IsolatedWebView] Navigating to YouTube. Assigned random User-Agent: \(youtubeUA)")
+                #endif
+            }
             webView?.load(URLRequest(url: url))
         }
         navigationState.onStopLoading = { [weak webView] in
@@ -804,6 +834,13 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
                 #if DEBUG
                 print("[IsolatedWebView] Single window mode: loading in current webview")
                 #endif
+                if url.absoluteString.localizedCaseInsensitiveContains("youtube.com") {
+                    let youtubeUA = IsolatedWebViewRepresentable.generateRandomYouTubeUserAgent()
+                    webView.customUserAgent = youtubeUA
+                    #if DEBUG
+                    print("[IsolatedWebView] Single window navigation to YouTube. Assigned random User-Agent: \(youtubeUA)")
+                    #endif
+                }
                 webView.load(navigationAction.request)
             } else {
                 #if DEBUG
