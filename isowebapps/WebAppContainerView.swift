@@ -249,7 +249,9 @@ struct WebAppContainerView: View {
             .onTapGesture {
                 // Tap anywhere on the page outside the URL field to collapse it
                 if isURLExpanded {
-                    isURLExpanded = false
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isURLExpanded = false
+                    }
                 }
             }
             
@@ -264,6 +266,7 @@ struct WebAppContainerView: View {
                 onShare: shareCurrentURL
             )
         }
+        .ignoresSafeArea(.keyboard, edges: isURLExpanded ? [] : .bottom)
         .simultaneousGesture(
             DragGesture(minimumDistance: 30, coordinateSpace: .global)
                 .onEnded { value in
@@ -959,7 +962,9 @@ struct IOSSolidBottomBar: View {
                     
                     Button {
                         isURLFocused = false
-                        isURLExpanded = false
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            isURLExpanded = false
+                        }
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
@@ -986,9 +991,11 @@ struct IOSSolidBottomBar: View {
             .onTapGesture {
                 if !isURLExpanded {
                     editableURLString = navigationState.currentURLString
-                    isURLExpanded = true
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isURLExpanded = true
+                    }
                 }
-                if !isURLFocused{
+                if !isURLFocused {
                     isURLFocused = true
                 }
             }
@@ -1019,14 +1026,18 @@ struct IOSSolidBottomBar: View {
         .background(Color(uiColor: .systemBackground))
         .onChange(of: isURLFocused) { _ in
             if !isURLFocused && isURLExpanded {
-                isURLExpanded = false
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isURLExpanded = false
+                }
             }
         }
     }
     
     private func submitURL() {
         isURLFocused = false
-        isURLExpanded = false
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            isURLExpanded = false
+        }
         guard let resolved = SearchEngine.resolveInput(editableURLString),
               let url = URL(string: resolved) else { return }
         navigationState.onLoadURL?(url)
