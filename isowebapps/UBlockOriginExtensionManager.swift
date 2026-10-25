@@ -189,79 +189,14 @@ public final class UBlockOriginExtensionManager: ObservableObject {
         // 2. Load cosmetic scripts and scriptlets
         var scripts: [WKUserScript] = []
         
-        var activeRulesetIds: [String] = []
-        if ublockFilters { activeRulesetIds.append("ublock-filters") }
-        if ublockBadware { activeRulesetIds.append("ublock-badware") }
-        if easylist { activeRulesetIds.append("easylist") }
-        if easyprivacy { activeRulesetIds.append("easyprivacy") }
-        if adguardMobile { activeRulesetIds.append("adguard-mobile") }
-        if urlhaus { activeRulesetIds.append("urlhaus-full") }
-        if annoyances {
-            activeRulesetIds.append("annoyances-cookies")
-            activeRulesetIds.append("annoyances-overlays")
-        }
-        if blockLan { activeRulesetIds.append("block-lan") }
-        if frenchFilters { activeRulesetIds.append("fra-0") }
-        
-        // A. Scriptlet Defusers (MAIN & ISOLATED worlds)
-        if scriptletDefusers {
-            for rid in activeRulesetIds {
-                // 1. Main world scriptlet (.page)
-                if let mainURL = locateScriptFile(named: "scriptlet-main-\(rid).js"),
-                   let code = try? String(contentsOf: mainURL, encoding: .utf8), !code.isEmpty {
-                    let mainScript = WKUserScript(
-                        source: code,
-                        injectionTime: .atDocumentStart,
-                        forMainFrameOnly: false,
-                        in: .page
-                    )
-                    scripts.append(mainScript)
-                    #if DEBUG
-                    print("[UBlockOriginExtensionManager] Injected MAIN scriptlet: \(mainURL.lastPathComponent)")
-                    #endif
-                }
-                
-                // 2. Isolated world scriptlet (.defaultClient)
-                if let isoURL = locateScriptFile(named: "scriptlet-isolated-\(rid).js"),
-                   let code = try? String(contentsOf: isoURL, encoding: .utf8), !code.isEmpty {
-                    let isoScript = WKUserScript(
-                        source: code,
-                        injectionTime: .atDocumentStart,
-                        forMainFrameOnly: false,
-                        in: .defaultClient
-                    )
-                    scripts.append(isoScript)
-                    #if DEBUG
-                    print("[UBlockOriginExtensionManager] Injected ISOLATED scriptlet: \(isoURL.lastPathComponent)")
-                    #endif
-                }
-            }
-        }
-        
-        // B. Cosmetic CSS Hiding (ISOLATED world)
         if cosmeticHiding {
-            for rid in activeRulesetIds {
-                if let cosURL = locateScriptFile(named: "cosmetic-specific-\(rid).js"),
-                   let code = try? String(contentsOf: cosURL, encoding: .utf8), !code.isEmpty {
-                    let cosScript = WKUserScript(
-                        source: code,
-                        injectionTime: .atDocumentStart,
-                        forMainFrameOnly: false,
-                        in: .defaultClient
-                    )
-                    scripts.append(cosScript)
-                    #if DEBUG
-                    print("[UBlockOriginExtensionManager] Injected specific cosmetic CSS: \(cosURL.lastPathComponent)")
-                    #endif
-                }
-            }
-            
-            // Generic cosmetic hiding for standard ad containers across web pages
-            let genericHideCSS = """
+            // Inject essential cosmetic hiding CSS for common ad containers
+            let globalHideCSS = """
             (function() {
+                if ((window.location.hostname || '').includes('youtube.com')) return;
                 const style = document.createElement('style');
                 style.type = 'text/css';
-                style.id = 'ublock-cosmetic-generic';
+                style.id = 'ublock-cosmetic-rules';
                 style.innerHTML = `
                     .ad, .ads, .ad-banner, .ad-placement, .ad-container,
                     .sponsored-post, [data-ad-unit], [data-ad-slot],
@@ -279,19 +214,36 @@ public final class UBlockOriginExtensionManager: ObservableObject {
                 (document.head || document.documentElement).appendChild(style);
             })();
             """
-            let genericScript = WKUserScript(
-                source: genericHideCSS,
+            
+            let hideUserScript = WKUserScript(
+                source: globalHideCSS,
                 injectionTime: .atDocumentStart,
-                forMainFrameOnly: false,
-                in: .defaultClient
+                forMainFrameOnly: false
             )
-            scripts.append(genericScript)
+            scripts.append(hideUserScript)
+        }
+        
+        if scriptletDefusers {
+            // Inject scriptlet defusers (Google IMA, Google Tag, etc.)
+            let scriptletCode = """
+            (function() {
+                if ((window.location.hostname || '').includes('youtube.com')) return;
+                window.google_ad_client = undefined;
+                window.adsbygoogle = window.adsbygoogle || [];
+                window.adsbygoogle.push = function() {};
+                window.googletag = window.googletag || { cmd: [], apiReady: true };
+                window.googletag.cmd.push = function(fn) { if (typeof fn === 'function') { try { fn(); } catch(e){} } };
+            })();
+            """
+            let defuserScript = WKUserScript(
+                source: scriptletCode,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
+            )
+            scripts.append(defuserScript)
         }
         
         self.cosmeticUserScripts = scripts
-        #if DEBUG
-        print("[UBlockOriginExtensionManager] Total active user scripts: \(scripts.count)")
-        #endif
     }
     
     /// Compiles a single rule list into a `WKContentRuleList`, running chunked fallback if needed
@@ -438,46 +390,6 @@ public final class UBlockOriginExtensionManager: ObservableObject {
         }
         
         return urls
-    }
-    
-    /// Locates a script file (.js) across app bundles, submodules, and development paths
-    private func locateScriptFile(named filename: String) -> URL? {
-        let name = (filename as NSString).deletingPathExtension
-        let ext = (filename as NSString).pathExtension
-        
-        // 1. Direct bundle lookup by name and extension
-        if let directURL = Bundle.main.url(forResource: name, withExtension: ext) {
-            return directURL
-        }
-        
-        // 2. Bundle resource URL candidates
-        let bundleCandidates = [
-            Bundle.main.resourceURL?.appendingPathComponent("rulesets/scripting"),
-            Bundle.main.resourceURL?.appendingPathComponent("rulesets"),
-            Bundle.main.resourceURL
-        ].compactMap { $0 }
-        
-        for baseURL in bundleCandidates {
-            let fileURL = baseURL.appendingPathComponent(filename)
-            if FileManager.default.fileExists(atPath: fileURL.path) {
-                return fileURL
-            }
-        }
-        
-        // 3. Fallback relative paths for local development / simulator
-        let currentDir = FileManager.default.currentDirectoryPath
-        let relativePaths = [
-            "isowebapps/rulesets/scripting",
-            "rulesets/scripting"
-        ]
-        for rel in relativePaths {
-            let fullPath = "\(currentDir)/\(rel)/\(filename)"
-            if FileManager.default.fileExists(atPath: fullPath) {
-                return URL(fileURLWithPath: fullPath)
-            }
-        }
-        
-        return nil
     }
     
     /// Built-in fallback rule set used if no external ruleset files are available
