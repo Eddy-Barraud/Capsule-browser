@@ -21,8 +21,10 @@ struct AddWebAppSheet: View {
     @State private var urlString: String = "https://"
     @State private var isFetching: Bool = false
     @State private var fetchedIconData: Data? = nil
+    @AppStorage("ublock_master_enabled") private var ublockMasterEnabled = true
     @State private var openLinksInSafariReaderMode: Bool = false
     @State private var deleteCookiesOnClose: Bool = false
+    @State private var isUBlockEnabled: Bool = true
     @State private var errorMessage: String? = nil
     
     init(initialURLString: String = "https://", initialName: String = "") {
@@ -45,6 +47,9 @@ struct AddWebAppSheet: View {
                 }
                 
                 Section(header: Text("Options")) {
+                    if ublockMasterEnabled {
+                        Toggle("uBlock Origin protection", isOn: $isUBlockEnabled)
+                    }
                     Toggle("Open links in Safari Reader mode", isOn: $openLinksInSafariReaderMode)
                     Toggle("Delete cookies on close", isOn: $deleteCookiesOnClose)
                 }
@@ -133,6 +138,7 @@ struct AddWebAppSheet: View {
                     name: name.trimmingCharacters(in: .whitespaces),
                     urlString: formattedURL,
                     iconData: iconData,
+                    isUBlockEnabled: isUBlockEnabled,
                     openLinksInSafariReaderMode: openLinksInSafariReaderMode,
                     deleteCookiesOnClose: deleteCookiesOnClose
                 )

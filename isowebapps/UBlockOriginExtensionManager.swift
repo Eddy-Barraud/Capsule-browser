@@ -20,6 +20,12 @@ import Combine
 public final class UBlockOriginExtensionManager: ObservableObject {
     public static let shared = UBlockOriginExtensionManager()
     
+    /// Notification broadcast when rules and scripts are recompiled
+    public static let didUpdateRulesNotification = Notification.Name("UBlockOriginDidUpdateRulesNotification")
+    
+    /// Notification broadcast when a specific capsule's uBlock toggle is updated in settings
+    public static let capsuleUBlockSettingChangedNotification = Notification.Name("UBlockOriginCapsuleUBlockSettingChangedNotification")
+    
     /// Array of actively compiled WebKit native rule lists
     private var compiledRuleLists: [WKContentRuleList] = []
     
@@ -48,10 +54,17 @@ public final class UBlockOriginExtensionManager: ObservableObject {
     /// Recompiles rule lists dynamically based on updated user settings from the settings view
     public func recompile() async {
         await loadRulesAndScriptsAsync(forceRecompile: true)
+        NotificationCenter.default.post(name: Self.didUpdateRulesNotification, object: nil)
     }
     
     /// Applies active uBlock Origin rules and scripts to a `WKWebViewConfiguration`
     public func applyToConfiguration(_ config: WKWebViewConfiguration) {
+        // Ensure clean state before applying
+        removeFromConfiguration(config)
+        
+        let masterEnabled = UserDefaults.standard.object(forKey: "ublock_master_enabled") as? Bool ?? true
+        guard masterEnabled else { return }
+        
         for ruleList in compiledRuleLists {
             config.userContentController.add(ruleList)
         }
@@ -63,15 +76,27 @@ public final class UBlockOriginExtensionManager: ObservableObject {
     
     /// Removes compiled uBlock Origin rules and cosmetic user scripts from a `WKWebViewConfiguration`
     public func removeFromConfiguration(_ config: WKWebViewConfiguration) {
-        for ruleList in compiledRuleLists {
-            config.userContentController.remove(ruleList)
-        }
+        config.userContentController.removeAllContentRuleLists()
         config.userContentController.removeAllUserScripts()
     }
     
     /// Loads enabled rulesets from bundle/symlinks, converts them, and compiles them in parallel
     private func loadRulesAndScriptsAsync(forceRecompile: Bool = false) async {
         let defaults = UserDefaults.standard
+        let masterEnabled = defaults.object(forKey: "ublock_master_enabled") as? Bool ?? true
+        
+        guard masterEnabled else {
+            await MainActor.run {
+                self.compiledRuleLists = []
+                self.cosmeticUserScripts = []
+                self.activeRulesCount = 0
+                self.activeListsCount = 0
+            }
+            #if DEBUG
+            print("[UBlockOriginExtensionManager] uBlock is master-disabled: purged all rules and scripts.")
+            #endif
+            return
+        }
         
         let ublockFilters = defaults.object(forKey: "ublock_filter_ublock_filters") as? Bool ?? true
         let ublockBadware = defaults.object(forKey: "ublock_filter_ublock_badware") as? Bool ?? true
@@ -163,10 +188,13 @@ public final class UBlockOriginExtensionManager: ObservableObject {
             }
         }
         
-        // Fallback or basic rules if no files compiled
-        if newCompiledLists.isEmpty {
+        let anyFilterListEnabled = ublockFilters || ublockBadware || easylist || easyprivacy ||
+            adguardMobile || urlhaus || annoyances || blockLan || frenchFilters
+        
+        // Fallback rules only if enabled files failed to compile, NOT when all filter lists are intentionally disabled
+        if newCompiledLists.isEmpty && anyFilterListEnabled {
             #if DEBUG
-            print("[UBlockOriginExtensionManager] No ruleset files compiled! Using default fallback adblock rules.")
+            print("[UBlockOriginExtensionManager] Ruleset files failed to compile! Using default fallback adblock rules.")
             #endif
             let fallbackRules = defaultFallbackAdblockRules()
             if let fallbackCompiled = await compileSingleList(identifier: "uBlock_fallback", rules: fallbackRules) {

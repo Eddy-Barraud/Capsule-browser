@@ -135,6 +135,7 @@ public enum BlockingMode: String, CaseIterable, Identifiable {
 
 /// Snapshot of settings that require compiling WebKit rule lists when modified
 private struct RuleSettingsSnapshot: Equatable {
+    var ublockMasterEnabled: Bool
     var blockingMode: BlockingMode
     var filterUblockFilters: Bool
     var filterUblockBadware: Bool
@@ -167,6 +168,7 @@ struct GeneralSettingsView: View {
     #endif
     
     // Persistent Filter List & Mode Preferences in UserDefaults
+    @AppStorage("ublock_master_enabled") private var ublockMasterEnabled = true
     @AppStorage("ublock_blocking_mode") private var blockingMode: BlockingMode = .complete
     @AppStorage("ublock_filter_ublock_filters") private var filterUblockFilters = true
     @AppStorage("ublock_filter_ublock_badware") private var filterUblockBadware = true
@@ -208,6 +210,7 @@ struct GeneralSettingsView: View {
     
     private var currentSnapshot: RuleSettingsSnapshot {
         RuleSettingsSnapshot(
+            ublockMasterEnabled: ublockMasterEnabled,
             blockingMode: blockingMode,
             filterUblockFilters: filterUblockFilters,
             filterUblockBadware: filterUblockBadware,
@@ -408,36 +411,46 @@ struct GeneralSettingsView: View {
                     // uBlock Origin Lite Protection Status & Level
                     macOSSectionCard(
                         title: "uBlock Origin Lite",
-                        systemImage: "shield.checkered",
-                        badge: "\(manager.activeRulesCount.formatted()) active rules"
+                        systemImage: ublockMasterEnabled ? "shield.checkered" : "shield.slash",
+                        badge: ublockMasterEnabled ? "\(manager.activeRulesCount.formatted()) active rules" : "Disabled"
                     ) {
                         VStack(alignment: .leading, spacing: 14) {
-                            // Active status summary
-                            HStack(spacing: 24) {
-                                Label("\(manager.activeRulesCount.formatted()) rules", systemImage: "bolt.shield.fill")
-                                    .font(.subheadline.weight(.medium))
-                                Label("\(manager.activeListsCount) compiled lists", systemImage: "list.bullet.rectangle.fill")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 4)
+                            Toggle("Enable uBlock Origin Lite Protection", isOn: $ublockMasterEnabled)
+                                .toggleStyle(.checkbox)
+                                .font(.subheadline.weight(.semibold))
                             
-                            Divider()
-                            
-                            // Filtering Level
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Filtering Level")
-                                    .font(.subheadline.weight(.semibold))
-                                
-                                Picker("Filtering Level", selection: $blockingMode) {
-                                    ForEach(BlockingMode.allCases) { mode in
-                                        Text(mode.rawValue).tag(mode)
-                                    }
+                            if ublockMasterEnabled {
+                                // Active status summary
+                                HStack(spacing: 24) {
+                                    Label("\(manager.activeRulesCount.formatted()) rules", systemImage: "bolt.shield.fill")
+                                        .font(.subheadline.weight(.medium))
+                                    Label("\(manager.activeListsCount) compiled lists", systemImage: "list.bullet.rectangle.fill")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
                                 }
-                                .pickerStyle(.segmented)
-                                .labelsHidden()
+                                .padding(.vertical, 4)
                                 
-                                Text(blockingMode.description)
+                                Divider()
+                                
+                                // Filtering Level
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Filtering Level")
+                                        .font(.subheadline.weight(.semibold))
+                                    
+                                    Picker("Filtering Level", selection: $blockingMode) {
+                                        ForEach(BlockingMode.allCases) { mode in
+                                            Text(mode.rawValue).tag(mode)
+                                        }
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .labelsHidden()
+                                    
+                                    Text(blockingMode.description)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } else {
+                                Text("Content blocking, scriptlet defusers, and cosmetic element hiding are disabled across all capsules.")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -462,6 +475,8 @@ struct GeneralSettingsView: View {
                         }
                         .toggleStyle(.checkbox)
                     }
+                    .opacity(ublockMasterEnabled ? 1.0 : 0.5)
+                    .disabled(!ublockMasterEnabled)
                     
                     // Regional Lists
                     macOSSectionCard(
@@ -471,6 +486,8 @@ struct GeneralSettingsView: View {
                         Toggle("French Regional Filters (fra-0)", isOn: $filterFrench)
                             .toggleStyle(.checkbox)
                     }
+                    .opacity(ublockMasterEnabled ? 1.0 : 0.5)
+                    .disabled(!ublockMasterEnabled)
                     
                     // Page Cleanup & Scriptlet Defusers
                     macOSSectionCard(
@@ -483,6 +500,8 @@ struct GeneralSettingsView: View {
                         }
                         .toggleStyle(.checkbox)
                     }
+                    .opacity(ublockMasterEnabled ? 1.0 : 0.5)
+                    .disabled(!ublockMasterEnabled)
                     
                     // Credits & License
                     macOSSectionCard(
@@ -697,58 +716,75 @@ struct GeneralSettingsView: View {
                     }
                 }
                 
+                // Master Toggle
+                Section(header: Text("uBlock Origin Lite")) {
+                    Toggle("Enable Content Blocking", isOn: $ublockMasterEnabled)
+                }
+                
                 // Live Metric Status
                 Section(header: Text("Protection Status")) {
-                    HStack {
-                        Label("Active Rules", systemImage: "bolt.shield.fill")
-                        Spacer()
-                        Text("\(manager.activeRulesCount.formatted()) rules")
-                            .foregroundStyle(.secondary)
-                            .bold()
-                    }
-                    HStack {
-                        Label("Compiled Rule Lists", systemImage: "list.bullet.rectangle.fill")
-                        Spacer()
-                        Text("\(manager.activeListsCount) lists")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                
-                // Mode Selection
-                Section(header: Text("Filtering Level")) {
-                    Picker("Filtering Level", selection: $blockingMode) {
-                        ForEach(BlockingMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
+                    if ublockMasterEnabled {
+                        HStack {
+                            Label("Active Rules", systemImage: "bolt.shield.fill")
+                            Spacer()
+                            Text("\(manager.activeRulesCount.formatted()) rules")
+                                .foregroundStyle(.secondary)
+                                .bold()
+                        }
+                        HStack {
+                            Label("Compiled Rule Lists", systemImage: "list.bullet.rectangle.fill")
+                            Spacer()
+                            Text("\(manager.activeListsCount) lists")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        HStack {
+                            Label("Status", systemImage: "shield.slash")
+                            Spacer()
+                            Text("Disabled")
+                                .foregroundStyle(.secondary)
+                                .bold()
                         }
                     }
-                    .pickerStyle(.segmented)
+                }
+                
+                if ublockMasterEnabled {
+                    // Mode Selection
+                    Section(header: Text("Filtering Level")) {
+                        Picker("Filtering Level", selection: $blockingMode) {
+                            ForEach(BlockingMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        
+                        Text(blockingMode.description)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     
-                    Text(blockingMode.description)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                
-                // Submodule Ruleset Toggles
-                Section(header: Text("Filter Lists")) {
-                    Toggle("uBlock filters (Built-in)", isOn: $filterUblockFilters)
-                    Toggle("uBlock Badware & Malware Risks", isOn: $filterUblockBadware)
-                    Toggle("EasyList (Ad Removal)", isOn: $filterEasyList)
-                    Toggle("EasyPrivacy (Tracker Protection)", isOn: $filterEasyPrivacy)
-                    Toggle("AdGuard Mobile Ads", isOn: $filterAdGuardMobile)
-                    Toggle("URLhaus (Malicious Hosts)", isOn: $filterURLhaus)
-                    Toggle("Annoyances (Cookie Warnings & Popups)", isOn: $filterAnnoyances)
-                    Toggle("Block Local Network / LAN Probing", isOn: $filterBlockLAN)
-                }
-                
-                // Regional Ruleset Toggles
-                Section(header: Text("Regional Lists")) {
-                    Toggle("French Regional Filters (fra-0)", isOn: $filterFrench)
-                }
-                
-                // Scriptlets and Cosmetic DOM Cleanup
-                Section(header: Text("Page Cleanup & Defusers")) {
-                    Toggle("Cosmetic Element Hiding (Collapse Ad Banners)", isOn: $cosmeticHiding)
-                    Toggle("Scriptlet Defusers (Neutralize Anti-Adblock)", isOn: $scriptletDefusers)
+                    // Submodule Ruleset Toggles
+                    Section(header: Text("Filter Lists")) {
+                        Toggle("uBlock filters (Built-in)", isOn: $filterUblockFilters)
+                        Toggle("uBlock Badware & Malware Risks", isOn: $filterUblockBadware)
+                        Toggle("EasyList (Ad Removal)", isOn: $filterEasyList)
+                        Toggle("EasyPrivacy (Tracker Protection)", isOn: $filterEasyPrivacy)
+                        Toggle("AdGuard Mobile Ads", isOn: $filterAdGuardMobile)
+                        Toggle("URLhaus (Malicious Hosts)", isOn: $filterURLhaus)
+                        Toggle("Annoyances (Cookie Warnings & Popups)", isOn: $filterAnnoyances)
+                        Toggle("Block Local Network / LAN Probing", isOn: $filterBlockLAN)
+                    }
+                    
+                    // Regional Ruleset Toggles
+                    Section(header: Text("Regional Lists")) {
+                        Toggle("French Regional Filters (fra-0)", isOn: $filterFrench)
+                    }
+                    
+                    // Scriptlets and Cosmetic DOM Cleanup
+                    Section(header: Text("Page Cleanup & Defusers")) {
+                        Toggle("Cosmetic Element Hiding (Collapse Ad Banners)", isOn: $cosmeticHiding)
+                        Toggle("Scriptlet Defusers (Neutralize Anti-Adblock)", isOn: $scriptletDefusers)
+                    }
                 }
                 
                 // Credits & License

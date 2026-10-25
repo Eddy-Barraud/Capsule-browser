@@ -477,7 +477,7 @@ extension IsolatedWebViewRepresentable {
             } else {
                 UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
             }
-            webView.reload()
+            webView.reloadFromOrigin()
         }
         navigationState.onCaptureFirstPagePDFText = { [weak webView] in
             guard let webView = webView else {
@@ -551,12 +551,18 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     private var urlObserver: NSKeyValueObservation?
     private var loadingObserver: NSKeyValueObservation?
     private weak var observedCookieStore: WKHTTPCookieStore?
+    private var uBlockUpdateObserver: Any?
+    private var capsuleUBlockSettingObserver: Any?
     
     init(appItem: WebAppItem, navigationState: WebViewNavigationState, modelContext: ModelContext) {
         self.appItem = appItem
         self.navigationState = navigationState
         self.modelContext = modelContext
         super.init()
+    }
+    
+    deinit {
+        cleanup()
     }
     
     func setup(webView: WKWebView) {
@@ -605,6 +611,44 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
             let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
             self.observedCookieStore = cookieStore
             cookieStore.add(self)
+            
+            // Observe global uBlock rules recompiled in GeneralSettingsView
+            self.uBlockUpdateObserver = NotificationCenter.default.addObserver(
+                forName: UBlockOriginExtensionManager.didUpdateRulesNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self = self, let webView = self.webView else { return }
+                let config = webView.configuration
+                if self.appItem.isUBlockEnabled {
+                    UBlockOriginExtensionManager.shared.applyToConfiguration(config)
+                } else {
+                    UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
+                }
+                webView.reloadFromOrigin()
+            }
+            
+            // Observe per-capsule uBlock toggle from settings
+            self.capsuleUBlockSettingObserver = NotificationCenter.default.addObserver(
+                forName: UBlockOriginExtensionManager.capsuleUBlockSettingChangedNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self = self,
+                      let webView = self.webView,
+                      let targetId = notification.object as? UUID,
+                      targetId == self.appItem.id else { return }
+                
+                let isEnabled = (notification.userInfo?["isUBlockEnabled"] as? Bool) ?? self.appItem.isUBlockEnabled
+                self.navigationState.isUBlockEnabled = isEnabled
+                let config = webView.configuration
+                if isEnabled {
+                    UBlockOriginExtensionManager.shared.applyToConfiguration(config)
+                } else {
+                    UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
+                }
+                webView.reloadFromOrigin()
+            }
         }
     }
     
@@ -621,11 +665,23 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     
     func cleanup() {
         backForwardObserver?.invalidate()
+        backForwardObserver = nil
         canGoForwardObserver?.invalidate()
+        canGoForwardObserver = nil
         urlObserver?.invalidate()
+        urlObserver = nil
         loadingObserver?.invalidate()
+        loadingObserver = nil
         observedCookieStore?.remove(self)
         observedCookieStore = nil
+        if let obs = uBlockUpdateObserver {
+            NotificationCenter.default.removeObserver(obs)
+            uBlockUpdateObserver = nil
+        }
+        if let obs = capsuleUBlockSettingObserver {
+            NotificationCenter.default.removeObserver(obs)
+            capsuleUBlockSettingObserver = nil
+        }
         webView = nil
     }
     

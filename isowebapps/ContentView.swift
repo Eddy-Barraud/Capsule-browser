@@ -1097,12 +1097,24 @@ struct WebAppTileView: View {
 
 // Extracted Settings Menu to isolate @Bindable observation and avoid re-evaluating the parent tile
 struct WebAppTileSettingsMenu: View {
+    @AppStorage("ublock_master_enabled") private var ublockMasterEnabled = true
     @Bindable var app: WebAppItem
     let onClearData: () -> Void
     let onDelete: () -> Void
     
     var body: some View {
         Menu {
+            if ublockMasterEnabled {
+                Toggle("uBlock Origin protection", isOn: $app.isUBlockEnabled)
+                    .onChange(of: app.isUBlockEnabled) { _, newValue in
+                        try? app.modelContext?.save()
+                        NotificationCenter.default.post(
+                            name: UBlockOriginExtensionManager.capsuleUBlockSettingChangedNotification,
+                            object: app.id,
+                            userInfo: ["isUBlockEnabled": newValue]
+                        )
+                    }
+            }
             Toggle("Open links in Safari Reader", isOn: $app.openLinksInSafariReaderMode)
                 .onChange(of: app.openLinksInSafariReaderMode) { _, _ in
                     try? app.modelContext?.save()

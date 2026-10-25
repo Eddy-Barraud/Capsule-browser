@@ -520,6 +520,7 @@ struct WebAppContainerView: View {
 /// - Center: App Title
 /// - Top Right: Tiles/Grid button to navigate back to the global app Home Screen
 struct TopControlsBar: View {
+    @AppStorage("ublock_master_enabled") private var ublockMasterEnabled = true
     let appItem: WebAppItem
     @ObservedObject var navigationState: WebViewNavigationState
     var isGeneratingSummary: Bool = false
@@ -562,29 +563,31 @@ struct TopControlsBar: View {
                 .help("Summarize the currently shown web page using Foundation Models")
             }
             
-            // Shield Button (Next to Summarize Button)
-            Button(action: onToggleShield) {
-                HStack(spacing: 5) {
-                    Image(systemName: isYouTube
-                          ? (navigationState.isUBlockEnabled ? "play.rectangle.fill" : "play.slash.fill")
-                          : (navigationState.isUBlockEnabled ? "shield.fill" : "shield.slash.fill"))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(isYouTube
-                                         ? (navigationState.isUBlockEnabled ? .red : .secondary)
-                                         : (navigationState.isUBlockEnabled ? .blue : .secondary))
-                    
-                    Text(isYouTube
-                         ? (navigationState.isUBlockEnabled ? "Ad-Free" : "Ad-Free OFF")
-                         : (navigationState.isUBlockEnabled ? "uBlock ON" : "uBlock OFF"))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(navigationState.isUBlockEnabled ? .primary : .secondary)
+            // Shield Button (Next to Summarize Button) - hidden if uBlock is disabled globally
+            if ublockMasterEnabled {
+                Button(action: onToggleShield) {
+                    HStack(spacing: 5) {
+                        Image(systemName: isYouTube
+                              ? (navigationState.isUBlockEnabled ? "play.rectangle.fill" : "play.slash.fill")
+                              : (navigationState.isUBlockEnabled ? "shield.fill" : "shield.slash.fill"))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(isYouTube
+                                             ? (navigationState.isUBlockEnabled ? .red : .secondary)
+                                             : (navigationState.isUBlockEnabled ? .blue : .secondary))
+                        
+                        Text(isYouTube
+                             ? (navigationState.isUBlockEnabled ? "Ad-Free" : "Ad-Free OFF")
+                             : (navigationState.isUBlockEnabled ? "uBlock ON" : "uBlock OFF"))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(navigationState.isUBlockEnabled ? .primary : .secondary)
+                    }
+                    .padding(.horizontal, 9)
+                    .frame(height: 32)
+                    .liquidGlassButton(cornerRadius: 10)
                 }
-                .padding(.horizontal, 9)
-                .frame(height: 32)
-                .liquidGlassButton(cornerRadius: 10)
+                .buttonStyle(.plain)
+                .help(isYouTube ? "Toggle YouTube ad-blocking and script injection" : "Toggle uBlock Origin protection")
             }
-            .buttonStyle(.plain)
-            .help(isYouTube ? "Toggle YouTube ad-blocking and script injection" : "Toggle uBlock Origin protection")
             
             Spacer()
             
