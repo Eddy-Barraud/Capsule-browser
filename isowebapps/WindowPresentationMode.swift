@@ -238,8 +238,10 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         }) ?? NSApp.windows.first(where: { !($0 is NSPanel) }) else { return }
         
         if let tabGroup = window.tabGroup, tabGroup.windows.count > 1 {
-            tabGroup.selectedWindow = window
-            window.makeKeyAndOrderFront(nil)
+            if tabGroup.selectedWindow !== window {
+                tabGroup.selectedWindow = window
+                window.makeKeyAndOrderFront(nil)
+            }
         } else {
             if window.isMiniaturized {
                 window.deminiaturize(nil)
@@ -302,10 +304,12 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
 
 final class WindowAccessorView: NSView {
     var onWindow: ((NSWindow) -> Void)?
+    weak var lastNotifiedWindow: NSWindow?
     
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let window = self.window {
+        if let window = self.window, window !== lastNotifiedWindow {
+            lastNotifiedWindow = window
             DispatchQueue.main.async { [weak self, weak window] in
                 guard let window = window else { return }
                 self?.onWindow?(window)
@@ -320,7 +324,8 @@ struct WindowAccessor: NSViewRepresentable {
     func makeNSView(context: Context) -> WindowAccessorView {
         let view = WindowAccessorView()
         view.onWindow = onWindow
-        if let window = view.window {
+        if let window = view.window, window !== view.lastNotifiedWindow {
+            view.lastNotifiedWindow = window
             DispatchQueue.main.async { [weak window] in
                 guard let window = window else { return }
                 onWindow(window)
@@ -331,7 +336,8 @@ struct WindowAccessor: NSViewRepresentable {
     
     func updateNSView(_ nsView: WindowAccessorView, context: Context) {
         nsView.onWindow = onWindow
-        if let window = nsView.window {
+        if let window = nsView.window, window !== nsView.lastNotifiedWindow {
+            nsView.lastNotifiedWindow = window
             DispatchQueue.main.async { [weak window] in
                 guard let window = window else { return }
                 onWindow(window)
@@ -417,6 +423,7 @@ struct CapsuleWindowHostView: View {
                     if let tg = window.tabGroup, tg.windows.count > 1 {
                         tg.selectedWindow = window
                         window.makeKeyAndOrderFront(nil)
+                        window.makeFirstResponder(window.contentView)
                     } else {
                         let keyWindow = NSApp.keyWindow
                         let targetWindow: NSWindow?
@@ -438,14 +445,16 @@ struct CapsuleWindowHostView: View {
                             target.addTabbedWindow(window, ordered: .above)
                             target.tabGroup?.selectedWindow = window
                             window.makeKeyAndOrderFront(nil)
+                            window.makeFirstResponder(window.contentView)
                             DispatchQueue.main.async {
-                                target.setFrame(targetFrame, display: true)
                                 window.setFrame(targetFrame, display: true)
                                 target.tabGroup?.selectedWindow = window
                                 window.makeKeyAndOrderFront(nil)
+                                window.makeFirstResponder(window.contentView)
                             }
                         } else {
                             window.makeKeyAndOrderFront(nil)
+                            window.makeFirstResponder(window.contentView)
                         }
                     }
                 } else {

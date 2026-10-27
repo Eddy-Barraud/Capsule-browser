@@ -267,6 +267,7 @@ struct WebAppContainerView: View {
             )
         }
         .ignoresSafeArea(.keyboard, edges: isURLExpanded ? [] : .bottom)
+        #if os(iOS)
         .simultaneousGesture(
             DragGesture(minimumDistance: 30, coordinateSpace: .global)
                 .onEnded { value in
@@ -275,6 +276,7 @@ struct WebAppContainerView: View {
                     }
                 }
         )
+        #endif
         .onAppear {
             isSummarizationAvailable = AISummarizer.isAvailable
             navigationState.isUBlockEnabled = appItem.isUBlockEnabled
@@ -298,7 +300,7 @@ struct WebAppContainerView: View {
                 #endif
             }
         }
-        .onChange(of: navigationState.currentURLString) { newURL in
+        .onChange(of: navigationState.currentURLString) { _, newURL in
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
                 editableURLString = newURL
             }
@@ -345,8 +347,12 @@ struct WebAppContainerView: View {
         #if os(macOS)
         .background(
             WindowAccessor { window in
-                window.title = activeDomainTitle
-                window.tab.title = activeDomainTitle
+                if window.title != activeDomainTitle {
+                    window.title = activeDomainTitle
+                }
+                if window.tab.title != activeDomainTitle {
+                    window.tab.title = activeDomainTitle
+                }
             }
         )
         #endif
@@ -1027,7 +1033,7 @@ struct IOSSolidBottomBar: View {
         .padding(.top, 8)
         .padding(.bottom, 6)
         .background(Color(uiColor: .systemBackground))
-        .onChange(of: isURLFocused) { _ in
+        .onChange(of: isURLFocused) { _,  _ in
             if !isURLFocused && isURLExpanded {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     isURLExpanded = false

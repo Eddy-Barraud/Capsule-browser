@@ -45,6 +45,7 @@ struct ContentView: View {
     @AppStorage("windowPresentationMode") private var windowPresentationMode: WindowPresentationMode = .singleWindow
     @Environment(\.openWindow) private var openWindow
     @State private var hostingWindow: NSWindow?
+    @State private var hasConfiguredMainWindow = false
     #endif
     @State private var activeDomainTitle: String = ""
     #if DEBUG
@@ -748,6 +749,18 @@ struct ContentView: View {
                     if hostingWindow !== window {
                         hostingWindow = window
                     }
+                    guard !hasConfiguredMainWindow else {
+                        if selectedWebApp == nil {
+                            if window.title != "Capsule Browser" {
+                                window.title = "Capsule Browser"
+                            }
+                            if window.tab.title != "Capsule Browser" {
+                                window.tab.title = "Capsule Browser"
+                            }
+                        }
+                        return
+                    }
+                    hasConfiguredMainWindow = true
                     let tracker = MainWindowTracker.shared
                     let currentMain = tracker.mainWindow
                     if currentMain == nil || currentMain === window || !(currentMain?.isVisible ?? false) || tracker.isReopeningFromDock {
@@ -758,7 +771,6 @@ struct ContentView: View {
                         // Prevent duplicate main ContentView windows restored or spawned by macOS on reopen
                         window.delegate = nil
                         window.close()
-                        tracker.focusMainWindow()
                         return
                     }
                     window.tabbingIdentifier = "CapsuleBrowserWindow"
@@ -891,6 +903,8 @@ struct ContentView: View {
         }
         
         #if os(macOS)
+        isSearchFocused = false
+        hostingWindow?.makeFirstResponder(nil)
         switch windowPresentationMode {
         case .singleWindow:
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -924,6 +938,8 @@ struct ContentView: View {
     
     private func openEphemeralCapsule(name: String, urlString: String) {
         #if os(macOS)
+        isSearchFocused = false
+        hostingWindow?.makeFirstResponder(nil)
         switch windowPresentationMode {
         case .singleWindow:
             let ephemeralApp = WebAppItem(name: name, urlString: urlString)
