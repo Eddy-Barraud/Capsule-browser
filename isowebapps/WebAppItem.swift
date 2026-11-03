@@ -66,7 +66,7 @@ final class WebAppItem {
 
 /// Codable representation of an `HTTPCookie` allowing seamless serialization to JSON Data
 /// for SwiftData and CloudKit synchronization.
-struct SerializableCookie: Codable {
+struct SerializableCookie: Codable, Equatable {
     var name: String
     var value: String
     var domain: String

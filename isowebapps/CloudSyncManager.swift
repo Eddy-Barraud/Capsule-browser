@@ -521,7 +521,7 @@ public final class CloudSyncManager: ObservableObject {
     private func handleRemoteStoreChange() {
         guard isICloudSyncEnabled else { return }
         let cloudContext = getCloudContainer().mainContext
-        _ = deduplicateStore(in: cloudContext)
+        let didDeduplicate = deduplicateStore(in: cloudContext)
         guard let allCapsules = try? cloudContext.fetch(FetchDescriptor<WebAppItem>()) else { return }
         
         var newlyDetectedConflicts: [CapsuleSyncConflict] = []
@@ -582,7 +582,9 @@ public final class CloudSyncManager: ObservableObject {
             enqueueConflicts(newlyDetectedConflicts)
         }
         
-        objectWillChange.send()
+        if didDeduplicate || !newlyDetectedConflicts.isEmpty {
+            objectWillChange.send()
+        }
     }
     
     private func enqueueConflicts(_ conflicts: [CapsuleSyncConflict]) {
@@ -605,6 +607,7 @@ public final class CloudSyncManager: ObservableObject {
     
     private func switchToContainer(_ container: ModelContainer, cloudEnabled: Bool) {
         _ = deduplicateStore(in: container.mainContext)
+        IsolatedCookieManager.shared.invalidateRestoreCache()
         UserDefaults.standard.set(cloudEnabled, forKey: Self.storageKey)
         isICloudSyncEnabled = cloudEnabled
         activeContainer = container

@@ -349,20 +349,26 @@ struct WindowAccessor: NSViewRepresentable {
 struct CapsuleWindowHostView: View {
     let payload: CapsuleWindowPayload
     @Environment(\.modelContext) private var modelContext
-    @Query private var allApps: [WebAppItem]
     @State private var cachedAppItem: WebAppItem?
     @State private var currentDomainTitle: String = ""
     @State private var hostingWindow: NSWindow?
     @State private var hasConfiguredWindow = false
     
+    private func lookupAppItem() -> WebAppItem {
+        if let appId = payload.appId {
+            let descriptor = FetchDescriptor<WebAppItem>(predicate: #Predicate { $0.id == appId })
+            if let found = (try? modelContext.fetch(descriptor))?.first {
+                return found
+            }
+        }
+        return WebAppItem(name: payload.name ?? "Capsule", urlString: payload.urlString ?? "about:blank")
+    }
+    
     private var resolvedAppItem: WebAppItem {
         if let cached = cachedAppItem {
             return cached
         }
-        if let appId = payload.appId, let found = allApps.first(where: { $0.id == appId }) {
-            return found
-        }
-        return WebAppItem(name: payload.name ?? "Capsule", urlString: payload.urlString ?? "about:blank")
+        return lookupAppItem()
     }
     
     private var initialDomainTitle: String {
@@ -392,11 +398,7 @@ struct CapsuleWindowHostView: View {
                 currentDomainTitle = initialDomainTitle
             }
             if cachedAppItem == nil {
-                if let appId = payload.appId, let found = allApps.first(where: { $0.id == appId }) {
-                    cachedAppItem = found
-                } else {
-                    cachedAppItem = WebAppItem(name: payload.name ?? "Capsule", urlString: payload.urlString ?? "about:blank")
-                }
+                cachedAppItem = lookupAppItem()
             }
         }
         .background(

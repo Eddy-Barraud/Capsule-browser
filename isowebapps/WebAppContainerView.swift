@@ -48,7 +48,6 @@ struct WebAppContainerView: View {
     #endif
     
     @Environment(\.modelContext) private var modelContext
-    @Query private var existingApps: [WebAppItem]
     @StateObject private var navigationState = WebViewNavigationState()
     
     private var activeDomainTitle: String {
@@ -189,6 +188,10 @@ struct WebAppContainerView: View {
             }
         }
         .onDisappear {
+            if isSecondaryWindow {
+                // Secondary tabs/windows remain alive in the background; do not stop loading or blank the web view
+                return
+            }
             summaryTask?.cancel()
             navigationState.onStopLoading?()
         }
@@ -318,12 +321,6 @@ struct WebAppContainerView: View {
             }
         }
         .onDisappear {
-            #if os(macOS)
-            if isSecondaryWindow {
-                // Secondary tabs/windows remain alive in the background; do not stop loading or blank the web view
-                return
-            }
-            #endif
             summaryTask?.cancel()
             navigationState.onStopLoading?()
         }
@@ -419,7 +416,8 @@ struct WebAppContainerView: View {
     
     private func prefilledTitleForCurrentURL(_ urlString: String) -> String {
         guard let domain = WebAppNamingHelper.domainName(from: urlString) else { return "" }
-        return WebAppNamingHelper.uniqueTitle(for: domain, existingNames: existingApps.map { $0.name })
+        let existingNames = ((try? modelContext.fetch(FetchDescriptor<WebAppItem>())) ?? []).map { $0.name }
+        return WebAppNamingHelper.uniqueTitle(for: domain, existingNames: existingNames)
     }
     
     private func navigateToConfiguredHome() {

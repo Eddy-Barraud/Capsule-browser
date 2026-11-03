@@ -461,10 +461,12 @@ extension IsolatedWebViewRepresentable {
             }
             webView?.load(URLRequest(url: url))
         }
-        navigationState.onStopLoading = { [weak webView] in
+        let coordinator = context.coordinator
+        navigationState.onStopLoading = { [weak webView, weak coordinator] in
             #if DEBUG
             print("[IsolatedWebView] Stopping webView & clearing page")
             #endif
+            coordinator?.flushCookiesNow()
             webView?.stopLoading()
             webView?.loadHTMLString("", baseURL: nil)
         }
@@ -522,30 +524,40 @@ extension IsolatedWebViewRepresentable {
         }
         
         // 3. Restore isolated cookies (including grouped apps if applicable) and load start page
-        Task { @MainActor in
-            let groupedItems = appItem.group?.items ?? []
-            await IsolatedCookieManager.shared.restoreCookies(for: appItem, groupedItems: groupedItems, into: dataStore.httpCookieStore)
-            let startURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
-            if let url = URL(string: startURLString) {
-                #if DEBUG
-                print("[IsolatedWebView] Starting initial load for: \(url) (configured home: \(appItem.urlString))")
-                #endif
-                let request = URLRequest(url: url)
-                webView.load(request)
+        let groupedItems = appItem.group?.items ?? []
+        let startURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
+        if IsolatedCookieManager.shared.needsRestore(for: appItem, groupedItems: groupedItems) {
+            Task { @MainActor in
+                await IsolatedCookieManager.shared.restoreCookies(for: appItem, groupedItems: groupedItems, into: dataStore.httpCookieStore)
+                let resolvedStartURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
+                if let url = URL(string: resolvedStartURLString) {
+                    #if DEBUG
+                    print("[IsolatedWebView] Starting initial load for: \(url) (configured home: \(appItem.urlString))")
+                    #endif
+                    let request = URLRequest(url: url)
+                    webView.load(request)
+                }
             }
+        } else if let url = URL(string: startURLString) {
+            #if DEBUG
+            print("[IsolatedWebView] Starting initial load for: \(url) (configured home: \(appItem.urlString))")
+            #endif
+            let request = URLRequest(url: url)
+            webView.load(request)
         }
         
         return webView
     }
 }
 
-class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCookieStoreObserver {
+class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     let appItem: WebAppItem
     let navigationState: WebViewNavigationState
     let modelContext: ModelContext
     weak var webView: WKWebView?
     var onOpenNewWindowOrTab: ((URL) -> Void)?
     private var hasCommittedAnyPage: Bool = false
+    private var hasFlushedOnCleanup: Bool = false
     private var backForwardObserver: NSKeyValueObservation?
     private var canGoForwardObserver: NSKeyValueObservation?
     private var urlObserver: NSKeyValueObservation?
@@ -553,6 +565,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     private weak var observedCookieStore: WKHTTPCookieStore?
     private var uBlockUpdateObserver: Any?
     private var capsuleUBlockSettingObserver: Any?
+    private var appLifecycleObservers: [Any] = []
     
     init(appItem: WebAppItem, navigationState: WebViewNavigationState, modelContext: ModelContext) {
         self.appItem = appItem
@@ -567,6 +580,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
     
     func setup(webView: WKWebView) {
         self.webView = webView
+        self.observedCookieStore = webView.configuration.websiteDataStore.httpCookieStore
         
         DispatchQueue.main.async { [weak self, weak webView] in
             guard let self = self, let webView = webView else { return }
@@ -607,10 +621,24 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
                 }
             }
             
-            // Observe Cookie Store changes live (consent cookies, session tokens, etc.)
-            let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
-            self.observedCookieStore = cookieStore
-            cookieStore.add(self)
+            // Flush cookies when app resigns active or terminates
+            #if os(iOS)
+            let lifecycleNames: [Notification.Name] = [
+                UIApplication.willResignActiveNotification,
+                UIApplication.willTerminateNotification
+            ]
+            #else
+            let lifecycleNames: [Notification.Name] = [
+                NSApplication.willResignActiveNotification,
+                NSApplication.willTerminateNotification
+            ]
+            #endif
+            for name in lifecycleNames {
+                let obs = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    self?.flushCookiesNow()
+                }
+                self.appLifecycleObservers.append(obs)
+            }
             
             // Observe global uBlock rules recompiled in GeneralSettingsView
             self.uBlockUpdateObserver = NotificationCenter.default.addObserver(
@@ -652,18 +680,26 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         }
     }
     
-    func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
-        guard appItem.modelContext != nil else { return }
+    func flushCookiesNow() {
+        guard appItem.modelContext != nil, let cookieStore = observedCookieStore else { return }
+        let item = appItem
+        let context = modelContext
+        let currentURL = navigationState.currentURLString
         Task { @MainActor in
-            await IsolatedCookieManager.shared.persistCookies(
-                for: appItem,
+            await IsolatedCookieManager.shared.persistCookiesNow(
+                for: item,
                 from: cookieStore,
-                context: modelContext
+                context: context,
+                lastOpenedURL: currentURL
             )
         }
     }
     
     func cleanup() {
+        if !hasFlushedOnCleanup {
+            hasFlushedOnCleanup = true
+            flushCookiesNow()
+        }
         backForwardObserver?.invalidate()
         backForwardObserver = nil
         canGoForwardObserver?.invalidate()
@@ -672,7 +708,6 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         urlObserver = nil
         loadingObserver?.invalidate()
         loadingObserver = nil
-        observedCookieStore?.remove(self)
         observedCookieStore = nil
         if let obs = uBlockUpdateObserver {
             NotificationCenter.default.removeObserver(obs)
@@ -682,6 +717,10 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
             NotificationCenter.default.removeObserver(obs)
             capsuleUBlockSettingObserver = nil
         }
+        for obs in appLifecycleObservers {
+            NotificationCenter.default.removeObserver(obs)
+        }
+        appLifecycleObservers.removeAll()
         webView = nil
     }
     
@@ -815,23 +854,21 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCo
         navigationState.isLoading = false
         navigationState.canGoBack = webView.canGoBack
         navigationState.canGoForward = webView.canGoForward
+        let activeURLString: String?
         if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
             navigationState.currentURLString = urlString
-            // Persist the last opened URL for this web app if persistent
-            if appItem.modelContext != nil {
-                appItem.lastOpenedURLString = urlString
-                appItem.lastVisited = Date()
-                try? modelContext.save()
-            }
+            activeURLString = urlString
+        } else {
+            activeURLString = nil
         }
         
-        // Persist cookies after navigation completes
-        guard appItem.modelContext != nil else { return }
-        Task { @MainActor in
-            await IsolatedCookieManager.shared.persistCookies(
+        // Schedule coalesced, debounced cookie and URL metadata persistence after navigation settles
+        if appItem.modelContext != nil {
+            IsolatedCookieManager.shared.schedulePersistCookies(
                 for: appItem,
                 from: webView.configuration.websiteDataStore.httpCookieStore,
-                context: modelContext
+                context: modelContext,
+                lastOpenedURL: activeURLString
             )
         }
         
