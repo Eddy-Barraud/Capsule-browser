@@ -214,6 +214,9 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         persistWindowSize(from: window)
         
         let tabsToClose = window.tabGroup?.windows ?? [window]
+        #if DEBUG
+        print("[CapsuleClose] Closing all tabs and main window (\(tabsToClose.count) window(s))")
+        #endif
         for tabWin in tabsToClose where tabWin !== window && tabWin !== mainWindow {
             tabWin.delegate = nil
             tabWin.close()
@@ -294,6 +297,9 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     
     func windowWillClose(_ notification: Notification) {
         guard let closingWindow = notification.object as? NSWindow else { return }
+        #if DEBUG
+        print("[CapsuleClose] MainWindowTracker windowWillClose: '\(closingWindow.title)' (isMainWindow: \(closingWindow === mainWindow))")
+        #endif
         persistWindowSize(from: closingWindow)
         if closingWindow === mainWindow {
             mainWindow = nil
@@ -353,6 +359,8 @@ struct CapsuleWindowHostView: View {
     @State private var currentDomainTitle: String = ""
     @State private var hostingWindow: NSWindow?
     @State private var hasConfiguredWindow = false
+    @State private var isWindowClosed = false
+    @State private var windowCloseObserver: NSObjectProtocol?
     
     private func lookupAppItem() -> WebAppItem {
         if let appId = payload.appId {
@@ -377,98 +385,115 @@ struct CapsuleWindowHostView: View {
     }
     
     var body: some View {
-        WebAppContainerView(
-            appItem: resolvedAppItem,
-            initialURLString: payload.urlString,
-            isSecondaryWindow: payload.isSecondaryWindow,
-            onActiveDomainChange: { newDomain in
-                currentDomainTitle = newDomain
-                hostingWindow?.title = newDomain
-                hostingWindow?.tab.title = newDomain
-            },
-            onDismiss: {
-                MainWindowTracker.shared.focusMainWindow()
-            }
-        )
-        .frame(minWidth: 800, minHeight: 600)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle)
-        .onAppear {
-            if currentDomainTitle.isEmpty {
-                currentDomainTitle = initialDomainTitle
-            }
-            if cachedAppItem == nil {
-                cachedAppItem = lookupAppItem()
-            }
-        }
-        .background(
-            WindowAccessor { window in
-                if hostingWindow !== window {
-                    hostingWindow = window
+        Group {
+            if isWindowClosed {
+                EmptyView()
+            } else {
+                WebAppContainerView(
+                    appItem: resolvedAppItem,
+                    initialURLString: payload.urlString,
+                    isSecondaryWindow: payload.isSecondaryWindow,
+                    onActiveDomainChange: { newDomain in
+                        currentDomainTitle = newDomain
+                        hostingWindow?.title = newDomain
+                        hostingWindow?.tab.title = newDomain
+                    },
+                    onDismiss: {
+                        MainWindowTracker.shared.focusMainWindow()
+                    }
+                )
+                .frame(minWidth: 800, minHeight: 600)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle(currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle)
+                .onAppear {
+                    if currentDomainTitle.isEmpty {
+                        currentDomainTitle = initialDomainTitle
+                    }
+                    if cachedAppItem == nil {
+                        cachedAppItem = lookupAppItem()
+                    }
                 }
-                let titleToSet = currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle
-                if window.title != titleToSet {
-                    window.title = titleToSet
-                }
-                if window.tab.title != titleToSet {
-                    window.tab.title = titleToSet
-                }
-                guard !hasConfiguredWindow else { return }
-                hasConfiguredWindow = true
-                window.isRestorable = false
-                MainWindowTracker.shared.installCloseButtonHookIfNeeded(on: window)
-                
-                if payload.openAsTab {
-                    window.tabbingMode = .preferred
-                    window.tabbingIdentifier = "CapsuleBrowserWindow"
-                    
-                    if let tg = window.tabGroup, tg.windows.count > 1 {
-                        tg.selectedWindow = window
-                        window.makeKeyAndOrderFront(nil)
-                        window.makeFirstResponder(window.contentView)
-                    } else {
-                        let keyWindow = NSApp.keyWindow
-                        let targetWindow: NSWindow?
-                        if let kw = keyWindow, kw !== window, !kw.isMiniaturized, !(kw is NSPanel), kw.tabbingIdentifier == "CapsuleBrowserWindow" {
-                            targetWindow = kw
-                        } else if let main = MainWindowTracker.shared.mainWindow, main !== window, !main.isMiniaturized, !(main is NSPanel) {
-                            targetWindow = main
-                        } else {
-                            targetWindow = NSApp.windows.first(where: {
-                                $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel) && $0.tabbingIdentifier == "CapsuleBrowserWindow"
-                            }) ?? NSApp.windows.first(where: {
-                                $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel)
-                            })
+                .background(
+                    WindowAccessor { window in
+                        if hostingWindow !== window {
+                            hostingWindow = window
+                        }
+                        let titleToSet = currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle
+                        if window.title != titleToSet {
+                            window.title = titleToSet
+                        }
+                        if window.tab.title != titleToSet {
+                            window.tab.title = titleToSet
+                        }
+                        guard !hasConfiguredWindow else { return }
+                        hasConfiguredWindow = true
+                        window.isRestorable = false
+                        MainWindowTracker.shared.installCloseButtonHookIfNeeded(on: window)
+                        
+                        let appName = resolvedAppItem.name
+                        windowCloseObserver = NotificationCenter.default.addObserver(
+                            forName: NSWindow.willCloseNotification,
+                            object: window,
+                            queue: .main
+                        ) { _ in
+                            #if DEBUG
+                            print("[CapsuleClose] CapsuleWindowHostView closing window/tab for '\(appName)'")
+                            #endif
+                            if let obs = windowCloseObserver {
+                                NotificationCenter.default.removeObserver(obs)
+                                windowCloseObserver = nil
+                            }
+                            hostingWindow = nil
+                            isWindowClosed = true
                         }
                         
-                        if let target = targetWindow {
-                            let targetFrame = target.frame
-                            window.setFrame(targetFrame, display: false)
-                            target.addTabbedWindow(window, ordered: .above)
-                            target.tabGroup?.selectedWindow = window
-                            window.makeKeyAndOrderFront(nil)
-                            window.makeFirstResponder(window.contentView)
-                            DispatchQueue.main.async {
-                                window.setFrame(targetFrame, display: true)
-                                target.tabGroup?.selectedWindow = window
+                        if payload.openAsTab {
+                            window.tabbingMode = .preferred
+                            window.tabbingIdentifier = "CapsuleBrowserWindow"
+                            
+                            if let tg = window.tabGroup, tg.windows.count > 1 {
+                                tg.selectedWindow = window
                                 window.makeKeyAndOrderFront(nil)
                                 window.makeFirstResponder(window.contentView)
+                            } else {
+                                let keyWindow = NSApp.keyWindow
+                                let targetWindow: NSWindow?
+                                if let kw = keyWindow, kw !== window, !kw.isMiniaturized, !(kw is NSPanel), kw.tabbingIdentifier == "CapsuleBrowserWindow" {
+                                    targetWindow = kw
+                                } else if let main = MainWindowTracker.shared.mainWindow, main !== window, !main.isMiniaturized, !(main is NSPanel) {
+                                    targetWindow = main
+                                } else {
+                                    targetWindow = NSApp.windows.first(where: {
+                                        $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel) && $0.tabbingIdentifier == "CapsuleBrowserWindow"
+                                    }) ?? NSApp.windows.first(where: {
+                                        $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel)
+                                    })
+                                }
+                                
+                                if let target = targetWindow {
+                                    let targetFrame = target.frame
+                                    window.setFrame(targetFrame, display: false)
+                                    target.addTabbedWindow(window, ordered: .above)
+                                    target.tabGroup?.selectedWindow = window
+                                    window.makeKeyAndOrderFront(nil)
+                                    window.makeFirstResponder(window.contentView)
+                                } else {
+                                    window.makeKeyAndOrderFront(nil)
+                                    window.makeFirstResponder(window.contentView)
+                                }
                             }
                         } else {
+                            window.tabbingMode = .disallowed
+                            window.delegate = MainWindowTracker.shared
+                            MainWindowTracker.shared.applySavedSizeIfNeeded(to: window)
+                            window.cascadeTopLeft(from: NSZeroPoint)
                             window.makeKeyAndOrderFront(nil)
-                            window.makeFirstResponder(window.contentView)
                         }
+                        NSApp.activate(ignoringOtherApps: true)
                     }
-                } else {
-                    window.tabbingMode = .disallowed
-                    window.delegate = MainWindowTracker.shared
-                    MainWindowTracker.shared.applySavedSizeIfNeeded(to: window)
-                    window.cascadeTopLeft(from: NSZeroPoint)
-                    window.makeKeyAndOrderFront(nil)
-                }
-                NSApp.activate(ignoringOtherApps: true)
+                )
             }
-        )
+        }
     }
 }
 #endif

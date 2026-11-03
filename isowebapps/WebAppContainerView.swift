@@ -392,7 +392,7 @@ struct WebAppContainerView: View {
         #if os(macOS)
         if isSecondaryWindow {
             #if DEBUG
-            print("[WebAppContainerView] Secondary window/tab: focusing main window without stopping web page")
+            print("[CapsuleClose] Home button in secondary window/tab for '\(appItem.name)': focusing main window (capsule stays open in tab/window)")
             #endif
             MainWindowTracker.shared.focusMainWindow()
             return
@@ -400,7 +400,7 @@ struct WebAppContainerView: View {
         #endif
         
         #if DEBUG
-        print("[WebAppContainerView] Exiting web app back to Home Screen (isSecondaryWindow: \(isSecondaryWindow))")
+        print("[CapsuleClose] Dismissing capsule '\(appItem.name)' back to Home Screen (deleteCookiesOnClose: \(appItem.deleteCookiesOnClose))")
         #endif
         summaryTask?.cancel()
         navigationState.onStopLoading?()

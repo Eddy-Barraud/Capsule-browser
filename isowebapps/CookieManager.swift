@@ -36,6 +36,9 @@ final class IsolatedCookieManager {
     /// Cached last-saved cookie array per `WebAppItem.id` to avoid redundant SwiftData writes.
     private var lastSavedCookiesByItem: [UUID: [SerializableCookie]] = [:]
     
+    /// Cached last-saved cookie array per `storeId` (`group.id ?? item.id`) to avoid redundant group saves.
+    private var lastSavedCookiesByStore: [UUID: [SerializableCookie]] = [:]
+    
     private init() {}
     
     /// Invalidates cached session restore tracking (for example after clearing data or remote sync).
@@ -212,6 +215,23 @@ final class IsolatedCookieManager {
         }
     }
     
+    /// Flushes pending cookies and URL metadata only if a debounced save is currently scheduled or the URL changed.
+    func flushPendingSaveIfNeeded(
+        for item: WebAppItem,
+        from cookieStore: WKHTTPCookieStore,
+        context: ModelContext,
+        lastOpenedURL: String? = nil
+    ) async {
+        guard item.modelContext != nil else { return }
+        let hasPendingTask = (pendingPersistTasks[item.id] != nil) || (pendingURLByItem[item.id] != nil)
+        let hasChangedURL: Bool = {
+            guard let url = lastOpenedURL, !url.isEmpty, url != "about:blank" else { return false }
+            return item.lastOpenedURLString != url
+        }()
+        guard hasPendingTask || hasChangedURL else { return }
+        await persistCookiesNow(for: item, from: cookieStore, context: context, lastOpenedURL: lastOpenedURL)
+    }
+    
     /// Immediately flushes active cookies and pending URL metadata into SwiftData (e.g. on capsule close or after idle debounce).
     func persistCookiesNow(
         for item: WebAppItem,
@@ -223,6 +243,7 @@ final class IsolatedCookieManager {
         pendingPersistTasks.removeValue(forKey: item.id)
         
         guard item.modelContext != nil else { return }
+        let storeId = item.group?.id ?? item.id
         
         var didMutate = false
         let urlToSave = lastOpenedURL ?? pendingURLByItem.removeValue(forKey: item.id)
@@ -246,7 +267,8 @@ final class IsolatedCookieManager {
             }
             let serializable = sortedCookies.map { SerializableCookie(from: $0) }
             
-            if lastSavedCookiesByItem[item.id] != serializable {
+            let alreadySavedForStore = (lastSavedCookiesByStore[storeId] == serializable && item.isolatedCookiesData != nil)
+            if !alreadySavedForStore && lastSavedCookiesByItem[item.id] != serializable {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.sortedKeys]
                 if let encoded = try? encoder.encode(serializable) {
@@ -258,6 +280,7 @@ final class IsolatedCookieManager {
                         didMutate = true
                     }
                     lastSavedCookiesByItem[item.id] = serializable
+                    lastSavedCookiesByStore[storeId] = serializable
                 }
             }
         }
@@ -296,6 +319,7 @@ final class IsolatedCookieManager {
         pendingURLByItem.removeValue(forKey: item.id)
         lastSavedCookiesByItem.removeValue(forKey: item.id)
         let storeId = item.group?.id ?? item.id
+        lastSavedCookiesByStore.removeValue(forKey: storeId)
         invalidateRestoreCache(for: storeId)
         
         // 1. Clear isolated SwiftData cookies
