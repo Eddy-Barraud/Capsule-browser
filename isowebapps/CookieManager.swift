@@ -358,4 +358,55 @@ final class IsolatedCookieManager {
             }
         }
     }
+    
+    /// Wipes all cookies, cache, local storage, and website data for all capsules in a group,
+    /// and resets the shared group WKWebsiteDataStore.
+    func clearData(for group: WebAppGroup, context: ModelContext) async {
+        #if DEBUG
+        print("[IsolatedCookieManager] Clearing all data and cookies for group '\(group.name)' (\(group.id))...")
+        #endif
+        
+        let groupId = group.id
+        let items = group.items ?? []
+        
+        // 1. Cancel and remove any pending persist tasks and caches for member capsules
+        for item in items {
+            pendingPersistTasks[item.id]?.cancel()
+            pendingPersistTasks.removeValue(forKey: item.id)
+            pendingURLByItem.removeValue(forKey: item.id)
+            lastSavedCookiesByItem.removeValue(forKey: item.id)
+            item.isolatedCookiesData = nil
+            item.lastOpenedURLString = nil
+        }
+        
+        lastSavedCookiesByStore.removeValue(forKey: groupId)
+        inFlightRestoreTasks[groupId]?.cancel()
+        inFlightRestoreTasks.removeValue(forKey: groupId)
+        invalidateRestoreCache(for: groupId)
+        
+        try? context.save()
+        
+        // 2. Clear WKHTTPCookieStore and all website data types from the group's WKWebsiteDataStore
+        let groupStore = WKWebsiteDataStore(forIdentifier: groupId)
+        let cookies = await groupStore.httpCookieStore.allCookies()
+        for cookie in cookies {
+            await groupStore.httpCookieStore.delete(cookie)
+        }
+        
+        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+        let dateFrom = Date(timeIntervalSince1970: 0)
+        await groupStore.removeData(ofTypes: dataTypes, modifiedSince: dateFrom)
+        
+        // 3. Completely remove the on-disk WKWebsiteDataStore container if possible
+        do {
+            try await WKWebsiteDataStore.remove(forIdentifier: groupId)
+            #if DEBUG
+            print("[IsolatedCookieManager] Successfully removed WKWebsiteDataStore for group \(groupId)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("[IsolatedCookieManager] Notice: WKWebsiteDataStore.remove for group \(groupId) completed with info: \(error)")
+            #endif
+        }
+    }
 }

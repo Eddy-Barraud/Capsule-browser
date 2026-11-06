@@ -21,6 +21,9 @@ struct GroupSettingsSheet: View {
     
     @State private var groupName: String = ""
     @State private var searchText: String = ""
+    @State private var isShowingClearConfirmation = false
+    @State private var isClearingData = false
+    @State private var hasRecentlyClearedData = false
     
     private var groupItems: [WebAppItem] {
         let items = group.items ?? []
@@ -57,11 +60,25 @@ struct GroupSettingsSheet: View {
     }
     
     var body: some View {
-        #if os(macOS)
-        macOSLayout
-        #else
-        iOSLayout
-        #endif
+        Group {
+            #if os(macOS)
+            macOSLayout
+            #else
+            iOSLayout
+            #endif
+        }
+        .confirmationDialog(
+            "Clear All Data & Cookies for '\(group.name)'?",
+            isPresented: $isShowingClearConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear All Data & Cookies", role: .destructive) {
+                clearGroupData()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently remove all cookies, local storage, cache, and active sessions for all \(group.items?.count ?? 0) capsules in this group. This cannot be undone.")
+        }
     }
     
     // MARK: - macOS Layout
@@ -294,6 +311,53 @@ struct GroupSettingsSheet: View {
                                     .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
                                     .cornerRadius(6)
                                 }
+                            }
+                        }
+                    }
+                    
+                    // Data & Cookies Card
+                    macOSSectionCard(
+                        title: "Data & Cookies",
+                        badge: (group.items?.isEmpty ?? true) ? nil : "\(group.items?.count ?? 0) capsules",
+                        footer: "Permanently deletes all cookies, cache, local storage, and website sessions for all capsules in this group."
+                    ) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Clearing group data logs you out of all accounts and services across every capsule in this group.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            HStack {
+                                Button(role: .destructive) {
+                                    isShowingClearConfirmation = true
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        if isClearingData {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                            Text("Clearing Data...")
+                                        } else if hasRecentlyClearedData {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.green)
+                                            Text("Data Cleared")
+                                                .foregroundColor(.green)
+                                        } else {
+                                            Image(systemName: "trash")
+                                            Text("Clear All Data & Cookies")
+                                        }
+                                    }
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(hasRecentlyClearedData ? .green : .red)
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 12)
+                                    .background((hasRecentlyClearedData ? Color.green : Color.red).opacity(0.12))
+                                    .cornerRadius(8)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isClearingData || (group.items?.isEmpty ?? true))
+                                .help("Delete all cookies, storage, and website data for all capsules in this group")
+                                
+                                Spacer()
                             }
                         }
                     }
@@ -535,6 +599,33 @@ struct GroupSettingsSheet: View {
                         }
                     }
                 }
+                
+                // Section: Data & Cookies
+                Section(
+                    header: Text("Data & Cookies"),
+                    footer: Text("Permanently deletes all cookies, cache, local storage, and website sessions for all capsules in this group. You will be logged out of all accounts.")
+                ) {
+                    Button(role: .destructive) {
+                        isShowingClearConfirmation = true
+                    } label: {
+                        HStack {
+                            if isClearingData {
+                                ProgressView()
+                                Spacer().frame(width: 8)
+                                Text("Clearing Data...")
+                            } else if hasRecentlyClearedData {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text("All Data & Cookies Cleared")
+                                    .foregroundColor(.green)
+                            } else {
+                                Image(systemName: "trash")
+                                Text("Clear All Data & Cookies")
+                            }
+                        }
+                    }
+                    .disabled(isClearingData || (group.items?.isEmpty ?? true))
+                }
             }
             .searchable(text: $searchText, prompt: "Search capsules...")
             .navigationTitle("Group Settings")
@@ -567,6 +658,18 @@ struct GroupSettingsSheet: View {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             app.group = nil
             try? modelContext.save()
+        }
+    }
+    
+    private func clearGroupData() {
+        isClearingData = true
+        Task {
+            await IsolatedCookieManager.shared.clearData(for: group, context: modelContext)
+            isClearingData = false
+            hasRecentlyClearedData = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                hasRecentlyClearedData = false
+            }
         }
     }
     
