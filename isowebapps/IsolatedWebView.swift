@@ -604,36 +604,6 @@ extension IsolatedWebViewRepresentable {
     }
 }
 
-final class OAuthPopupCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-    weak var navigationState: WebViewNavigationState?
-    
-    init(navigationState: WebViewNavigationState) {
-        self.navigationState = navigationState
-        super.init()
-    }
-    
-    func webViewDidClose(_ webView: WKWebView) {
-        #if DEBUG
-        print("[OAuthPopupCoordinator] webViewDidClose called for popup webView")
-        #endif
-        DispatchQueue.main.async { [weak self] in
-            self?.navigationState?.closeActivePopup()
-            self?.navigationState?.onReload?()
-        }
-    }
-    
-    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if navigationAction.targetFrame == nil {
-            webView.load(navigationAction.request)
-        }
-        return nil
-    }
-    
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        decisionHandler(.allow)
-    }
-}
-
 class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     let appItem: WebAppItem
     let navigationState: WebViewNavigationState
@@ -970,86 +940,12 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         navigationState.canGoForward = webView.canGoForward
     }
     
-    // MARK: - WKUIDelegate: Popup & OAuth Handling
-    
-    func webViewDidClose(_ webView: WKWebView) {
-        #if DEBUG
-        print("[IsolatedWebView] webViewDidClose called for webView: \(webView)")
-        #endif
-        if navigationState.activePopupItem?.webView === webView {
-            navigationState.closeActivePopup()
-        }
-    }
-    
-    private func isLikelyOAuthOrPopupWindow(navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> Bool {
-        // 1. Explicit popup dimensions or window chrome restrictions requested by window.open
-        if windowFeatures.width != nil || windowFeatures.height != nil ||
-           windowFeatures.menuBarVisibility?.boolValue == false ||
-           windowFeatures.toolbarsVisibility?.boolValue == false {
-            return true
-        }
-        
-        // 2. JavaScript window.open called without URL initially (blank window awaiting script navigation)
-        guard let url = navigationAction.request.url, !url.absoluteString.isEmpty, url.absoluteString != "about:blank" else {
-            return true
-        }
-        
-        let host = url.host?.lowercased() ?? ""
-        let path = url.path.lowercased()
-        let query = url.query?.lowercased() ?? ""
-        
-        // 3. Known OAuth/SSO identity providers
-        let isOAuthHost = host.contains("accounts.google.com") ||
-                          host.contains("appleid.apple.com") ||
-                          host.contains("login.microsoftonline.com") ||
-                          host.contains("login.live.com") ||
-                          (host.contains("facebook.com") && (path.contains("oauth") || path.contains("login") || path.contains("dialog"))) ||
-                          (host.contains("github.com") && path.contains("oauth")) ||
-                          ((host.contains("twitter.com") || host.contains("x.com")) && path.contains("oauth")) ||
-                          host.contains("auth0.com") ||
-                          host.contains("okta.com")
-        
-        if isOAuthHost {
-            return true
-        }
-        
-        // 4. Typical OAuth 2.0 / OIDC parameters or endpoints
-        if query.contains("response_type=") || query.contains("client_id=") || path.contains("/oauth") || path.contains("/authorize") {
-            return true
-        }
-        
-        return false
-    }
-    
     // Handle target="_blank", popup windows, and "Open Link in New Window" context menu actions
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         #if DEBUG
         print("[IsolatedWebView] createWebViewWith called! targetFrame is nil: \(navigationAction.targetFrame == nil), url: \(String(describing: navigationAction.request.url))")
         #endif
         if navigationAction.targetFrame == nil {
-            // Check if this is an OAuth / authentication dialog popup or script-initiated popup window
-            if isLikelyOAuthOrPopupWindow(navigationAction: navigationAction, windowFeatures: windowFeatures) {
-                #if DEBUG
-                print("[IsolatedWebView] Detected OAuth/popup window request for: \(String(describing: navigationAction.request.url)). Spawning child popup sheet.")
-                #endif
-                let popupCoordinator = OAuthPopupCoordinator(navigationState: navigationState)
-                let popupWebView = WKWebView(frame: .zero, configuration: configuration)
-                #if os(macOS)
-                popupWebView.customUserAgent = webView.customUserAgent
-                #else
-                popupWebView.customUserAgent = webView.customUserAgent
-                popupWebView.scrollView.keyboardDismissMode = .interactive
-                #endif
-                popupWebView.uiDelegate = popupCoordinator
-                popupWebView.navigationDelegate = popupCoordinator
-                
-                let item = PopupWebViewItem(webView: popupWebView, coordinator: popupCoordinator)
-                DispatchQueue.main.async { [weak self] in
-                    self?.navigationState.activePopupItem = item
-                }
-                return popupWebView
-            }
-            
             if let url = navigationAction.request.url {
                 // If "Open Links in Safari Reader" is enabled and the target URL is external (or a known redirector),
                 // open it directly in Safari Reader without spawning an empty tab or window first.

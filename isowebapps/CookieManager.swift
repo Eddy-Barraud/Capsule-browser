@@ -390,7 +390,7 @@ final class IsolatedCookieManager {
         let groupStore = WKWebsiteDataStore(forIdentifier: groupId)
         let cookies = await groupStore.httpCookieStore.allCookies()
         for cookie in cookies {
-            await groupStore.httpCookieStore.deleteCookie(cookie)
+            await groupStore.httpCookieStore.delete(cookie)
         }
         
         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()

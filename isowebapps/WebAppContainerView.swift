@@ -23,7 +23,6 @@ class WebViewNavigationState: ObservableObject {
     @Published var canGoForward: Bool = false
     @Published var isLoading: Bool = false
     @Published var isUBlockEnabled: Bool = true
-    @Published var activePopupItem: PopupWebViewItem? = nil
     
     var onGoBack: (() -> Void)?
     var onGoForward: (() -> Void)?
@@ -35,28 +34,6 @@ class WebViewNavigationState: ObservableObject {
     var onOpenSafariReader: ((URL) -> Void)?
     var onCaptureFirstPagePDFText: (() async throws -> (title: String, url: String, text: String))?
     var onOpenNewWindowOrTab: ((URL) -> Void)?
-    
-    func closeActivePopup() {
-        if let popup = activePopupItem {
-            #if DEBUG
-            print("[WebViewNavigationState] Closing active popup webview")
-            #endif
-            popup.webView.stopLoading()
-            popup.webView.loadHTMLString("", baseURL: nil)
-            activePopupItem = nil
-        }
-    }
-}
-
-final class PopupWebViewItem: Identifiable {
-    let id = UUID()
-    let webView: WKWebView
-    let coordinator: OAuthPopupCoordinator
-    
-    init(webView: WKWebView, coordinator: OAuthPopupCoordinator) {
-        self.webView = webView
-        self.coordinator = coordinator
-    }
 }
 
 struct WebAppContainerView: View {
@@ -131,7 +108,6 @@ struct WebAppContainerView: View {
                         onToggleShield: toggleUBlockProtection,
                         onSummarize: handleSummarizeTap,
                         onOpenInReader: openCurrentInSafariReader,
-                        onOpenPopup: openCurrentInPopup,
                         onAddCapsule: {
                             isShowingAddSheet = true
                         }
@@ -237,7 +213,6 @@ struct WebAppContainerView: View {
                 onToggleShield: toggleUBlockProtection,
                 onSummarize: handleSummarizeTap,
                 onOpenInReader: openCurrentInSafariReader,
-                onOpenPopup: openCurrentInPopup,
                 onAddCapsule: {
                     isShowingAddSheet = true
                 }
@@ -366,11 +341,6 @@ struct WebAppContainerView: View {
         #endif
         }
         .navigationTitle(activeDomainTitle)
-        .sheet(item: $navigationState.activePopupItem, onDismiss: {
-            navigationState.closeActivePopup()
-        }) { _ in
-            OAuthPopupSheetView(navigationState: navigationState)
-        }
         #if os(macOS)
         .background(
             WindowAccessor { window in
@@ -478,55 +448,6 @@ struct WebAppContainerView: View {
         #endif
     }
     
-    private func openCurrentInPopup() {
-        let activeURLString = navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString
-        guard let url = URL(string: activeURLString), url.scheme?.hasPrefix("http") == true else { return }
-        
-        let storeId = appItem.group?.id ?? appItem.id
-        let dataStore: WKWebsiteDataStore
-        if appItem.modelContext == nil {
-            dataStore = .nonPersistent()
-        } else {
-            dataStore = WKWebsiteDataStore(forIdentifier: storeId)
-        }
-        
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = dataStore
-        configuration.preferences.isElementFullscreenEnabled = true
-        #if os(macOS)
-        configuration.preferences.setValue(true, forKey: "fullScreenEnabled")
-        configuration.preferences.setValue(true, forKey: "hiddenPageDOMTimerThrottlingEnabled")
-        #endif
-        
-        let webpagePreferences = WKWebpagePreferences()
-        webpagePreferences.allowsContentJavaScript = true
-        #if os(macOS)
-        webpagePreferences.preferredContentMode = .desktop
-        #else
-        webpagePreferences.preferredContentMode = .mobile
-        #endif
-        configuration.defaultWebpagePreferences = webpagePreferences
-        
-        if appItem.isUBlockEnabled {
-            UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
-        }
-        
-        let popupCoordinator = OAuthPopupCoordinator(navigationState: navigationState)
-        let popupWebView = WKWebView(frame: .zero, configuration: configuration)
-        #if os(macOS)
-        popupWebView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15"
-        #else
-        popupWebView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1"
-        popupWebView.scrollView.keyboardDismissMode = .interactive
-        #endif
-        popupWebView.uiDelegate = popupCoordinator
-        popupWebView.navigationDelegate = popupCoordinator
-        popupWebView.load(URLRequest(url: url))
-        
-        let item = PopupWebViewItem(webView: popupWebView, coordinator: popupCoordinator)
-        navigationState.activePopupItem = item
-    }
-    
     private func handleSummarizeTap() {
         if isShowingSummary && !isGeneratingSummary && summaryErrorMessage == nil && !summaryText.isEmpty {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -613,7 +534,6 @@ struct TopControlsBar: View {
     let onToggleShield: () -> Void
     let onSummarize: () -> Void
     let onOpenInReader: () -> Void
-    let onOpenPopup: () -> Void
     var onAddCapsule: (() -> Void)? = nil
     
     private var isYouTube: Bool {
@@ -716,24 +636,6 @@ struct TopControlsBar: View {
                 .buttonStyle(.plain)
                 .help("Open current web page in Safari Reader view")
             }
-            
-            // Pop up Button (triggers connection popup on the current URL)
-            Button(action: onOpenPopup) {
-                HStack(spacing: 4) {
-                    Image(systemName: "rectangle.on.rectangle")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.blue)
-                    
-                    Text("Pop up")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.primary)
-                }
-                .padding(.horizontal, 9)
-                .frame(height: 32)
-                .liquidGlassButton(cornerRadius: 10)
-            }
-            .buttonStyle(.plain)
-            .help("Open current page in an authentication popup window")
             
             // Tiles / Grid Home Button (Top Right)
             Button(action: onDismiss) {
@@ -1225,89 +1127,5 @@ enum WebAppNamingHelper {
             counter += 1
         }
         return "\(trimmedBase) \(counter)"
-    }
-}
-
-// MARK: - OAuth & Popup Modal Presentation
-
-#if os(macOS)
-struct PopupWebViewContainer: NSViewRepresentable {
-    let webView: WKWebView
-    
-    func makeNSView(context: Context) -> WKWebView {
-        webView.removeFromSuperview()
-        webView.autoresizingMask = [.width, .height]
-        return webView
-    }
-    
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
-}
-#else
-struct PopupWebViewContainer: UIViewRepresentable {
-    let webView: WKWebView
-    
-    func makeUIView(context: Context) -> WKWebView {
-        webView.removeFromSuperview()
-        return webView
-    }
-    
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
-}
-#endif
-
-struct OAuthPopupSheetView: View {
-    @ObservedObject var navigationState: WebViewNavigationState
-    @State private var currentURL: URL?
-    @State private var pageTitle: String = ""
-    @State private var isLoading: Bool = false
-    
-    private var hostDisplay: String {
-        if let host = currentURL?.host, !host.isEmpty {
-            return host
-        }
-        return pageTitle.isEmpty ? "Authentication" : pageTitle
-    }
-    
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                if let popupItem = navigationState.activePopupItem {
-                    PopupWebViewContainer(webView: popupItem.webView)
-                        .onReceive(popupItem.webView.publisher(for: \.url)) { url in
-                            currentURL = url
-                        }
-                        .onReceive(popupItem.webView.publisher(for: \.title)) { title in
-                            if let title = title, !title.isEmpty {
-                                pageTitle = title
-                            }
-                        }
-                        .onReceive(popupItem.webView.publisher(for: \.isLoading)) { loading in
-                            isLoading = loading
-                        }
-                } else {
-                    ProgressView()
-                }
-            }
-            .navigationTitle(hostDisplay)
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        navigationState.closeActivePopup()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        navigationState.closeActivePopup()
-                        navigationState.onReload?()
-                    }
-                }
-            }
-        }
-        #if os(macOS)
-        .frame(minWidth: 520, idealWidth: 620, maxWidth: 800, minHeight: 600, idealHeight: 700, maxHeight: 900)
-        #endif
     }
 }
