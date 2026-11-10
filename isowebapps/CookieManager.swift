@@ -252,7 +252,7 @@ final class IsolatedCookieManager {
                 item.lastOpenedURLString = url
                 didMutate = true
             }
-            if item.lastVisited == nil || Date().timeIntervalSince(item.lastVisited!) > 30 {
+            if item.lastVisited == nil || abs(Date().timeIntervalSince(item.lastVisited!)) > 30 {
                 item.lastVisited = Date()
                 didMutate = true
             }
@@ -267,8 +267,7 @@ final class IsolatedCookieManager {
             }
             let serializable = sortedCookies.map { SerializableCookie(from: $0) }
             
-            let alreadySavedForStore = (lastSavedCookiesByStore[storeId] == serializable && item.isolatedCookiesData != nil)
-            if !alreadySavedForStore && lastSavedCookiesByItem[item.id] != serializable {
+            if lastSavedCookiesByItem[item.id] != serializable || item.isolatedCookiesData == nil {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.sortedKeys]
                 if let encoded = try? encoder.encode(serializable) {

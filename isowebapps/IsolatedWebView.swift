@@ -381,6 +381,15 @@ struct IsolatedWebViewRepresentable: NSViewRepresentable {
 #endif
 
 extension IsolatedWebViewRepresentable {
+    /// Standard default Safari User-Agent string used for regular browsing.
+    static let defaultUserAgent: String = {
+        #if os(macOS)
+        return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15"
+        #else
+        return "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1"
+        #endif
+    }()
+
     /// Generates a randomized User-Agent for YouTube capsules in the format:
     /// 6 random lowercase letters + space + (XX.X)
     /// Example: "kepsse (31.4)"
@@ -390,6 +399,21 @@ extension IsolatedWebViewRepresentable {
         let major = Int.random(in: 10...99)
         let minor = Int.random(in: 0...9)
         return "\(randomLetters) (\(major).\(minor))"
+    }
+    
+    /// Dynamically applies the YouTube-specific random User-Agent when browsing YouTube,
+    /// or restores the clean standard Safari User-Agent when navigating to other sites.
+    static func updateUserAgent(for webView: WKWebView?, targetURL: URL) {
+        let isYouTube = targetURL.absoluteString.localizedCaseInsensitiveContains("youtube.com")
+        if isYouTube {
+            let youtubeUA = generateRandomYouTubeUserAgent()
+            webView?.customUserAgent = youtubeUA
+            #if DEBUG
+            print("[IsolatedWebView] Assigned YouTube spoofed User-Agent: \(youtubeUA)")
+            #endif
+        } else {
+            webView?.customUserAgent = defaultUserAgent
+        }
     }
     
     func createConfiguredWebView(context: Context) -> WKWebView {
@@ -452,21 +476,10 @@ extension IsolatedWebViewRepresentable {
         #endif
         
         let targetURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
-        let isYouTube = appItem.urlString.localizedCaseInsensitiveContains("youtube.com") ||
-                        targetURLString.localizedCaseInsensitiveContains("youtube.com")
-        
-        if isYouTube {
-            let youtubeUA = Self.generateRandomYouTubeUserAgent()
-            webView.customUserAgent = youtubeUA
-            #if DEBUG
-            print("[IsolatedWebView] YouTube capsule opened (\(appItem.name)). Assigned random User-Agent: \(youtubeUA)")
-            #endif
+        if let targetURL = URL(string: targetURLString) {
+            Self.updateUserAgent(for: webView, targetURL: targetURL)
         } else {
-            #if os(macOS)
-            webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15"
-            #else
-            webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1"
-            #endif
+            webView.customUserAgent = Self.defaultUserAgent
         }
         
         webView.navigationDelegate = context.coordinator
@@ -501,13 +514,7 @@ extension IsolatedWebViewRepresentable {
             #if DEBUG
             print("[IsolatedWebView] Loading custom URL: \(url)")
             #endif
-            if url.absoluteString.localizedCaseInsensitiveContains("youtube.com") {
-                let youtubeUA = Self.generateRandomYouTubeUserAgent()
-                webView?.customUserAgent = youtubeUA
-                #if DEBUG
-                print("[IsolatedWebView] Navigating to YouTube. Assigned random User-Agent: \(youtubeUA)")
-                #endif
-            }
+            Self.updateUserAgent(for: webView, targetURL: url)
             webView?.load(URLRequest(url: url))
         }
         let coordinator = context.coordinator
@@ -790,6 +797,35 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         #if DEBUG
         print("[IsolatedWebView] decidePolicyFor: targetFrame nil: \(navigationAction.targetFrame == nil), url: \(String(describing: navigationAction.request.url)), navType: \(navigationAction.navigationType.rawValue)")
         #endif
+        
+        // Security: Block navigation to disallowed or dangerous URL schemes (e.g. file://)
+        // and delegate external communication schemes (mailto:, tel:) to the operating system.
+        if let targetURL = navigationAction.request.url,
+           let scheme = targetURL.scheme?.lowercased() {
+            if scheme == "mailto" || scheme == "tel" {
+                #if os(macOS)
+                NSWorkspace.shared.open(targetURL)
+                #else
+                UIApplication.shared.open(targetURL, options: [:], completionHandler: nil)
+                #endif
+                decisionHandler(.cancel)
+                return
+            }
+            
+            let allowedSchemes: Set<String> = ["http", "https", "about", "data", "blob"]
+            if !allowedSchemes.contains(scheme) {
+                #if DEBUG
+                print("[IsolatedWebView] decidePolicyFor: blocked navigation to disallowed scheme: \(scheme)")
+                #endif
+                decisionHandler(.cancel)
+                return
+            }
+            
+            // Dynamically synchronize the User-Agent (YouTube spoof vs standard Safari)
+            // for every in-page or external navigation.
+            IsolatedWebViewRepresentable.updateUserAgent(for: webView, targetURL: targetURL)
+        }
+        
         // Defer handling of target="_blank" (new window) links to createWebViewWith
         // to prevent the WKWebView from going blank when we cancel the navigation.
         if navigationAction.targetFrame == nil {
@@ -982,13 +1018,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
                 #if DEBUG
                 print("[IsolatedWebView] Single window mode: loading in current webview")
                 #endif
-                if url.absoluteString.localizedCaseInsensitiveContains("youtube.com") {
-                    let youtubeUA = IsolatedWebViewRepresentable.generateRandomYouTubeUserAgent()
-                    webView.customUserAgent = youtubeUA
-                    #if DEBUG
-                    print("[IsolatedWebView] Single window navigation to YouTube. Assigned random User-Agent: \(youtubeUA)")
-                    #endif
-                }
+                IsolatedWebViewRepresentable.updateUserAgent(for: webView, targetURL: url)
                 webView.load(navigationAction.request)
             } else {
                 #if DEBUG
@@ -1021,9 +1051,11 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         @unknown default:
             typeDescription = "unknown media type"
         }
-        print("[IsolatedWebView] Granting media capture permission for origin: \(origin.host), type: \(typeDescription)")
+        print("[IsolatedWebView] Requesting media capture permission for origin: \(origin.host), type: \(typeDescription)")
         #endif
-        decisionHandler(.grant)
+        // Security: Always delegate permission decisions to the native prompt (.prompt)
+        // rather than auto-granting (.grant), protecting user privacy against silent recording.
+        decisionHandler(.prompt)
     }
 }
 

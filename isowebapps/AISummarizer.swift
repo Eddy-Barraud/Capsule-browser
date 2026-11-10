@@ -185,6 +185,7 @@ public final class AISummarizer: ObservableObject {
         
         for candidate in candidateURLs {
             if let url = candidate,
+               FileManager.default.fileExists(atPath: url.path),
                let content = try? String(contentsOf: url, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
                !content.isEmpty {
                 return content

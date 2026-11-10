@@ -116,8 +116,12 @@ struct AddWebAppSheet: View {
             formattedURL = "https://" + formattedURL
         }
         
-        guard let url = URL(string: formattedURL) else {
-            errorMessage = "Please enter a valid URL."
+        guard let url = URL(string: formattedURL),
+              let scheme = url.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"),
+              let host = url.host,
+              !host.isEmpty else {
+            errorMessage = "Please enter a valid HTTP or HTTPS website URL."
             return
         }
         

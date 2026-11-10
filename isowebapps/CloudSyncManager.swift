@@ -150,6 +150,13 @@ public final class CloudSyncManager: ObservableObject {
         setupRemoteChangeObserver()
     }
     
+    deinit {
+        if let observer = remoteChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        remoteChangeDebounceTask?.cancel()
+    }
+    
     // MARK: - Container Factories
     
     private static func makeLocalContainer() -> ModelContainer {
@@ -354,6 +361,10 @@ public final class CloudSyncManager: ObservableObject {
         Task { @MainActor in
             // Allow CloudKit container a brief window to load cached/imported records
             try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard self.isICloudSyncEnabled else {
+                self.isSyncingWithCloud = false
+                return
+            }
             self.performLocalToCloudMerge(localGroups: localGroups, localCapsules: localCapsules)
             self.isSyncingWithCloud = false
         }
@@ -583,6 +594,7 @@ public final class CloudSyncManager: ObservableObject {
         }
         
         if didDeduplicate || !newlyDetectedConflicts.isEmpty {
+            containerRefreshID = UUID()
             objectWillChange.send()
         }
     }

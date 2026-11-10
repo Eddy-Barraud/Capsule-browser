@@ -39,20 +39,12 @@ struct AddGroupSheet: View {
                                 }
                             } label: {
                                 HStack {
-                                    if let iconData = app.iconData, let uiImage = _imageFrom(data: iconData) {
-#if os(macOS)
-                                        Image(nsImage: uiImage)
+                                    if let iconData = app.iconData, let platformImage = PlatformImage(data: iconData) {
+                                        Image(platformImage: platformImage)
                                             .resizable()
                                             .scaledToFit()
                                             .frame(width: 30, height: 30)
-                                            .cornerRadius(6)
-#else
-                                        Image(uiImage: uiImage)
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(width: 30, height: 30)
-                                            .cornerRadius(6)
-#endif
+                                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                                     }
                                     
                                     Text(app.name)
@@ -105,10 +97,4 @@ struct AddGroupSheet: View {
         try? modelContext.save()
         dismiss()
     }
-    
-    #if os(iOS)
-    private func _imageFrom(data: Data) -> UIImage? { UIImage(data: data) }
-    #else
-    private func _imageFrom(data: Data) -> NSImage? { NSImage(data: data) }
-    #endif
 }

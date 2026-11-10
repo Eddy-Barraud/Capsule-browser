@@ -240,9 +240,11 @@ public final class UBlockRuleCompiler {
             regex = regex + "$"
         }
         
-        // Validate that the output compiles as a valid regular expression
+        // Validate that the output compiles as a valid regular expression.
+        // Return empty string on compilation failure so callers discard the invalid rule,
+        // rather than falling back to ".*" which would inadvertently match all web traffic.
         if (try? NSRegularExpression(pattern: regex)) == nil {
-            return ".*"
+            return ""
         }
         
         return regex

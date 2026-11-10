@@ -468,6 +468,12 @@ struct CapsuleWindowHostView: View {
                         openWindow(id: "capsuleWindow", value: payload)
                     }
                 }
+                .onDisappear {
+                    if let obs = windowCloseObserver {
+                        NotificationCenter.default.removeObserver(obs)
+                        windowCloseObserver = nil
+                    }
+                }
                 .background(
                     WindowAccessor { window in
                         if hostingWindow !== window {

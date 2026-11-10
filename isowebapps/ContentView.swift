@@ -182,10 +182,11 @@ struct ContentView: View {
                         openCapsule(app, clearLastOpenedURL: false)
                     },
                     onSelectEphemeral: {
-                        guard let host = URL(string: targetURLString)?.host else { return }
                         isShowingOpenURLSheet = false
                         pendingOpenURL = nil
-                        openEphemeralCapsule(name: host, urlString: targetURLString)
+                        let resolvedHost = URL(string: targetURLString)?.host
+                        let capsuleName = (resolvedHost != nil && !resolvedHost!.isEmpty) ? resolvedHost! : "Web Capsule"
+                        openEphemeralCapsule(name: capsuleName, urlString: targetURLString)
                     },
                     onCancel: {
                         isShowingOpenURLSheet = false
@@ -800,11 +801,22 @@ struct ContentView: View {
     
     private func handleIncomingURL(_ url: URL) {
         // Expected format: capsulebrowser://open?url=https%3A%2F%2Fwww.youtube.com
-        guard url.scheme == "capsulebrowser",
-              url.host == "open",
+        guard url.scheme?.lowercased() == "capsulebrowser",
+              url.host?.lowercased() == "open",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let queryItem = components.queryItems?.first(where: { $0.name == "url" }),
               let targetURLString = queryItem.value else {
+            return
+        }
+        
+        // Security: Strictly enforce http/https web schemes to prevent local file disclosure (file://)
+        // or script injection (javascript:) through custom URL scheme handlers.
+        guard let parsedURL = URL(string: targetURLString),
+              let scheme = parsedURL.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            #if DEBUG
+            print("[ContentView] Rejected incoming URL with unsupported or unsafe scheme: \(targetURLString)")
+            #endif
             return
         }
         
@@ -1199,44 +1211,6 @@ extension View {
     ContentView()
         .modelContainer(for: WebAppItem.self, inMemory: true)
 }
-
-struct WebAppDropDelegate: DropDelegate {
-    let item: WebAppItem
-    let items: [WebAppItem]
-    @Binding var draggingItem: WebAppItem?
-    var modelContext: ModelContext
-    
-    func dropEntered(info: DropInfo) {
-        guard let draggingItem = draggingItem, draggingItem.id != item.id else { return }
-        
-        guard let fromIndex = items.firstIndex(where: { $0.id == draggingItem.id }),
-              let toIndex = items.firstIndex(where: { $0.id == item.id }) else { return }
-        
-        if fromIndex != toIndex {
-            withAnimation(.default) {
-                var sortedItems = items
-                let movedItem = sortedItems.remove(at: fromIndex)
-                sortedItems.insert(movedItem, at: toIndex)
-                
-                for (index, app) in sortedItems.enumerated() {
-                    app.displayOrder = index
-                }
-                
-                try? modelContext.save()
-            }
-        }
-    }
-    
-    func performDrop(info: DropInfo) -> Bool {
-        self.draggingItem = nil
-        return true
-    }
-    
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        return DropProposal(operation: .move)
-    }
-}
-
 
 struct OpenURLSheet: View {
     let targetURLString: String

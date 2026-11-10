@@ -31,22 +31,27 @@ class ShareViewController: UIViewController {
             #if DEBUG
             os_log("Found URL item provider", log: self.logger, type: .debug)
             #endif
-            itemProvider.loadItem(forTypeIdentifier: urlType, options: nil) { (item, error) in
+            itemProvider.loadItem(forTypeIdentifier: urlType, options: nil) { [weak self] (item, error) in
                 if let error = error {
                     #if DEBUG
-                    os_log("Error loading item: %{public}@", log: self.logger, type: .error, error.localizedDescription)
+                    if let self = self {
+                        os_log("Error loading item: %{public}@", log: self.logger, type: .error, error.localizedDescription)
+                    }
                     #endif
                 }
                 
-                if let url = item as? URL {
-                    self.openMainApp(with: url)
-                } else if let urlString = item as? String, let url = URL(string: urlString) {
-                    self.openMainApp(with: url)
-                } else {
-                    #if DEBUG
-                    os_log("Item was not a URL or String", log: self.logger, type: .error)
-                    #endif
-                    self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    if let url = item as? URL {
+                        self.openMainApp(with: url)
+                    } else if let urlString = item as? String, let url = URL(string: urlString) {
+                        self.openMainApp(with: url)
+                    } else {
+                        #if DEBUG
+                        os_log("Item was not a URL or String", log: self.logger, type: .error)
+                        #endif
+                        self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                    }
                 }
             }
         } else {
@@ -61,6 +66,17 @@ class ShareViewController: UIViewController {
         #if DEBUG
         os_log("Preparing to open URL: %{public}@", log: self.logger, type: .debug, sharedURL.absoluteString)
         #endif
+        
+        // Security: Strictly enforce http/https web schemes to prevent local file disclosure (file://)
+        // or script execution vectors from being routed to the container app.
+        guard let scheme = sharedURL.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            #if DEBUG
+            os_log("Rejected shared URL with unsupported or non-web scheme: %{public}@", log: self.logger, type: .error, sharedURL.absoluteString)
+            #endif
+            self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+            return
+        }
         
         var allowedQuery = CharacterSet.urlQueryAllowed
         allowedQuery.remove(charactersIn: "?&=")
@@ -77,22 +93,25 @@ class ShareViewController: UIViewController {
         os_log("Final appURL: %{public}@", log: self.logger, type: .debug, appURL.absoluteString)
         #endif
         
-        // Bypass App Extension restriction for UIApplication.shared
-        let selector = NSSelectorFromString("sharedApplication")
-        if UIApplication.responds(to: selector) {
-            let sharedApp = UIApplication.perform(selector).takeUnretainedValue() as? UIApplication
-            sharedApp?.open(appURL, options: [:]) { success in
+        // Safely traverse the UIResponder chain to invoke openURL: on the application/scene,
+        // which complies with App Extension review guidelines without calling prohibited sharedApplication directly.
+        let openURLSelector = Selector(("openURL:"))
+        var responder: UIResponder? = self
+        while let current = responder {
+            if current.responds(to: openURLSelector) {
+                current.perform(openURLSelector, with: appURL)
                 #if DEBUG
-                os_log("UIApplication.open result: %d", log: self.logger, type: .debug, success)
+                os_log("Successfully requested URL open via UIResponder chain", log: self.logger, type: .debug)
                 #endif
                 self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                return
             }
-        } else {
-            // Fallback
-            #if DEBUG
-            os_log("sharedApplication selector not found, falling back", log: self.logger, type: .debug)
-            #endif
-            self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+            responder = current.next ?? (current as? UIViewController)?.view.window
         }
+        
+        #if DEBUG
+        os_log("UIResponder chain did not respond to openURL:, completing request", log: self.logger, type: .error)
+        #endif
+        self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
     }
 }
