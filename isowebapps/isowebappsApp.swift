@@ -34,6 +34,11 @@ struct isowebappsApp: App {
                 #if os(macOS)
                 .frame(minWidth: 800, minHeight: 600)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear {
+                    MainWindowTracker.shared.openWindowAction = { payload in
+                        openWindow(id: "capsuleWindow", value: payload)
+                    }
+                }
                 #elseif os(iOS)
                 .onAppear {
                     UIApplication.shared.registerForRemoteNotifications()
@@ -64,7 +69,7 @@ struct isowebappsApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Tab") {
-                    openWindow(id: "capsuleWindow", value: CapsuleWindowPayload.defaultNewTabPayload)
+                    MainWindowTracker.shared.openNewTab()
                 }
                 .keyboardShortcut("t", modifiers: .command)
                 

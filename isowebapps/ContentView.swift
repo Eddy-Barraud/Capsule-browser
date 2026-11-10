@@ -119,6 +119,11 @@ struct ContentView: View {
                     isInitializing = false
                 }
             }
+            #if os(macOS)
+            MainWindowTracker.shared.openWindowAction = { payload in
+                openWindow(id: "capsuleWindow", value: payload)
+            }
+            #endif
         }
         .onChange(of: webAppGroups.count) { _, _ in
             if webAppGroups.count > deduplicatedGroups.count {
