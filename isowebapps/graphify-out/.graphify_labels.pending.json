@@ -1,0 +1,13 @@
+{
+  "0": "CloudSyncManager",
+  "1": "WebViewNavigationState",
+  "2": "SearchEngine",
+  "3": "WebViewCoordinator",
+  "4": "MainWindowTracker",
+  "5": "ContentView",
+  "6": "WebAppItem",
+  "7": "WindowPresentationMode.swift",
+  "8": "AISummarizer",
+  "9": "IsolatedWKWebView",
+  "10": "SerializableCookie"
+}
