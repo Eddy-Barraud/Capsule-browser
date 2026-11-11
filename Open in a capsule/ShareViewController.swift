@@ -93,17 +93,17 @@ class ShareViewController: UIViewController {
         os_log("Final appURL: %{public}@", log: self.logger, type: .debug, appURL.absoluteString)
         #endif
         
-        // Safely traverse the UIResponder chain to invoke openURL: on the application/scene,
+        // Safely traverse the UIResponder chain to invoke open(_:options:completionHandler:) on the application,
         // which complies with App Extension review guidelines without calling prohibited sharedApplication directly.
-        let openURLSelector = Selector(("openURL:"))
         var responder: UIResponder? = self
         while let current = responder {
-            if current.responds(to: openURLSelector) {
-                current.perform(openURLSelector, with: appURL)
+            if let application = current as? UIApplication {
+                application.open(appURL, options: [:]) { [weak self] _ in
+                    self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+                }
                 #if DEBUG
                 os_log("Successfully requested URL open via UIResponder chain", log: self.logger, type: .debug)
                 #endif
-                self.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
                 return
             }
             responder = current.next ?? (current as? UIViewController)?.view.window
