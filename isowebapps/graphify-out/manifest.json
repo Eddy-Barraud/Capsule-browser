@@ -42,9 +42,9 @@
     "semantic_hash": ""
   },
   "ContentView.swift": {
-    "mtime": 1794306616.215904,
-    "seen": 1794314424.724854,
-    "ast_hash": "68315f585310e77439825c926d15b021",
+    "mtime": 1794500077.748452,
+    "seen": 1794501117.547037,
+    "ast_hash": "feb6083190ac27ae30832ce0a9fa271b",
     "semantic_hash": ""
   },
   "CookieManager.swift": {
@@ -78,9 +78,9 @@
     "semantic_hash": ""
   },
   "IsolatedWebView.swift": {
-    "mtime": 1794306601.1840625,
-    "seen": 1794314424.724857,
-    "ast_hash": "950c4741e074a7d868f15646156fde76",
+    "mtime": 1794491233.3568313,
+    "seen": 1794501117.5470421,
+    "ast_hash": "d3f5be4a7ef239472ce6e42d5f7f0340",
     "semantic_hash": ""
   },
   "LiquidGlassStyles.swift": {
@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "WebAppContainerView.swift": {
-    "mtime": 1794306545.1655614,
-    "seen": 1794314424.7248619,
-    "ast_hash": "bd4d42694f8e8c2f19785d00de3b26cc",
+    "mtime": 1794492319.5667992,
+    "seen": 1794501117.547047,
+    "ast_hash": "33cfb067ac7f4630740ea5ddbf18943c",
     "semantic_hash": ""
   },
   "WebAppGroup.swift": {
@@ -150,206 +150,206 @@
     "semantic_hash": ""
   },
   "WindowPresentationMode.swift": {
-    "mtime": 1794305640.1065702,
-    "seen": 1794314424.724865,
-    "ast_hash": "a059e617718f841b7b971a5de7e97a51",
+    "mtime": 1794500939.6426864,
+    "seen": 1794501117.547051,
+    "ast_hash": "86171c9c49d494fe90c964a22b35b6f7",
     "semantic_hash": ""
   },
   "isowebappsApp.swift": {
-    "mtime": 1794299756.5187974,
-    "seen": 1794314424.7248662,
-    "ast_hash": "8ac30dc1887a91fbc88b075a05d60404",
+    "mtime": 1794500049.4551864,
+    "seen": 1794501117.5470521,
+    "ast_hash": "5c1f03494ac0c20b672c1ebd30d8bb6b",
     "semantic_hash": ""
   },
   "rulesets/main/adguard-mobile.json": {
-    "mtime": 1792865731.1514063,
-    "seen": 1794314424.7248662,
+    "mtime": 1794418945.13359,
+    "seen": 1794501117.547053,
     "ast_hash": "7e393f4fa3408bfb0873488d8d385df1",
     "semantic_hash": ""
   },
   "rulesets/main/annoyances-cookies.json": {
-    "mtime": 1792865731.1459613,
-    "seen": 1794314424.724867,
+    "mtime": 1794418945.126794,
+    "seen": 1794501117.547054,
     "ast_hash": "23f29495df5bd03883d8c562059e2ac2",
     "semantic_hash": ""
   },
   "rulesets/main/annoyances-overlays.json": {
-    "mtime": 1792865731.1480086,
-    "seen": 1794314424.724867,
+    "mtime": 1794418945.1290917,
+    "seen": 1794501117.547054,
     "ast_hash": "7325f83ff5433eb6bbb01b00ccf23aeb",
     "semantic_hash": ""
   },
   "rulesets/main/block-lan.json": {
-    "mtime": 1792865731.148388,
-    "seen": 1794314424.724868,
+    "mtime": 1794418945.1297145,
+    "seen": 1794501117.547055,
     "ast_hash": "35f2d6521a35fbc32bdf2a3ef137a366",
     "semantic_hash": ""
   },
   "rulesets/main/easylist.json": {
-    "mtime": 1792865731.0782754,
-    "seen": 1794314424.724869,
+    "mtime": 1794418945.050389,
+    "seen": 1794501117.5470562,
     "ast_hash": "221e79b891a181ceb4f7c367d30ce729",
     "semantic_hash": ""
   },
   "rulesets/main/easyprivacy.json": {
-    "mtime": 1792865731.1343365,
-    "seen": 1794314424.724869,
+    "mtime": 1794418945.1129284,
+    "seen": 1794501117.5470562,
     "ast_hash": "7be25751a49a73b084afbff6a1c93c5c",
     "semantic_hash": ""
   },
   "rulesets/main/fra-0.json": {
-    "mtime": 1792865731.1711192,
-    "seen": 1794314424.72487,
+    "mtime": 1794418945.1553142,
+    "seen": 1794501117.547057,
     "ast_hash": "1d92e520435602de446d5edb0a5ce360",
     "semantic_hash": ""
   },
   "rulesets/main/ublock-badware.json": {
-    "mtime": 1792865731.0459614,
-    "seen": 1794314424.724871,
+    "mtime": 1794418945.0143986,
+    "seen": 1794501117.5470579,
     "ast_hash": "40a8337029f090f99495b127377bbb12",
     "semantic_hash": ""
   },
   "rulesets/main/ublock-filters.json": {
-    "mtime": 1792865731.0426562,
-    "seen": 1794314424.724871,
+    "mtime": 1794418945.0100913,
+    "seen": 1794501117.547059,
     "ast_hash": "76f7150721f62a639c3f036615fa584a",
     "semantic_hash": ""
   },
   "rulesets/main/urlhaus-full.json": {
-    "mtime": 1792865731.1367188,
-    "seen": 1794314424.7248719,
+    "mtime": 1794418945.116366,
+    "seen": 1794501117.547059,
     "ast_hash": "ed3007d7fb6e8d004f8a33dd3ab028a0",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-adguard-mobile.js": {
-    "mtime": 1792924449.0032234,
-    "seen": 1794314424.7248719,
+    "mtime": 1794418945.2241337,
+    "seen": 1794501117.54706,
     "ast_hash": "26b0a6f9b4a86830e4c968f8f258c8a6",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-annoyances-cookies.js": {
-    "mtime": 1792924449.0047185,
-    "seen": 1794314424.724873,
+    "mtime": 1794418945.21452,
+    "seen": 1794501117.547061,
     "ast_hash": "58e72effdd2c1588001e0a6c21083bae",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-annoyances-overlays.js": {
-    "mtime": 1792924449.0054646,
-    "seen": 1794314424.724874,
+    "mtime": 1794418945.219058,
+    "seen": 1794501117.547062,
     "ast_hash": "a2956872113d01b96d249a030361dd6c",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-easylist.js": {
-    "mtime": 1792924449.0066938,
-    "seen": 1794314424.724874,
+    "mtime": 1794418945.204205,
+    "seen": 1794501117.547062,
     "ast_hash": "a191e3ceb7fe849c04c77345fc8bb141",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-easyprivacy.js": {
-    "mtime": 1792924449.006852,
-    "seen": 1794314424.724875,
+    "mtime": 1794418945.2056146,
+    "seen": 1794501117.547063,
     "ast_hash": "9f13ac488f6fd8a6ca7c567dcfc16d7c",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-fra-0.js": {
-    "mtime": 1792924449.0072236,
-    "seen": 1794314424.724875,
+    "mtime": 1794418945.2259128,
+    "seen": 1794501117.547064,
     "ast_hash": "b1d0968f75e1ed2c8c699eec936dc7a3",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-ublock-badware.js": {
-    "mtime": 1792924449.0073566,
-    "seen": 1794314424.724876,
+    "mtime": 1794418945.19736,
+    "seen": 1794501117.547065,
     "ast_hash": "0d8104934ff68e61d5add10ab29946b1",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-ublock-filters.js": {
-    "mtime": 1792924449.0083346,
-    "seen": 1794314424.724877,
+    "mtime": 1794418945.1965017,
+    "seen": 1794501117.547065,
     "ast_hash": "7214f3cab4ec4e2e5bcada64e9403f5e",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-adguard-mobile.js": {
-    "mtime": 1792924449.0084934,
-    "seen": 1794314424.724877,
+    "mtime": 1794418945.1892514,
+    "seen": 1794501117.5470662,
     "ast_hash": "2160bd65b727c3121c2265e6baad5be3",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-annoyances-cookies.js": {
-    "mtime": 1792924449.0094984,
-    "seen": 1794314424.724878,
+    "mtime": 1794418945.186944,
+    "seen": 1794501117.547067,
     "ast_hash": "1e088321c93070f337fa32e1fedd244a",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-annoyances-overlays.js": {
-    "mtime": 1792924449.00978,
-    "seen": 1794314424.724879,
+    "mtime": 1794418945.188403,
+    "seen": 1794501117.547067,
     "ast_hash": "3eaa87072e215479ee3b2336138f529a",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-easyprivacy.js": {
-    "mtime": 1792924449.009932,
-    "seen": 1794314424.724879,
+    "mtime": 1794418945.1809523,
+    "seen": 1794501117.5470679,
     "ast_hash": "7d19045ec857fa503690b547899bf51b",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-fra-0.js": {
-    "mtime": 1792924449.0104508,
-    "seen": 1794314424.72488,
+    "mtime": 1794418945.1901128,
+    "seen": 1794501117.5470688,
     "ast_hash": "01940bbf0139bc501723544c4a585cbe",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-ublock-badware.js": {
-    "mtime": 1792924449.0105646,
-    "seen": 1794314424.72488,
+    "mtime": 1794418945.1803136,
+    "seen": 1794501117.5470688,
     "ast_hash": "7e34c424c6b5577151fd7b6000b88018",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-ublock-filters.js": {
-    "mtime": 1792924449.0114887,
-    "seen": 1794314424.724881,
+    "mtime": 1794418945.1796994,
+    "seen": 1794501117.54707,
     "ast_hash": "ef8ff157e59574b482341cdd72260b7d",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-adguard-mobile.js": {
-    "mtime": 1792924449.01173,
-    "seen": 1794314424.724881,
+    "mtime": 1794418945.1705904,
+    "seen": 1794501117.547071,
     "ast_hash": "b5a6d6fbf482f4fc7d4c13b09a101f62",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-annoyances-cookies.js": {
-    "mtime": 1792924449.0119097,
-    "seen": 1794314424.724882,
+    "mtime": 1794418945.1675138,
+    "seen": 1794501117.547072,
     "ast_hash": "088b7a3fcff04bfa77b70751670fb8aa",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-annoyances-overlays.js": {
-    "mtime": 1792924449.0122569,
-    "seen": 1794314424.7248828,
+    "mtime": 1794418945.1694875,
+    "seen": 1794501117.547072,
     "ast_hash": "5af23d226801a059cb9344a24723086f",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-easyprivacy.js": {
-    "mtime": 1792924449.0124617,
-    "seen": 1794314424.7248828,
+    "mtime": 1794418945.166689,
+    "seen": 1794501117.5470731,
     "ast_hash": "5493032946626bc1c1c42d0b40532c0e",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-fra-0.js": {
-    "mtime": 1792924449.0127091,
-    "seen": 1794314424.724884,
+    "mtime": 1794418945.1712408,
+    "seen": 1794501117.547074,
     "ast_hash": "151e0cb8bbd476ec311de3595f9e6fe3",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-ublock-badware.js": {
-    "mtime": 1792924449.0128603,
-    "seen": 1794314424.724885,
+    "mtime": 1794418945.1653657,
+    "seen": 1794501117.547075,
     "ast_hash": "35759ad5553f768d66670810d5a990ea",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-ublock-filters.js": {
-    "mtime": 1792924449.0141718,
-    "seen": 1794314424.724885,
+    "mtime": 1794418945.1645894,
+    "seen": 1794501117.547075,
     "ast_hash": "0bf7f99f54e42352e62c3d998140ca16",
     "semantic_hash": ""
   },
@@ -390,81 +390,81 @@
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Dark-1024x1024@1x.png": {
-    "mtime": 1792840211.264472,
-    "seen": 1794314424.72489,
-    "ast_hash": "dbbe3611a512eb296d3ca2b34302e165",
+    "mtime": 1794418156.81369,
+    "seen": 1794501117.547081,
+    "ast_hash": "3435f56186ad26bc6768af2da43d75d4",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-1024x1024@1x 1.png": {
-    "mtime": 1792840245.337503,
-    "seen": 1794314424.724891,
-    "ast_hash": "3daec611d94919179fd8e3a494bc67e9",
+    "mtime": 1794418154.3452642,
+    "seen": 1794501117.547082,
+    "ast_hash": "cf4abbb7ac6a3cc4c8af9a9cccfce4a8",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-1024x1024@1x.png": {
-    "mtime": 1792840067.427224,
-    "seen": 1794314424.724891,
-    "ast_hash": "3daec611d94919179fd8e3a494bc67e9",
+    "mtime": 1794418155.3611202,
+    "seen": 1794501117.547083,
+    "ast_hash": "7ee14cb6ae20065772dcfd93022dbe12",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-128x128@1x.png": {
-    "mtime": 1792840237.150923,
-    "seen": 1794314424.724892,
-    "ast_hash": "0d7807e965feaaf5fedab66be0c624bd",
+    "mtime": 1794418152.898368,
+    "seen": 1794501117.547084,
+    "ast_hash": "ac7e6ab189c6fc482df88665bf0c3846",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-128x128@2x.png": {
-    "mtime": 1792840237.150842,
-    "seen": 1794314424.724892,
-    "ast_hash": "3ea8df1a85636c92cb61b51a78d69102",
+    "mtime": 1794418155.8694053,
+    "seen": 1794501117.547085,
+    "ast_hash": "a078ecc25e6feed3d26c1352735bccb0",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-16x16@1x.png": {
-    "mtime": 1792840211.264402,
-    "seen": 1794314424.7248929,
-    "ast_hash": "7581fc64a4e2448adcddc3493ac452a9",
+    "mtime": 1794418154.3829246,
+    "seen": 1794501117.547085,
+    "ast_hash": "d0680b3085428a59f18c898de649ffc4",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-16x16@2x.png": {
-    "mtime": 1792840211.264254,
-    "seen": 1794314424.724894,
-    "ast_hash": "346a9efed02a1064dcec8debd38368ba",
+    "mtime": 1794418154.3551269,
+    "seen": 1794501117.547086,
+    "ast_hash": "bbcc0b90715566d71064cf1422b630a8",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-256x256@1x.png": {
-    "mtime": 1792840237.150307,
-    "seen": 1794314424.724894,
-    "ast_hash": "3ea8df1a85636c92cb61b51a78d69102",
+    "mtime": 1794418155.4302592,
+    "seen": 1794501117.5470872,
+    "ast_hash": "a078ecc25e6feed3d26c1352735bccb0",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-256x256@2x.png": {
-    "mtime": 1792840237.150757,
-    "seen": 1794314424.724895,
-    "ast_hash": "d57db4df598dc479b77ade338414f3c0",
+    "mtime": 1794418153.397971,
+    "seen": 1794501117.547088,
+    "ast_hash": "b92651965c98594d7983f9c91e00a908",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-32x32@1x.png": {
-    "mtime": 1792840211.264587,
-    "seen": 1794314424.724896,
-    "ast_hash": "3aa4f9d473c0ea2a2def842ccb236aac",
+    "mtime": 1794418154.3633451,
+    "seen": 1794501117.547088,
+    "ast_hash": "064dea9baabd4943bfd9630a5ee6a62e",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-32x32@2x.png": {
-    "mtime": 1792840211.264531,
-    "seen": 1794314424.724896,
-    "ast_hash": "43cfa14f4a0a33b0ee746b91a6aca408",
+    "mtime": 1794418154.375326,
+    "seen": 1794501117.5470889,
+    "ast_hash": "bc3931413fb1582545989e24a1b6a9b4",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Default-512x512@1x.png": {
-    "mtime": 1792840245.337637,
-    "seen": 1794314424.724897,
-    "ast_hash": "d57db4df598dc479b77ade338414f3c0",
+    "mtime": 1794418153.1494546,
+    "seen": 1794501117.5470898,
+    "ast_hash": "db53d8c3670a4decba10d4fd1ee5729a",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-TintedLight-1024x1024@1x.png": {
-    "mtime": 1792840211.264181,
-    "seen": 1794314424.724897,
-    "ast_hash": "c9fdfc50d67ee153b805c5d3563283b3",
+    "mtime": 1794418155.8013759,
+    "seen": 1794501117.5470898,
+    "ast_hash": "ea98e3fa8dd2ef9714725a6b504c5ad6",
     "semantic_hash": ""
   }
 }

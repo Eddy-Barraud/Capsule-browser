@@ -3,11 +3,17 @@
   "1": "WebViewNavigationState",
   "2": "SearchEngine",
   "3": "WebViewCoordinator",
-  "4": "MainWindowTracker",
-  "5": "ContentView",
+  "4": "NSWindow",
+  "5": "Binding",
   "6": "WebAppItem",
   "7": "WindowPresentationMode.swift",
   "8": "AISummarizer",
-  "9": "IsolatedWKWebView",
-  "10": "SerializableCookie"
+  "9": "TimeInterval",
+  "10": "SerializableCookie",
+  "11": "WindowAccessor",
+  "12": "Data",
+  "13": "WebAppGroup",
+  "14": "WKHTTPCookieStore",
+  "15": "Never",
+  "16": "Task"
 }
