@@ -45,6 +45,7 @@ struct WebAppContainerView: View {
     
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
+    @State private var hostingWindow: NSWindow?
     #endif
     
     @Environment(\.modelContext) private var modelContext
@@ -169,6 +170,11 @@ struct WebAppContainerView: View {
             navigationState.onOpenNewWindowOrTab = { url in
                 handleOpenNewWindowOrTab(url: url)
             }
+            #if os(macOS)
+            MainWindowTracker.shared.openWindowAction = { payload in
+                openWindow(id: "capsuleWindow", value: payload)
+            }
+            #endif
         }
         .onChange(of: navigationState.currentURLString) { _, newURL in
             if !isURLExpanded && !newURL.isEmpty && newURL != "about:blank" {
@@ -344,6 +350,9 @@ struct WebAppContainerView: View {
         #if os(macOS)
         .background(
             WindowAccessor { window in
+                if hostingWindow !== window {
+                    hostingWindow = window
+                }
                 if window.title != activeDomainTitle {
                     window.title = activeDomainTitle
                 }
@@ -365,21 +374,43 @@ struct WebAppContainerView: View {
         
         switch mode {
         case .tabs:
+            let sourceWin = hostingWindow
+                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
+                ?? MainWindowTracker.shared.targetWindowForNewTab
+                ?? MainWindowTracker.shared.mainWindow
+            if let win = sourceWin {
+                MainWindowTracker.shared.persistWindowSize(from: win)
+                MainWindowTracker.shared.targetWindowForNewTab = win
+            }
             let payload = CapsuleWindowPayload(
                 appId: appItem.modelContext != nil ? appItem.id : nil,
                 urlString: url.absoluteString,
                 name: appItem.name,
                 isSecondaryWindow: true,
-                openAsTab: true
+                openAsTab: true,
+                sourceWindowNumber: sourceWin?.windowNumber,
+                sourceFrame: sourceWin?.serializedFrame
             )
-            openWindow(id: "capsuleWindow", value: payload)
+            if MainWindowTracker.shared.openWindowAction != nil {
+                MainWindowTracker.shared.openNewTab(with: payload, from: sourceWin)
+            } else {
+                openWindow(id: "capsuleWindow", value: payload)
+            }
         case .separateWindows:
+            let sourceWin = hostingWindow
+                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
+                ?? MainWindowTracker.shared.mainWindow
+            if let win = sourceWin {
+                MainWindowTracker.shared.persistWindowSize(from: win)
+            }
             let payload = CapsuleWindowPayload(
                 appId: appItem.modelContext != nil ? appItem.id : nil,
                 urlString: url.absoluteString,
                 name: appItem.name,
                 isSecondaryWindow: true,
-                openAsTab: false
+                openAsTab: false,
+                sourceWindowNumber: sourceWin?.windowNumber,
+                sourceFrame: sourceWin?.serializedFrame
             )
             openWindow(id: "capsuleWindow", value: payload)
         case .singleWindow:

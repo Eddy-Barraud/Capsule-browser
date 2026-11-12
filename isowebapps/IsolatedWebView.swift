@@ -1002,6 +1002,10 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
                     #if DEBUG
                     print("[IsolatedWebView] Mode is \(mode), invoking new window/tab handler for: \(url)")
                     #endif
+                    if let win = webView.window {
+                        MainWindowTracker.shared.persistWindowSize(from: win)
+                        MainWindowTracker.shared.targetWindowForNewTab = win
+                    }
                     if let handler = handler {
                         DispatchQueue.main.async {
                             handler(url)

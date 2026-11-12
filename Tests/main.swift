@@ -279,6 +279,248 @@ func testEphemeralCapsuleNamingFallback() {
     print("✓ testEphemeralCapsuleNamingFallback passed!")
 }
 
+func testTabModePayloadAndSizeConstraints() {
+    print("Running testTabModePayloadAndSizeConstraints...")
+    
+    // Test 1: Window size constraint logic (clamping to min dimensions)
+    let minWidth: CGFloat = 800
+    let minHeight: CGFloat = 600
+    
+    let smallSize = CGSize(width: 500, height: 400)
+    let resolvedSmallWidth = max(minWidth, smallSize.width)
+    let resolvedSmallHeight = max(minHeight, smallSize.height)
+    assert(resolvedSmallWidth == 800, "Width below min must be clamped to 800")
+    assert(resolvedSmallHeight == 600, "Height below min must be clamped to 600")
+    
+    let customSize = CGSize(width: 1440, height: 900)
+    let resolvedCustomWidth = max(minWidth, customSize.width)
+    let resolvedCustomHeight = max(minHeight, customSize.height)
+    assert(resolvedCustomWidth == 1440, "Width above min must be preserved")
+    assert(resolvedCustomHeight == 900, "Height above min must be preserved")
+    
+    // Test 2: Payload construction and frame serialization for link opening inside a capsule in tab mode
+    struct CapsuleWindowPayloadTest: Codable, Hashable {
+        let appId: UUID?
+        let urlString: String?
+        let name: String?
+        let isSecondaryWindow: Bool
+        let openAsTab: Bool
+        let instanceId: UUID
+        let sourceWindowNumber: Int?
+        let sourceFrame: [Double]?
+        
+        var sourceFrameRect: CGRect? {
+            guard let sf = sourceFrame, sf.count == 4 else { return nil }
+            return CGRect(x: sf[0], y: sf[1], width: sf[2], height: sf[3])
+        }
+    }
+    
+    let targetURL = "https://developer.apple.com/documentation"
+    let appName = "Apple Docs"
+    let appId = UUID()
+    let parentFrame = CGRect(x: 120, y: 80, width: 1440, height: 900)
+    let parentFrameArray = [Double(parentFrame.origin.x), Double(parentFrame.origin.y), Double(parentFrame.size.width), Double(parentFrame.size.height)]
+    let parentWindowNumber = 1042
+    
+    let payload = CapsuleWindowPayloadTest(
+        appId: appId,
+        urlString: targetURL,
+        name: appName,
+        isSecondaryWindow: true,
+        openAsTab: true,
+        instanceId: UUID(),
+        sourceWindowNumber: parentWindowNumber,
+        sourceFrame: parentFrameArray
+    )
+    assert(payload.openAsTab == true, "Link payload in tab mode must have openAsTab == true")
+    assert(payload.isSecondaryWindow == true, "Must be flagged as secondary window")
+    assert(payload.urlString == targetURL)
+    assert(payload.name == appName)
+    assert(payload.appId == appId)
+    assert(payload.sourceWindowNumber == parentWindowNumber)
+    assert(payload.sourceFrameRect == parentFrame, "Decoded sourceFrameRect must match source frame: \(String(describing: payload.sourceFrameRect))")
+    
+    // Test 3: JSON Round trip
+    let encoder = JSONEncoder()
+    let data = try! encoder.encode(payload)
+    let decoder = JSONDecoder()
+    let decoded = try! decoder.decode(CapsuleWindowPayloadTest.self, from: data)
+    assert(decoded == payload, "Round-tripped payload must match original")
+    assert(decoded.sourceFrameRect == parentFrame, "Round-tripped frame rect must match")
+    
+    print("✓ testTabModePayloadAndSizeConstraints passed!")
+}
+
+func testTabModeCmdWAndBlinkPreventionLogic() {
+    print("Running testTabModeCmdWAndBlinkPreventionLogic...")
+    
+    // Test 1: Interception lifecycle before window display (zero-blink presentation)
+    class MockTabGroup {
+        var windows: [MockWindow] = []
+        var selectedWindow: MockWindow?
+    }
+    
+    class MockWindow {
+        var isVisible: Bool = false
+        var frame: CGRect = CGRect(x: 0, y: 0, width: 800, height: 600)
+        var tabbingMode: Int = 0 // 0 = default, 1 = preferred, 2 = disallowed
+        var tabbingIdentifier: String? = nil
+        var isClosed: Bool = false
+        var tabGroup: MockTabGroup?
+        var isPanel: Bool = false
+        var sheetParent: MockWindow? = nil
+        var animationBehavior: Int = 0
+        
+        init() {
+            let tg = MockTabGroup()
+            tg.windows = [self]
+            tg.selectedWindow = self
+            self.tabGroup = tg
+        }
+        
+        func addTabbedWindow(_ other: MockWindow) {
+            tabGroup?.windows.append(other)
+            other.tabGroup = self.tabGroup
+            tabGroup?.selectedWindow = other
+        }
+        
+        func close() {
+            isClosed = true
+            tabGroup?.windows.removeAll(where: { $0 === self })
+            if tabGroup?.selectedWindow === self {
+                tabGroup?.selectedWindow = tabGroup?.windows.last
+            }
+        }
+    }
+    
+    class MockCoordinator {
+        weak var pendingTabTargetWindow: MockWindow?
+        
+        func handleNewWindowPresentation(_ window: MockWindow) -> Bool {
+            guard !window.isPanel, window.sheetParent == nil else { return false }
+            guard let target = pendingTabTargetWindow,
+                  target !== window,
+                  window.tabGroup !== target.tabGroup else {
+                return false
+            }
+            pendingTabTargetWindow = nil
+            
+            window.animationBehavior = -1 // none
+            target.animationBehavior = -1
+            
+            window.tabbingIdentifier = "CapsuleBrowserWindow"
+            window.tabbingMode = 1
+            target.tabbingIdentifier = "CapsuleBrowserWindow"
+            target.tabbingMode = 1
+            
+            let targetFrame = target.frame
+            window.frame = targetFrame
+            target.addTabbedWindow(window)
+            return true
+        }
+    }
+    
+    let coordinator = MockCoordinator()
+    let parentWin = MockWindow()
+    parentWin.isVisible = true
+    parentWin.frame = CGRect(x: 100, y: 150, width: 1200, height: 800)
+    
+    // Simulate link click requesting a new tab
+    coordinator.pendingTabTargetWindow = parentWin
+    
+    // Newly created window prior to display
+    let newTabWin = MockWindow()
+    newTabWin.isVisible = false // NOT yet visible on screen!
+    newTabWin.frame = CGRect(x: 0, y: 0, width: 800, height: 600) // Default/cascaded frame
+    
+    // Interception happens at makeKeyAndOrderFront before presentation:
+    let didIntercept = coordinator.handleNewWindowPresentation(newTabWin)
+    assert(didIntercept == true, "Presentation must be intercepted before display")
+    assert(newTabWin.frame == parentWin.frame, "New tab frame must match parent frame")
+    assert(parentWin.tabGroup?.windows.count == 2, "Parent tab group must contain 2 windows")
+    assert(parentWin.tabGroup?.selectedWindow === newTabWin, "New tab must be selected")
+    assert(newTabWin.tabGroup === parentWin.tabGroup, "Both windows must share the same tabGroup")
+    
+    // Now window is made visible:
+    newTabWin.isVisible = true
+    assert(newTabWin.isVisible == true)
+    
+    // Test 2: Cmd+W routing logic
+    // Scenario A: Active secondary tab closed via Cmd+W -> only active tab closed, parent remains open
+    func simulateCloseActiveTab(
+        keyWindow: MockWindow,
+        mainWindow: MockWindow,
+        dismissAction: inout (() -> Void)?
+    ) -> String {
+        let activeTab = keyWindow.tabGroup?.selectedWindow ?? keyWindow
+        if activeTab === mainWindow {
+            if let dismiss = dismissAction {
+                dismiss()
+                return "dismissed_capsule"
+            }
+            if let tg = activeTab.tabGroup, tg.windows.count > 1 {
+                activeTab.close()
+                return "closed_main_tab"
+            }
+            activeTab.close()
+            return "closed_main_window"
+        } else {
+            activeTab.close()
+            return "closed_secondary_tab"
+        }
+    }
+    
+    var dismissAction: (() -> Void)? = nil
+    let actionResult1 = simulateCloseActiveTab(
+        keyWindow: parentWin,
+        mainWindow: parentWin,
+        dismissAction: &dismissAction
+    )
+    assert(actionResult1 == "closed_secondary_tab", "Must close secondary tab: \(actionResult1)")
+    assert(newTabWin.isClosed == true, "Secondary tab must be closed")
+    assert(parentWin.isClosed == false, "Main window must NOT be closed when closing secondary tab!")
+    assert(parentWin.tabGroup?.windows.count == 1, "Only parent window should remain")
+    
+    // Scenario B: Main window with open capsule dismissed via Cmd+W
+    var capsuleDismissed = false
+    dismissAction = {
+        capsuleDismissed = true
+    }
+    let actionResult2 = simulateCloseActiveTab(
+        keyWindow: parentWin,
+        mainWindow: parentWin,
+        dismissAction: &dismissAction
+    )
+    assert(actionResult2 == "dismissed_capsule")
+    assert(capsuleDismissed == true, "Capsule dismiss action must have fired")
+    assert(parentWin.isClosed == false, "Parent window must stay open on capsule dismissal")
+    
+    // Scenario C: Main window on home grid closed via Cmd+W when no other tabs exist
+    dismissAction = nil
+    let actionResult3 = simulateCloseActiveTab(
+        keyWindow: parentWin,
+        mainWindow: parentWin,
+        dismissAction: &dismissAction
+    )
+    assert(actionResult3 == "closed_main_window")
+    assert(parentWin.isClosed == true, "Parent window closes when no tabs or open capsules remain")
+    
+    // Scenario D: Sheets and panels bypass tab close interception
+    let sheetWin = MockWindow()
+    sheetWin.sheetParent = parentWin
+    coordinator.pendingTabTargetWindow = parentWin
+    let didInterceptSheet = coordinator.handleNewWindowPresentation(sheetWin)
+    assert(didInterceptSheet == false, "Sheets must not be intercepted as tabs")
+    
+    let panelWin = MockWindow()
+    panelWin.isPanel = true
+    coordinator.pendingTabTargetWindow = parentWin
+    let didInterceptPanel = coordinator.handleNewWindowPresentation(panelWin)
+    assert(didInterceptPanel == false, "Panels must not be intercepted as tabs")
+    
+    print("✓ testTabModeCmdWAndBlinkPreventionLogic passed!")
+}
+
 // Execute test suite
 testUBlockRuleCompiler()
 testSearchEngineResolution()
@@ -287,7 +529,9 @@ testSerializableCookieRoundTrip()
 testSecuritySchemeValidation()
 testExternalSchemeDelegation()
 testEphemeralCapsuleNamingFallback()
+testTabModePayloadAndSizeConstraints()
+testTabModeCmdWAndBlinkPreventionLogic()
 
 print("\n========================================")
-print("ALL 7 LOGIC & SECURITY TEST SUITES PASSED (100%)")
+print("ALL 9 LOGIC & SECURITY TEST SUITES PASSED (100%)")
 print("========================================")

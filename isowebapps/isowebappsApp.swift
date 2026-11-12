@@ -21,12 +21,14 @@ struct isowebappsApp: App {
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(MainWindowTracker.savedWindowWidthKey) private var savedWindowWidth: Double = Double(MainWindowTracker.minWindowWidth)
+    @AppStorage(MainWindowTracker.savedWindowHeightKey) private var savedWindowHeight: Double = Double(MainWindowTracker.minWindowHeight)
     #endif
 
     @StateObject private var cloudSyncManager = CloudSyncManager.shared
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "mainWindow") {
             ContentView()
                 .id(cloudSyncManager.containerRefreshID)
                 .environmentObject(cloudSyncManager)
@@ -38,6 +40,9 @@ struct isowebappsApp: App {
                     MainWindowTracker.shared.openWindowAction = { payload in
                         openWindow(id: "capsuleWindow", value: payload)
                     }
+                    MainWindowTracker.shared.openMainWindowAction = {
+                        openWindow(id: "mainWindow")
+                    }
                 }
                 #elseif os(iOS)
                 .onAppear {
@@ -47,8 +52,8 @@ struct isowebappsApp: App {
         }
         #if os(macOS)
         .defaultSize(
-            width: MainWindowTracker.shared.savedWindowSize.width,
-            height: MainWindowTracker.shared.savedWindowSize.height
+            width: max(MainWindowTracker.minWindowWidth, CGFloat(savedWindowWidth)),
+            height: max(MainWindowTracker.minWindowHeight, CGFloat(savedWindowHeight))
         )
         #endif
         .modelContainer(cloudSyncManager.activeContainer)
@@ -62,8 +67,8 @@ struct isowebappsApp: App {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .defaultSize(
-            width: MainWindowTracker.shared.savedWindowSize.width,
-            height: MainWindowTracker.shared.savedWindowSize.height
+            width: max(MainWindowTracker.minWindowWidth, CGFloat(savedWindowWidth)),
+            height: max(MainWindowTracker.minWindowHeight, CGFloat(savedWindowHeight))
         )
         .modelContainer(cloudSyncManager.activeContainer)
         .commands {
@@ -85,6 +90,18 @@ struct isowebappsApp: App {
                     openWindow(id: "capsuleWindow", value: payload)
                 }
                 .keyboardShortcut("n", modifiers: .command)
+            }
+            
+            CommandGroup(replacing: .saveItem) {
+                Button("Close Tab") {
+                    MainWindowTracker.shared.closeActiveTab()
+                }
+                .keyboardShortcut("w", modifiers: .command)
+                
+                Button("Close Window") {
+                    MainWindowTracker.shared.closeActiveWindow()
+                }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
             }
         }
         #endif

@@ -123,6 +123,21 @@ struct ContentView: View {
             MainWindowTracker.shared.openWindowAction = { payload in
                 openWindow(id: "capsuleWindow", value: payload)
             }
+            MainWindowTracker.shared.openMainWindowAction = {
+                openWindow(id: "mainWindow")
+            }
+            if selectedWebApp != nil {
+                MainWindowTracker.shared.mainWindowContentDismissAction = {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedWebApp = nil
+                        activeDomainTitle = ""
+                        hostingWindow?.title = "Capsule Browser"
+                        hostingWindow?.tab.title = "Capsule Browser"
+                    }
+                }
+            } else {
+                MainWindowTracker.shared.mainWindowContentDismissAction = nil
+            }
             #endif
         }
         .onChange(of: webAppGroups.count) { _, _ in
@@ -154,6 +169,20 @@ struct ContentView: View {
                 activeDomainTitle = ""
                 hostingWindow?.title = "Capsule Browser"
                 hostingWindow?.tab.title = "Capsule Browser"
+            }
+        }
+        .onChange(of: selectedWebApp) { _, newApp in
+            if newApp != nil {
+                MainWindowTracker.shared.mainWindowContentDismissAction = {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedWebApp = nil
+                        activeDomainTitle = ""
+                        hostingWindow?.title = "Capsule Browser"
+                        hostingWindow?.tab.title = "Capsule Browser"
+                    }
+                }
+            } else {
+                MainWindowTracker.shared.mainWindowContentDismissAction = nil
             }
         }
         #endif
@@ -773,6 +802,7 @@ struct ContentView: View {
                         tracker.mainWindow = window
                         window.delegate = tracker
                         tracker.applySavedSizeIfNeeded(to: window)
+                        tracker.persistWindowSize(from: window)
                     } else if currentMain !== window {
                         // Prevent duplicate main ContentView windows restored or spawned by macOS on reopen
                         window.delegate = nil
@@ -928,23 +958,45 @@ struct ContentView: View {
                 selectedWebApp = app
             }
         case .separateWindows:
+            let sourceWin = hostingWindow
+                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
+                ?? MainWindowTracker.shared.mainWindow
+            if let win = sourceWin {
+                MainWindowTracker.shared.persistWindowSize(from: win)
+            }
             let payload = CapsuleWindowPayload(
                 appId: app.id,
                 urlString: app.lastOpenedURLString ?? app.urlString,
                 name: app.name,
                 isSecondaryWindow: true,
-                openAsTab: false
+                openAsTab: false,
+                sourceWindowNumber: sourceWin?.windowNumber,
+                sourceFrame: sourceWin?.serializedFrame
             )
             openWindow(id: "capsuleWindow", value: payload)
         case .tabs:
+            let sourceWin = hostingWindow
+                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
+                ?? MainWindowTracker.shared.targetWindowForNewTab
+                ?? MainWindowTracker.shared.mainWindow
+            if let win = sourceWin {
+                MainWindowTracker.shared.persistWindowSize(from: win)
+                MainWindowTracker.shared.targetWindowForNewTab = win
+            }
             let payload = CapsuleWindowPayload(
                 appId: app.id,
                 urlString: app.lastOpenedURLString ?? app.urlString,
                 name: app.name,
                 isSecondaryWindow: true,
-                openAsTab: true
+                openAsTab: true,
+                sourceWindowNumber: sourceWin?.windowNumber,
+                sourceFrame: sourceWin?.serializedFrame
             )
-            openWindow(id: "capsuleWindow", value: payload)
+            if MainWindowTracker.shared.openWindowAction != nil {
+                MainWindowTracker.shared.openNewTab(with: payload, from: sourceWin)
+            } else {
+                openWindow(id: "capsuleWindow", value: payload)
+            }
         }
         #else
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -964,23 +1016,45 @@ struct ContentView: View {
                 selectedWebApp = ephemeralApp
             }
         case .separateWindows:
+            let sourceWin = hostingWindow
+                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
+                ?? MainWindowTracker.shared.mainWindow
+            if let win = sourceWin {
+                MainWindowTracker.shared.persistWindowSize(from: win)
+            }
             let payload = CapsuleWindowPayload(
                 appId: nil,
                 urlString: urlString,
                 name: name,
                 isSecondaryWindow: true,
-                openAsTab: false
+                openAsTab: false,
+                sourceWindowNumber: sourceWin?.windowNumber,
+                sourceFrame: sourceWin?.serializedFrame
             )
             openWindow(id: "capsuleWindow", value: payload)
         case .tabs:
+            let sourceWin = hostingWindow
+                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
+                ?? MainWindowTracker.shared.targetWindowForNewTab
+                ?? MainWindowTracker.shared.mainWindow
+            if let win = sourceWin {
+                MainWindowTracker.shared.persistWindowSize(from: win)
+                MainWindowTracker.shared.targetWindowForNewTab = win
+            }
             let payload = CapsuleWindowPayload(
                 appId: nil,
                 urlString: urlString,
                 name: name,
                 isSecondaryWindow: true,
-                openAsTab: true
+                openAsTab: true,
+                sourceWindowNumber: sourceWin?.windowNumber,
+                sourceFrame: sourceWin?.serializedFrame
             )
-            openWindow(id: "capsuleWindow", value: payload)
+            if MainWindowTracker.shared.openWindowAction != nil {
+                MainWindowTracker.shared.openNewTab(with: payload, from: sourceWin)
+            } else {
+                openWindow(id: "capsuleWindow", value: payload)
+            }
         }
         #else
         let ephemeralApp = WebAppItem(name: name, urlString: urlString)
