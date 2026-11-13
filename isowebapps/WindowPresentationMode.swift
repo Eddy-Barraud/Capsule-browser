@@ -132,6 +132,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.registerForRemoteNotifications()
     }
     
+    func applicationDidBecomeActive(_ notification: Notification) {
+        CloudSyncManager.shared.handleAppDidBecomeActive()
+    }
+    
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         MainWindowTracker.shared.handleDockReopen(hasVisibleWindows: flag)
         return true

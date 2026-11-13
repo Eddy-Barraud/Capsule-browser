@@ -26,13 +26,14 @@ struct isowebappsApp: App {
     #endif
 
     @StateObject private var cloudSyncManager = CloudSyncManager.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup(id: "mainWindow") {
             ContentView()
                 .id(cloudSyncManager.containerRefreshID)
                 .environmentObject(cloudSyncManager)
-                .iCloudSyncConflictAlert(syncManager: cloudSyncManager)
+                .iCloudSyncConflictAlert(syncManager: cloudSyncManager, isSettingsSheetSlot: false)
                 #if os(macOS)
                 .frame(minWidth: 800, minHeight: 600)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -49,6 +50,11 @@ struct isowebappsApp: App {
                     UIApplication.shared.registerForRemoteNotifications()
                 }
                 #endif
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                cloudSyncManager.handleAppDidBecomeActive()
+            }
         }
         #if os(macOS)
         .defaultSize(

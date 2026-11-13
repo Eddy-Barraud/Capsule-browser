@@ -160,7 +160,7 @@ struct GeneralSettingsView: View {
         } message: {
             Text("Would you like to store your current capsules and groups into local app data, or start again with empty local data?")
         }
-        .iCloudSyncConflictAlert(syncManager: syncManager)
+        .iCloudSyncConflictAlert(syncManager: syncManager, isSettingsSheetSlot: true)
     }
     
     // MARK: - macOS Layout
@@ -221,11 +221,54 @@ struct GeneralSettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             
-                            if let errorMessage = syncManager.syncStatusError {
-                                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
+                            if syncManager.isICloudSyncEnabled, let lastSynced = syncManager.lastSuccessfulSyncDate {
+                                Text("Last synced \(lastSynced.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
                             }
+                            
+                            if let errorMessage = syncManager.syncStatusError {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    
+                                    Button("Retry Sync") {
+                                        syncManager.retrySync()
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                    .disabled(syncManager.isSyncingWithCloud)
+                                }
+                            } else if syncManager.isICloudSyncEnabled {
+                                Button("Sync Now") {
+                                    syncManager.retrySync()
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(syncManager.isSyncingWithCloud)
+                            }
+                            
+                            #if DEBUG
+                            if syncManager.isICloudSyncEnabled {
+                                Divider()
+                                    .padding(.vertical, 2)
+                                Button("Initialize CloudKit Schema (Debug)") {
+                                    Task {
+                                        await syncManager.initializeCloudKitDevelopmentSchema()
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                if let schemaMsg = syncManager.schemaInitStatusMessage {
+                                    Text(schemaMsg)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            #endif
                         }
                     }
                     
@@ -583,17 +626,46 @@ struct GeneralSettingsView: View {
                     if syncManager.isSyncingWithCloud {
                         HStack(spacing: 8) {
                             ProgressView()
-                            Text("Checking iCloud capsules...")
+                            Text("Syncing with iCloud...")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
+                    } else if syncManager.isICloudSyncEnabled, let lastSynced = syncManager.lastSuccessfulSyncDate {
+                        Text("Last synced \(lastSynced.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                     
                     if let errorMessage = syncManager.syncStatusError {
                         Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                             .font(.footnote)
                             .foregroundStyle(.orange)
+                        
+                        Button("Retry Sync") {
+                            syncManager.retrySync()
+                        }
+                        .disabled(syncManager.isSyncingWithCloud)
+                    } else if syncManager.isICloudSyncEnabled {
+                        Button("Sync Now") {
+                            syncManager.retrySync()
+                        }
+                        .disabled(syncManager.isSyncingWithCloud)
                     }
+                    
+                    #if DEBUG
+                    if syncManager.isICloudSyncEnabled {
+                        Button("Initialize CloudKit Schema (Debug)") {
+                            Task {
+                                await syncManager.initializeCloudKitDevelopmentSchema()
+                            }
+                        }
+                        if let schemaMsg = syncManager.schemaInitStatusMessage {
+                            Text(schemaMsg)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    #endif
                 }
                 
                 // Default Search Engine

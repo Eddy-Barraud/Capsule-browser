@@ -17,6 +17,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var cloudSyncManager: CloudSyncManager
     @Query(sort: [SortDescriptor(\WebAppItem.displayOrder, order: .forward), SortDescriptor(\WebAppItem.createdAt, order: .forward)]) private var webApps: [WebAppItem]
     @Query(sort: [SortDescriptor(\WebAppGroup.displayOrder, order: .forward), SortDescriptor(\WebAppGroup.createdAt, order: .forward)]) private var webAppGroups: [WebAppGroup]
     
@@ -28,7 +29,6 @@ struct ContentView: View {
     @FocusState private var isSearchFocused: Bool
     @State private var isShowingAddSheet = false
     @State private var isShowingAddGroupSheet = false
-    @State private var isShowingUBlockSettings = false
     @State private var itemToClearData: WebAppItem?
     @State private var isShowingClearConfirmation = false
     @State private var itemToDelete: WebAppItem?
@@ -195,7 +195,7 @@ struct ContentView: View {
         .sheet(item: $groupToEdit) { group in
             GroupSettingsSheet(group: group)
         }
-        .sheet(isPresented: $isShowingUBlockSettings) {
+        .sheet(isPresented: $cloudSyncManager.isSettingsSheetPresented) {
             GeneralSettingsView()
         }
         .sheet(isPresented: $isShowingOpenURLSheet) {
@@ -723,7 +723,7 @@ struct ContentView: View {
                     #endif
                     
                     Button {
-                        isShowingUBlockSettings = true
+                        cloudSyncManager.isSettingsSheetPresented = true
                     } label: {
                         Image(systemName: "gearshape.2.fill")
                             .font(.system(size: 15, weight: .semibold))
@@ -1283,6 +1283,7 @@ extension View {
 
 #Preview {
     ContentView()
+        .environmentObject(CloudSyncManager.shared)
         .modelContainer(for: WebAppItem.self, inMemory: true)
 }
 

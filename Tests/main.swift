@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import SwiftData
 
 // MARK: - Minimal Re-creations / Test Drivers for Independent Logic Verification
 
@@ -521,6 +522,82 @@ func testTabModeCmdWAndBlinkPreventionLogic() {
     print("✓ testTabModeCmdWAndBlinkPreventionLogic passed!")
 }
 
+@MainActor
+func testCloudSyncMergeAndConflictDetection() {
+    print("Running testCloudSyncMergeAndConflictDetection...")
+    
+    // Test 1: URL normalization
+    assert(
+        CloudSyncManager.normalizedURL("HTTPS://GitHub.COM/") == CloudSyncManager.normalizedURL("https://github.com"),
+        "URL normalization must lowercase scheme/host and strip trailing slash"
+    )
+    assert(
+        CloudSyncManager.normalizedURL("  https://example.com/app/  ") == "https://example.com/app",
+        "URL normalization must trim whitespace and trailing slash on paths"
+    )
+    assert(
+        CloudSyncManager.normalizedURL("https://github.com") != CloudSyncManager.normalizedURL("https://gitlab.com"),
+        "Distinct URLs must remain distinct after normalization"
+    )
+    
+    // Test 2: Same-name + same-URL auto-merges without conflict; same-name + different-URL triggers conflict
+    assert(
+        CloudSyncManager.shouldQueueConflict(
+            localName: "  GitHub ",
+            localURL: "https://github.com/",
+            cloudName: "github",
+            cloudURL: "HTTPS://GITHUB.COM"
+        ) == false,
+        "Same name and same normalized URL must auto-merge without conflict prompt"
+    )
+    assert(
+        CloudSyncManager.shouldQueueConflict(
+            localName: "GitHub",
+            localURL: "https://github.com",
+            cloudName: "github",
+            cloudURL: "https://github.com/enterprise"
+        ) == true,
+        "Same name with different URLs must queue conflict prompt"
+    )
+    assert(
+        CloudSyncManager.shouldQueueConflict(
+            localName: "Work Mail",
+            localURL: "https://mail.google.com",
+            cloudName: "Personal Mail",
+            cloudURL: "https://mail.google.com"
+        ) == false,
+        "Different capsule names must not queue a name-clash conflict"
+    )
+    
+    // Test 3: Store signature detects remote insertions, group links, and field updates
+    let schema = Schema([WebAppItem.self, WebAppGroup.self])
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: schema, configurations: [config])
+    let context = container.mainContext
+    
+    let sigEmpty = CloudSyncManager.computeStoreSignature(in: context)
+    
+    let item1 = WebAppItem(name: "GitHub", urlString: "https://github.com")
+    context.insert(item1)
+    try! context.save()
+    let sigOneItem = CloudSyncManager.computeStoreSignature(in: context)
+    assert(sigOneItem != sigEmpty, "Adding a capsule must change store signature")
+    
+    let group1 = WebAppGroup(name: "Dev")
+    context.insert(group1)
+    item1.group = group1
+    try! context.save()
+    let sigWithGroup = CloudSyncManager.computeStoreSignature(in: context)
+    assert(sigWithGroup != sigOneItem, "Adding a group / linking capsule must change store signature")
+    
+    item1.urlString = "https://github.com/trending"
+    try! context.save()
+    let sigUpdatedURL = CloudSyncManager.computeStoreSignature(in: context)
+    assert(sigUpdatedURL != sigWithGroup, "Updating capsule URL must change store signature")
+    
+    print("✓ testCloudSyncMergeAndConflictDetection passed!")
+}
+
 // Execute test suite
 testUBlockRuleCompiler()
 testSearchEngineResolution()
@@ -531,7 +608,10 @@ testExternalSchemeDelegation()
 testEphemeralCapsuleNamingFallback()
 testTabModePayloadAndSizeConstraints()
 testTabModeCmdWAndBlinkPreventionLogic()
+MainActor.assumeIsolated {
+    testCloudSyncMergeAndConflictDetection()
+}
 
 print("\n========================================")
-print("ALL 9 LOGIC & SECURITY TEST SUITES PASSED (100%)")
+print("ALL 10 LOGIC & SECURITY TEST SUITES PASSED (100%)")
 print("========================================")
