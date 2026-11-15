@@ -1,6 +1,7 @@
 import Foundation
 import WebKit
 import SwiftData
+import CloudKit
 
 // MARK: - Minimal Re-creations / Test Drivers for Independent Logic Verification
 
@@ -594,6 +595,34 @@ func testCloudSyncMergeAndConflictDetection() {
     try! context.save()
     let sigUpdatedURL = CloudSyncManager.computeStoreSignature(in: context)
     assert(sigUpdatedURL != sigWithGroup, "Updating capsule URL must change store signature")
+    
+    // Test 4: Runtime navigation fields (lastOpenedURLString, lastVisited, isolatedCookiesData) must NOT change store signature
+    item1.lastOpenedURLString = "https://github.com/settings"
+    item1.lastVisited = Date()
+    item1.isolatedCookiesData = Data([0x01, 0x02, 0x03, 0x04])
+    try! context.save()
+    let sigAfterRuntimeUpdate = CloudSyncManager.computeStoreSignature(in: context)
+    assert(sigAfterRuntimeUpdate == sigUpdatedURL, "Runtime navigation/cookie mutations must not alter structural store signature")
+    
+    // Test 5: Transient/ignorable CloudKit event error filtering
+    let tokenExpiredError = NSError(domain: CKErrorDomain, code: CKError.Code.changeTokenExpired.rawValue)
+    assert(CloudSyncManager.isTransientOrIgnorableCloudKitEventError(tokenExpiredError) == true, "CKError.changeTokenExpired must be treated as transient")
+    
+    let partialTokenExpired = NSError(
+        domain: CKErrorDomain,
+        code: CKError.Code.partialFailure.rawValue,
+        userInfo: [CKPartialErrorsByItemIDKey: ["zone": tokenExpiredError]]
+    )
+    assert(CloudSyncManager.isTransientOrIgnorableCloudKitEventError(partialTokenExpired) == true, "Partial failure wrapping only transient errors must be treated as transient")
+    
+    let storeRemovedError = NSError(domain: NSCocoaErrorDomain, code: 134407)
+    assert(CloudSyncManager.isTransientOrIgnorableCloudKitEventError(storeRemovedError) == true, "NSCocoaErrorDomain 134407 must be treated as ignorable")
+    
+    let notAuthError = NSError(domain: CKErrorDomain, code: CKError.Code.notAuthenticated.rawValue)
+    assert(CloudSyncManager.isTransientOrIgnorableCloudKitEventError(notAuthError) == false, "CKError.notAuthenticated must NOT be ignored")
+    
+    let quotaError = NSError(domain: CKErrorDomain, code: CKError.Code.quotaExceeded.rawValue)
+    assert(CloudSyncManager.isTransientOrIgnorableCloudKitEventError(quotaError) == false, "CKError.quotaExceeded must NOT be ignored")
     
     print("✓ testCloudSyncMergeAndConflictDetection passed!")
 }

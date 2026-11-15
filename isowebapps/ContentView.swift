@@ -161,6 +161,17 @@ struct ContentView: View {
             }
             #endif
         }
+        .onChange(of: webApps.map { ObjectIdentifier($0) }) { _, _ in
+            if let active = selectedWebApp,
+               (active.modelContext != nil || active.persistentModelID.storeIdentifier != nil),
+               !webApps.contains(where: { ObjectIdentifier($0) == ObjectIdentifier(active) }) {
+                let activeName = CloudSyncManager.normalizedName(active.name)
+                if let replacement = webApps.first(where: { $0.id == active.id })
+                    ?? webApps.first(where: { !activeName.isEmpty && CloudSyncManager.normalizedName($0.name) == activeName }) {
+                    selectedWebApp = replacement
+                }
+            }
+        }
         #if os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: MainWindowTracker.mainWindowDidCloseNotification)) { notification in
             let closedWindow = notification.object as? NSWindow

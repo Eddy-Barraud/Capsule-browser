@@ -91,6 +91,8 @@ public final class CloudSyncManager: ObservableObject {
     @Published public private(set) var lastSuccessfulSyncDate: Date? = nil
     @Published public var isSettingsSheetPresented: Bool = false
     @Published public private(set) var schemaInitStatusMessage: String? = nil
+    @Published public private(set) var isResettingICloudData: Bool = false
+    @Published public private(set) var resetStatusMessage: String? = nil
     
     /// Sequential queue of same-name capsule conflicts presented one at a time.
     @Published public private(set) var pendingConflicts: [CapsuleSyncConflict] = []
@@ -111,9 +113,8 @@ public final class CloudSyncManager: ObservableObject {
     private var hasCompletedInitialCloudImport: Bool = false
     private var lastKnownStoreSignature: Int?
     
-    #if DEBUG
-    private static let debugSchemaInitializedKey = "cloudKitDebugSchemaInitialized_v2_1"
-    #endif
+    private nonisolated static let pendingCloudStoreResetKey = "pendingCloudStoreFileReset"
+    private nonisolated static let didMigrateLegacyDefaultStoreKey = "didMigrateLegacyDefaultStore"
     
     /// Tracks capsules uploaded in the current activation session so late CloudKit imports with matching names also trigger conflict resolution.
     private var uploadedSessionCapsules: [UUID: CapsuleSnapshot] = [:]
@@ -167,9 +168,6 @@ public final class CloudSyncManager: ObservableObject {
         if enabled {
             Task { @MainActor [weak self] in
                 await self?.verifyICloudAccountStatus()
-                #if DEBUG
-                await self?.initializeCloudKitDevelopmentSchemaIfNeeded()
-                #endif
             }
         }
     }
@@ -201,6 +199,7 @@ public final class CloudSyncManager: ObservableObject {
     }
     
     private static func makeCloudContainer() -> (container: ModelContainer, errorMessage: String?) {
+        deleteCloudStoreFilesIfNeeded()
         migrateLegacyDefaultStoreIfNeeded()
         
         let config = ModelConfiguration(
@@ -221,14 +220,35 @@ public final class CloudSyncManager: ObservableObject {
         }
     }
     
+    /// Removes stale `CloudStore` SQLite files before opening the CloudKit container after an iCloud reset.
+    private static func deleteCloudStoreFilesIfNeeded() {
+        guard UserDefaults.standard.bool(forKey: pendingCloudStoreResetKey) else { return }
+        let fm = FileManager.default
+        let basePath = cloudStoreURL.path(percentEncoded: false)
+        for suffix in ["", "-wal", "-shm"] {
+            let fileURL = URL(filePath: basePath + suffix)
+            if fm.fileExists(atPath: fileURL.path(percentEncoded: false)) {
+                try? fm.removeItem(at: fileURL)
+            }
+        }
+        UserDefaults.standard.set(false, forKey: pendingCloudStoreResetKey)
+    }
+    
     /// One-time migration from the legacy unnamed `default.store` into `CloudStore.store` if needed.
     private static func migrateLegacyDefaultStoreIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: didMigrateLegacyDefaultStoreKey) else { return }
         let fm = FileManager.default
         let targetURL = cloudStoreURL
-        guard !fm.fileExists(atPath: targetURL.path(percentEncoded: false)) else { return }
+        guard !fm.fileExists(atPath: targetURL.path(percentEncoded: false)) else {
+            UserDefaults.standard.set(true, forKey: didMigrateLegacyDefaultStoreKey)
+            return
+        }
         
         let legacyURL = URL.applicationSupportDirectory.appending(path: "default.store")
-        guard fm.fileExists(atPath: legacyURL.path(percentEncoded: false)) else { return }
+        guard fm.fileExists(atPath: legacyURL.path(percentEncoded: false)) else {
+            UserDefaults.standard.set(true, forKey: didMigrateLegacyDefaultStoreKey)
+            return
+        }
         
         let legacyConfig = ModelConfiguration(
             schema: appSchema,
@@ -289,6 +309,7 @@ public final class CloudSyncManager: ObservableObject {
             targetContext.insert(copiedItem)
         }
         try? targetContext.save()
+        UserDefaults.standard.set(true, forKey: didMigrateLegacyDefaultStoreKey)
     }
     
     private func getLocalContainer() -> ModelContainer {
@@ -377,9 +398,6 @@ public final class CloudSyncManager: ObservableObject {
             guard let self else { return }
             defer { self.updateIsSyncingFlag() }
             await self.verifyICloudAccountStatus()
-            #if DEBUG
-            await self.initializeCloudKitDevelopmentSchemaIfNeeded()
-            #endif
             await self.waitForInitialCloudImport(timeoutSeconds: 8.0)
             guard self.isICloudSyncEnabled else { return }
             self.handleRemoteStoreChange()
@@ -414,15 +432,79 @@ public final class CloudSyncManager: ObservableObject {
                 self.updateIsSyncingFlag()
             }
             await self.verifyICloudAccountStatus()
-            #if DEBUG
-            await self.initializeCloudKitDevelopmentSchemaIfNeeded()
-            #endif
             await self.waitForInitialCloudImport(timeoutSeconds: 8.0)
             guard self.isICloudSyncEnabled else { return }
             if !localGroups.isEmpty || !localCapsules.isEmpty {
                 self.performLocalToCloudMerge(localGroups: localGroups, localCapsules: localCapsules)
             }
             self.handleRemoteStoreChange()
+        }
+    }
+    
+    /// Deletes all capsule/group records stored in the CloudKit private database zone and resets the local CloudKit cache.
+    public func resetICloudData(keepCurrentDataLocally: Bool) async {
+        guard !isResettingICloudData else { return }
+        isResettingICloudData = true
+        resetStatusMessage = "Resetting iCloud data..."
+        syncStatusError = nil
+        defer { isResettingICloudData = false }
+        
+        let sourceContext = activeContainer.mainContext
+        let groupsSnapshot = keepCurrentDataLocally ? fetchGroupSnapshots(from: sourceContext) : []
+        let capsulesSnapshot = keepCurrentDataLocally ? fetchCapsuleSnapshots(from: sourceContext) : []
+        
+        if let cloudContainer = cloudContainerInstance {
+            clearAllData(in: cloudContainer.mainContext)
+            try? cloudContainer.mainContext.save()
+        }
+        
+        let localContainer = getLocalContainer()
+        let localContext = localContainer.mainContext
+        clearAllData(in: localContext)
+        if keepCurrentDataLocally {
+            insertSnapshots(groups: groupsSnapshot, capsules: capsulesSnapshot, into: localContext)
+        }
+        try? localContext.save()
+        
+        uploadedSessionCapsules.removeAll()
+        clearConflicts()
+        activeCloudKitEventIDs.removeAll()
+        hasCompletedInitialCloudImport = false
+        switchToContainer(localContainer, cloudEnabled: false)
+        
+        cloudContainerInstance = nil
+        UserDefaults.standard.set(true, forKey: Self.pendingCloudStoreResetKey)
+        UserDefaults.standard.set(true, forKey: Self.didMigrateLegacyDefaultStoreKey)
+        
+        do {
+            let database = CKContainer(identifier: Self.cloudKitContainerIdentifier).privateCloudDatabase
+            let zones = try await database.allRecordZones()
+            var zoneIDsToDelete = zones
+                .map(\.zoneID)
+                .filter { $0.zoneName != CKRecordZone.ID.defaultZoneName }
+            let coreDataZoneID = CKRecordZone.ID(zoneName: "com.apple.coredata.cloudkit.zone", ownerName: CKCurrentUserDefaultName)
+            if !zoneIDsToDelete.contains(where: { $0.zoneName == coreDataZoneID.zoneName }) {
+                zoneIDsToDelete.append(coreDataZoneID)
+            }
+            
+            for zoneID in zoneIDsToDelete {
+                do {
+                    try await database.deleteRecordZone(withID: zoneID)
+                } catch let ckError as CKError where ckError.code == .zoneNotFound || ckError.code == .userDeletedZone {
+                    continue
+                }
+            }
+            
+            resetStatusMessage = keepCurrentDataLocally
+                ? "iCloud data has been reset. Your capsules are stored locally on this device."
+                : "iCloud and local data have been completely reset."
+        } catch let ckError as CKError where ckError.code == .zoneNotFound || ckError.code == .userDeletedZone {
+            resetStatusMessage = keepCurrentDataLocally
+                ? "iCloud data has been reset. Your capsules are stored locally on this device."
+                : "iCloud and local data have been completely reset."
+        } catch {
+            syncStatusError = "Could not delete remote iCloud data: \(error.localizedDescription)"
+            resetStatusMessage = "Local CloudKit cache was reset, but remote iCloud cleanup failed: \(error.localizedDescription)"
         }
     }
     
@@ -533,7 +615,6 @@ public final class CloudSyncManager: ObservableObject {
         
         try? cloudContext.save()
         lastKnownStoreSignature = Self.computeStoreSignature(in: cloudContext)
-        containerRefreshID = UUID()
         
         if !conflicts.isEmpty {
             enqueueConflicts(conflicts)
@@ -592,7 +673,6 @@ public final class CloudSyncManager: ObservableObject {
         
         try? cloudContext.save()
         lastKnownStoreSignature = Self.computeStoreSignature(in: cloudContext)
-        containerRefreshID = UUID()
         
         if pendingConflicts.isEmpty {
             totalConflictsInBatch = 0
@@ -611,16 +691,16 @@ public final class CloudSyncManager: ObservableObject {
             guard let event = notification.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey] as? NSPersistentCloudKitContainer.Event else {
                 return
             }
-            if let error = event.error as NSError?,
-               ((error.userInfo[NSFilePathErrorKey] as? String)?.contains("SchemaInit.sqlite") == true ||
-                String(describing: error).contains("SchemaInit.sqlite")) {
-                return
-            }
             let eventID = event.identifier
             let eventTypeRaw = event.type.rawValue
             let endDate = event.endDate
             let succeeded = event.succeeded
-            let errorMessage = event.error.map { Self.describeCloudKitError($0, eventType: event.type) }
+            let errorMessage: String?
+            if let error = event.error, !Self.isTransientOrIgnorableCloudKitEventError(error) {
+                errorMessage = Self.describeCloudKitError(error, eventType: event.type)
+            } else {
+                errorMessage = nil
+            }
             
             Task { @MainActor [weak self] in
                 self?.handleCloudKitEvent(
@@ -651,7 +731,7 @@ public final class CloudSyncManager: ObservableObject {
         }
         
         activeCloudKitEventIDs.remove(id)
-        if eventType == .import {
+        if eventType == .import && succeeded {
             hasCompletedInitialCloudImport = true
         }
         
@@ -661,6 +741,7 @@ public final class CloudSyncManager: ObservableObject {
                 syncStatusError = nil
             }
             if eventType == .import {
+                IsolatedCookieManager.shared.invalidateRestoreCache()
                 scheduleRemoteChangeHandling()
             }
         } else if let errorMessage {
@@ -750,6 +831,33 @@ public final class CloudSyncManager: ObservableObject {
             }
         }
         return "iCloud \(phase) error: \(error.localizedDescription)"
+    }
+    
+    /// Returns `true` for internal CoreData/CloudKit recovery errors (such as `CKError.changeTokenExpired`,
+    /// cancelled temporary-store requests, or `SchemaInit.sqlite` teardown) that should not surface to the user.
+    public nonisolated static func isTransientOrIgnorableCloudKitEventError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if (nsError.userInfo[NSFilePathErrorKey] as? String)?.contains("SchemaInit.sqlite") == true ||
+            String(describing: nsError).contains("SchemaInit.sqlite") {
+            return true
+        }
+        if nsError.domain == NSCocoaErrorDomain && nsError.code == 134407 {
+            return true
+        }
+        if nsError.domain == CKErrorDomain, let ckCode = CKError.Code(rawValue: nsError.code) {
+            switch ckCode {
+            case .changeTokenExpired:
+                return true
+            case .partialFailure:
+                if let partials = nsError.userInfo[CKPartialErrorsByItemIDKey] as? [AnyHashable: Error], !partials.isEmpty {
+                    return partials.values.allSatisfy { isTransientOrIgnorableCloudKitEventError($0) }
+                }
+                return false
+            default:
+                return false
+            }
+        }
+        return false
     }
     
     // MARK: - Late CloudKit Import Clash Detection & Remote Refresh
@@ -874,8 +982,6 @@ public final class CloudSyncManager: ObservableObject {
         
         if storeChanged || didDeduplicate || didAutoMerge || !newlyDetectedConflicts.isEmpty || !mergedDuplicateIDs.isEmpty {
             lastKnownStoreSignature = currentSignature
-            IsolatedCookieManager.shared.invalidateRestoreCache()
-            containerRefreshID = UUID()
             objectWillChange.send()
         }
     }
@@ -1082,13 +1188,11 @@ public final class CloudSyncManager: ObservableObject {
             hasher.combine(item.id)
             hasher.combine(item.name)
             hasher.combine(item.urlString)
-            hasher.combine(item.lastOpenedURLString)
             hasher.combine(item.displayOrder)
             hasher.combine(item.isUBlockEnabled)
             hasher.combine(item.openLinksInSafariReaderMode)
             hasher.combine(item.deleteCookiesOnClose)
             hasher.combine(item.iconData?.count)
-            hasher.combine(item.isolatedCookiesData?.count)
             hasher.combine(item.group?.id)
         }
         return hasher.finalize()
@@ -1139,11 +1243,6 @@ public final class CloudSyncManager: ObservableObject {
     }
     
     #if DEBUG
-    private func initializeCloudKitDevelopmentSchemaIfNeeded() async {
-        guard !UserDefaults.standard.bool(forKey: Self.debugSchemaInitializedKey) else { return }
-        await initializeCloudKitDevelopmentSchema()
-    }
-    
     /// Pushes the complete `WebAppItem` and `WebAppGroup` Core Data / SwiftData schema to the CloudKit Development environment
     /// so it can be deployed to Production in Apple's CloudKit Console.
     public func initializeCloudKitDevelopmentSchema() async {
@@ -1153,9 +1252,6 @@ public final class CloudSyncManager: ObservableObject {
             Self.runCloudKitSchemaInitialization(containerIdentifier: containerID)
         }.value
         schemaInitStatusMessage = resultMessage
-        if resultMessage.hasPrefix("Success") {
-            UserDefaults.standard.set(true, forKey: Self.debugSchemaInitializedKey)
-        }
     }
     
     nonisolated private static func runCloudKitSchemaInitialization(containerIdentifier: String) -> String {

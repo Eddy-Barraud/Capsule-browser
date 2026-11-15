@@ -88,6 +88,7 @@ struct GeneralSettingsView: View {
     @State private var recompileSuccess = false
     @State private var isShowingActivateICloudAlert = false
     @State private var isShowingDeactivateICloudAlert = false
+    @State private var isShowingResetICloudAlert = false
     
     // Snapshot of rule settings at open/last compile time
     @State private var savedSnapshot: RuleSettingsSnapshot?
@@ -160,6 +161,21 @@ struct GeneralSettingsView: View {
         } message: {
             Text("Would you like to store your current capsules and groups into local app data, or start again with empty local data?")
         }
+        .alert("Reset iCloud Data?", isPresented: $isShowingResetICloudAlert) {
+            Button("Reset iCloud & Keep Capsules Locally") {
+                Task {
+                    await syncManager.resetICloudData(keepCurrentDataLocally: true)
+                }
+            }
+            Button("Reset iCloud & Delete All Data", role: .destructive) {
+                Task {
+                    await syncManager.resetICloudData(keepCurrentDataLocally: false)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This deletes all capsules, groups, and cookies stored in iCloud so sync can start clean. Disable iCloud Sync on other devices first if you want a completely fresh start.")
+        }
         .iCloudSyncConflictAlert(syncManager: syncManager, isSettingsSheetSlot: true)
     }
     
@@ -202,7 +218,7 @@ struct GeneralSettingsView: View {
                             HStack(spacing: 10) {
                                 Toggle("Sync Capsules with iCloud", isOn: iCloudToggleBinding)
                                     .toggleStyle(.checkbox)
-                                    .disabled(syncManager.isSyncingWithCloud)
+                                    .disabled(syncManager.isSyncingWithCloud || syncManager.isResettingICloudData)
                                 
                                 if syncManager.isSyncingWithCloud {
                                     ProgressView()
@@ -234,20 +250,55 @@ struct GeneralSettingsView: View {
                                         .foregroundStyle(.orange)
                                         .fixedSize(horizontal: false, vertical: true)
                                     
-                                    Button("Retry Sync") {
-                                        syncManager.retrySync()
+                                    HStack(spacing: 8) {
+                                        Button("Retry Sync") {
+                                            syncManager.retrySync()
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                        .disabled(syncManager.isSyncingWithCloud || syncManager.isResettingICloudData)
+                                        
+                                        Button("Reset iCloud Data…", role: .destructive) {
+                                            isShowingResetICloudAlert = true
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                        .disabled(syncManager.isSyncingWithCloud || syncManager.isResettingICloudData)
+                                    }
+                                }
+                            } else {
+                                HStack(spacing: 8) {
+                                    if syncManager.isICloudSyncEnabled {
+                                        Button("Sync Now") {
+                                            syncManager.retrySync()
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                        .disabled(syncManager.isSyncingWithCloud || syncManager.isResettingICloudData)
+                                    }
+                                    
+                                    Button("Reset iCloud Data…", role: .destructive) {
+                                        isShowingResetICloudAlert = true
                                     }
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
-                                    .disabled(syncManager.isSyncingWithCloud)
+                                    .disabled(syncManager.isSyncingWithCloud || syncManager.isResettingICloudData)
                                 }
-                            } else if syncManager.isICloudSyncEnabled {
-                                Button("Sync Now") {
-                                    syncManager.retrySync()
+                            }
+                            
+                            if syncManager.isResettingICloudData {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .scaleEffect(0.65)
+                                    Text(syncManager.resetStatusMessage ?? "Resetting iCloud data...")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
                                 }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .disabled(syncManager.isSyncingWithCloud)
+                            } else if let resetMsg = syncManager.resetStatusMessage {
+                                Text(resetMsg)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             
                             #if DEBUG
@@ -621,7 +672,7 @@ struct GeneralSettingsView: View {
                     )
                 ) {
                     Toggle("Sync Capsules with iCloud", isOn: iCloudToggleBinding)
-                        .disabled(syncManager.isSyncingWithCloud)
+                        .disabled(syncManager.isSyncingWithCloud || syncManager.isResettingICloudData)
                     
                     if syncManager.isSyncingWithCloud {
                         HStack(spacing: 8) {
@@ -644,12 +695,30 @@ struct GeneralSettingsView: View {
                         Button("Retry Sync") {
                             syncManager.retrySync()
                         }
-                        .disabled(syncManager.isSyncingWithCloud)
+                        .disabled(syncManager.isSyncingWithCloud || syncManager.isResettingICloudData)
                     } else if syncManager.isICloudSyncEnabled {
                         Button("Sync Now") {
                             syncManager.retrySync()
                         }
-                        .disabled(syncManager.isSyncingWithCloud)
+                        .disabled(syncManager.isSyncingWithCloud || syncManager.isResettingICloudData)
+                    }
+                    
+                    Button("Reset iCloud Data…", role: .destructive) {
+                        isShowingResetICloudAlert = true
+                    }
+                    .disabled(syncManager.isSyncingWithCloud || syncManager.isResettingICloudData)
+                    
+                    if syncManager.isResettingICloudData {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text(syncManager.resetStatusMessage ?? "Resetting iCloud data...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if let resetMsg = syncManager.resetStatusMessage {
+                        Text(resetMsg)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     
                     #if DEBUG

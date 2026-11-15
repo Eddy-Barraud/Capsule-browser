@@ -67,7 +67,6 @@ struct isowebappsApp: App {
         #if os(macOS)
         WindowGroup(id: "capsuleWindow", for: CapsuleWindowPayload.self) { $payload in
             CapsuleWindowHostView(payload: payload ?? .defaultNewTabPayload)
-                .id(cloudSyncManager.containerRefreshID)
                 .environmentObject(cloudSyncManager)
                 .frame(minWidth: 800, minHeight: 600)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
