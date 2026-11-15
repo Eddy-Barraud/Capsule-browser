@@ -17,11 +17,14 @@
   "15": "Never",
   "16": "Task",
   "17": "Double",
+  "18": "IsolatedWKWebView",
   "19": "Binding",
   "20": "Date",
   "21": "Never",
   "22": "Task",
   "23": "Data",
+  "24": "SerializableCookie",
   "25": "WebAppGroup",
-  "26": "Any"
+  "26": "Any",
+  "27": "UBlockRuleCompiler"
 }

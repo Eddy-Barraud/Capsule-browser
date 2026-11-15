@@ -1,17 +1,17 @@
 # Graph Report - isowebapps  (2026-11-15)
 
 ## Corpus Check
-- 59 files · ~159,167 words
+- 59 files · ~159,200 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 3 file(s) not represented in the graph (top: .entitlements 2, .plist 1)
 
 ## Summary
-- 493 nodes · 1159 edges · 25 communities (8 shown, 17 thin omitted)
+- 508 nodes · 1198 edges · 28 communities (8 shown, 20 thin omitted)
 - Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 62 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `f2dfe77a`
+- Built from commit: `d3c6edb3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -25,6 +25,9 @@
 - WindowPresentationMode.swift
 - AISummarizer
 - WebAppItem
+- IsolatedWKWebView
+- SerializableCookie
+- UBlockRuleCompiler
 
 ## God Nodes (most connected - your core abstractions)
 1. `CloudSyncManager` - 72 edges
@@ -39,21 +42,21 @@
 10. `CapsuleWindowPayload` - 22 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `.body` --calls--> `ContentView`  [INFERRED]
-  isowebappsApp.swift → ContentView.swift
-- `.body` --calls--> `AddWebAppSheet`  [INFERRED]
-  ContentView.swift → AddWebAppSheet.swift
-- `.body` --calls--> `GeneralSettingsView`  [INFERRED]
-  ContentView.swift → GeneralSettingsView.swift
 - `.body` --calls--> `WebAppContainerView`  [INFERRED]
   ContentView.swift → WebAppContainerView.swift
+- `.body` --calls--> `WebAppContainerView`  [INFERRED]
+  WindowPresentationMode.swift → WebAppContainerView.swift
+- `.body` --calls--> `ContentView`  [INFERRED]
+  isowebappsApp.swift → ContentView.swift
+- `.allHomeItems` --references--> `WebAppItem`  [INFERRED]
+  ContentView.swift → WebAppItem.swift
 - `.deduplicatedStandaloneApps` --references--> `WebAppItem`  [INFERRED]
   ContentView.swift → WebAppItem.swift
 
 ## Import Cycles
 - None detected.
 
-## Communities (25 total, 17 thin omitted)
+## Communities (28 total, 20 thin omitted)
 
 ### Community 0 - "CloudSyncManager"
 Cohesion: 0.07
@@ -64,47 +67,47 @@ Cohesion: 0.08
 Nodes (19): IdentifiableURL, IOSSolidBottomBar, .body, MacOSSolidBottomBar, .body, SafariView, ShareSheet, SummaryDropdownView (+11 more)
 
 ### Community 2 - "SearchEngine"
-Cohesion: 0.07
-Nodes (32): BlockingMode, basic, complete, .description, .id, optimal, GeneralSettingsView, .currentSnapshot (+24 more)
+Cohesion: 0.05
+Nodes (33): BlockingMode, basic, complete, .description, .id, optimal, GeneralSettingsView, .currentSnapshot (+25 more)
 
 ### Community 3 - "WebViewCoordinator"
-Cohesion: 0.06
-Nodes (6): IsolatedWebViewRepresentable, IsolatedWKWebView, .hasActiveAudioPlayback, URL, .rootDomain, WebViewCoordinator
+Cohesion: 0.09
+Nodes (4): IsolatedWebViewRepresentable, URL, .rootDomain, WebViewCoordinator
 
 ### Community 4 - "NSWindow"
 Cohesion: 0.06
-Nodes (15): .homeScreenView, .body, AppDelegate, CapsuleWindowHostView, .body, .resolvedAppItem, CapsuleWindowPayload, .id (+7 more)
+Nodes (16): .homeScreenView, .body, AppDelegate, CapsuleWindowHostView, .body, .resolvedAppItem, CapsuleWindowPayload, .defaultNewTabPayload (+8 more)
 
 ### Community 7 - "WindowPresentationMode.swift"
-Cohesion: 0.08
-Nodes (12): AddWebAppSheet, .body, AppKit, FaviconFetcher, Foundation, isowebappsApp, SafariServices, SwiftData (+4 more)
+Cohesion: 0.09
+Nodes (13): AddWebAppSheet, .body, AppKit, Combine, FaviconFetcher, Foundation, FoundationModels, isowebappsApp (+5 more)
 
 ### Community 8 - "AISummarizer"
-Cohesion: 0.12
-Nodes (12): AISummarizer, .isAvailable, WebPageSummaryError, emptyContent, .errorDescription, generationFailed, modelUnavailable, pdfExtractionFailed (+4 more)
+Cohesion: 0.15
+Nodes (9): AISummarizer, .isAvailable, WebPageSummaryError, emptyContent, .errorDescription, generationFailed, modelUnavailable, pdfExtractionFailed (+1 more)
 
 ### Community 12 - "WebAppItem"
 Cohesion: 0.06
 Nodes (21): AddGroupSheet, .body, ContentView, .allHomeItems, .body, .deduplicatedGroups, .deduplicatedStandaloneApps, .emptyStateView (+13 more)
 
 ## Knowledge Gaps
-- **48 isolated node(s):** `CoreData`, `CloudKit`, `.currentConflict`, `.isPresentedBinding`, `.conflictAlertTitle` (+43 more)
-  These have ≤1 connection - possible missing edges. (Counts symbols only; 141 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **17 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **48 isolated node(s):** `CloudKit`, `.currentConflict`, `.conflictAlertTitle`, `.isPresentedBinding`, `CoreData` (+43 more)
+  These have ≤1 connection - possible missing edges. (Counts symbols only; 142 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **20 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `CloudSyncManager` connect `CloudSyncManager` to `WebViewNavigationState`, `SearchEngine`, `WebViewCoordinator`, `AISummarizer`, `WebAppItem`?**
-  _High betweenness centrality (0.220) - this node is a cross-community bridge._
+  _High betweenness centrality (0.217) - this node is a cross-community bridge._
 - **Are the 10 inferred relationships involving `WebAppItem` (e.g. with `.body` and `.createGroup()`) actually correct?**
   _`WebAppItem` has 10 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `CoreData`, `CloudKit`, `.currentConflict` to the rest of the system?**
+- **What connects `CloudKit`, `.currentConflict`, `.conflictAlertTitle` to the rest of the system?**
   _48 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `CloudSyncManager` be split into smaller, more focused modules?**
-  _Cohesion score 0.07003475006682705 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07113543091655267 - nodes in this community are weakly interconnected._
 - **Why does `WebAppItem` connect `WebAppItem` to `CloudSyncManager`, `WebViewNavigationState`, `WebViewCoordinator`, `NSWindow`, `IsolatedCookieManager`, `WindowPresentationMode.swift`?**
-  _High betweenness centrality (0.182) - this node is a cross-community bridge._
+  _High betweenness centrality (0.175) - this node is a cross-community bridge._
 - **Are the 6 inferred relationships involving `NSWindow` (e.g. with `.openCapsule()` and `.openEphemeralCapsule()`) actually correct?**
   _`NSWindow` has 6 INFERRED edges - model-reasoned connections that need verification._
 - **Should `WebViewNavigationState` be split into smaller, more focused modules?**

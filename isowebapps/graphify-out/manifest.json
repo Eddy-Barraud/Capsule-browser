@@ -108,9 +108,9 @@
     "semantic_hash": ""
   },
   "UBlockOriginExtensionManager.swift": {
-    "mtime": 1792933736.036642,
-    "seen": 1794314424.72486,
-    "ast_hash": "030a0065bd7361854db204ce1699b238",
+    "mtime": 1794741385.086474,
+    "seen": 1794755549.106373,
+    "ast_hash": "ce0091865054304a84e143eb6271b5ae",
     "semantic_hash": ""
   },
   "UBlockRuleCompiler.swift": {
@@ -162,194 +162,194 @@
     "semantic_hash": ""
   },
   "rulesets/main/adguard-mobile.json": {
-    "mtime": 1794418945.13359,
-    "seen": 1794501117.547053,
+    "mtime": 1794740982.4810002,
+    "seen": 1794755549.10638,
     "ast_hash": "7e393f4fa3408bfb0873488d8d385df1",
     "semantic_hash": ""
   },
   "rulesets/main/annoyances-cookies.json": {
-    "mtime": 1794418945.126794,
-    "seen": 1794501117.547054,
+    "mtime": 1794740982.4739225,
+    "seen": 1794755549.106381,
     "ast_hash": "23f29495df5bd03883d8c562059e2ac2",
     "semantic_hash": ""
   },
   "rulesets/main/annoyances-overlays.json": {
-    "mtime": 1794418945.1290917,
-    "seen": 1794501117.547054,
+    "mtime": 1794740982.4765985,
+    "seen": 1794755549.106381,
     "ast_hash": "7325f83ff5433eb6bbb01b00ccf23aeb",
     "semantic_hash": ""
   },
   "rulesets/main/block-lan.json": {
-    "mtime": 1794418945.1297145,
-    "seen": 1794501117.547055,
+    "mtime": 1794740982.477373,
+    "seen": 1794755549.1063821,
     "ast_hash": "35f2d6521a35fbc32bdf2a3ef137a366",
     "semantic_hash": ""
   },
   "rulesets/main/easylist.json": {
-    "mtime": 1794418945.050389,
-    "seen": 1794501117.5470562,
+    "mtime": 1794740982.3895514,
+    "seen": 1794755549.106383,
     "ast_hash": "221e79b891a181ceb4f7c367d30ce729",
     "semantic_hash": ""
   },
   "rulesets/main/easyprivacy.json": {
-    "mtime": 1794418945.1129284,
-    "seen": 1794501117.5470562,
+    "mtime": 1794740982.457535,
+    "seen": 1794755549.106383,
     "ast_hash": "7be25751a49a73b084afbff6a1c93c5c",
     "semantic_hash": ""
   },
   "rulesets/main/fra-0.json": {
-    "mtime": 1794418945.1553142,
-    "seen": 1794501117.547057,
+    "mtime": 1794740982.5045192,
+    "seen": 1794755549.1063838,
     "ast_hash": "1d92e520435602de446d5edb0a5ce360",
     "semantic_hash": ""
   },
   "rulesets/main/ublock-badware.json": {
-    "mtime": 1794418945.0143986,
-    "seen": 1794501117.5470579,
+    "mtime": 1794740982.3491848,
+    "seen": 1794755549.106385,
     "ast_hash": "40a8337029f090f99495b127377bbb12",
     "semantic_hash": ""
   },
   "rulesets/main/ublock-filters.json": {
-    "mtime": 1794418945.0100913,
-    "seen": 1794501117.547059,
+    "mtime": 1794740982.344895,
+    "seen": 1794755549.106385,
     "ast_hash": "76f7150721f62a639c3f036615fa584a",
     "semantic_hash": ""
   },
   "rulesets/main/urlhaus-full.json": {
-    "mtime": 1794418945.116366,
-    "seen": 1794501117.547059,
+    "mtime": 1794740982.461322,
+    "seen": 1794755549.106386,
     "ast_hash": "ed3007d7fb6e8d004f8a33dd3ab028a0",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-adguard-mobile.js": {
-    "mtime": 1794418945.2241337,
-    "seen": 1794501117.54706,
+    "mtime": 1794740982.616994,
+    "seen": 1794755549.106387,
     "ast_hash": "26b0a6f9b4a86830e4c968f8f258c8a6",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-annoyances-cookies.js": {
-    "mtime": 1794418945.21452,
-    "seen": 1794501117.547061,
+    "mtime": 1794740982.606516,
+    "seen": 1794755549.1063879,
     "ast_hash": "58e72effdd2c1588001e0a6c21083bae",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-annoyances-overlays.js": {
-    "mtime": 1794418945.219058,
-    "seen": 1794501117.547062,
+    "mtime": 1794740982.6113455,
+    "seen": 1794755549.1063879,
     "ast_hash": "a2956872113d01b96d249a030361dd6c",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-easylist.js": {
-    "mtime": 1794418945.204205,
-    "seen": 1794501117.547062,
+    "mtime": 1794740982.5955982,
+    "seen": 1794755549.106389,
     "ast_hash": "a191e3ceb7fe849c04c77345fc8bb141",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-easyprivacy.js": {
-    "mtime": 1794418945.2056146,
-    "seen": 1794501117.547063,
+    "mtime": 1794740982.5964823,
+    "seen": 1794755549.106389,
     "ast_hash": "9f13ac488f6fd8a6ca7c567dcfc16d7c",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-fra-0.js": {
-    "mtime": 1794418945.2259128,
-    "seen": 1794501117.547064,
+    "mtime": 1794740982.6194952,
+    "seen": 1794755549.10639,
     "ast_hash": "b1d0968f75e1ed2c8c699eec936dc7a3",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-ublock-badware.js": {
-    "mtime": 1794418945.19736,
-    "seen": 1794501117.547065,
+    "mtime": 1794740982.5887985,
+    "seen": 1794755549.106391,
     "ast_hash": "0d8104934ff68e61d5add10ab29946b1",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-ublock-filters.js": {
-    "mtime": 1794418945.1965017,
-    "seen": 1794501117.547065,
+    "mtime": 1794740982.5880532,
+    "seen": 1794755549.106391,
     "ast_hash": "7214f3cab4ec4e2e5bcada64e9403f5e",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-adguard-mobile.js": {
-    "mtime": 1794418945.1892514,
-    "seen": 1794501117.5470662,
+    "mtime": 1794740982.5719216,
+    "seen": 1794755549.1063921,
     "ast_hash": "2160bd65b727c3121c2265e6baad5be3",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-annoyances-cookies.js": {
-    "mtime": 1794418945.186944,
-    "seen": 1794501117.547067,
+    "mtime": 1794740982.5691042,
+    "seen": 1794755549.106393,
     "ast_hash": "1e088321c93070f337fa32e1fedd244a",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-annoyances-overlays.js": {
-    "mtime": 1794418945.188403,
-    "seen": 1794501117.547067,
+    "mtime": 1794740982.571243,
+    "seen": 1794755549.106394,
     "ast_hash": "3eaa87072e215479ee3b2336138f529a",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-easyprivacy.js": {
-    "mtime": 1794418945.1809523,
-    "seen": 1794501117.5470679,
+    "mtime": 1794740982.5360043,
+    "seen": 1794755549.106394,
     "ast_hash": "7d19045ec857fa503690b547899bf51b",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-fra-0.js": {
-    "mtime": 1794418945.1901128,
-    "seen": 1794501117.5470688,
+    "mtime": 1794740982.5723212,
+    "seen": 1794755549.1063948,
     "ast_hash": "01940bbf0139bc501723544c4a585cbe",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-ublock-badware.js": {
-    "mtime": 1794418945.1803136,
-    "seen": 1794501117.5470688,
+    "mtime": 1794740982.5349855,
+    "seen": 1794755549.106396,
     "ast_hash": "7e34c424c6b5577151fd7b6000b88018",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-ublock-filters.js": {
-    "mtime": 1794418945.1796994,
-    "seen": 1794501117.54707,
+    "mtime": 1794740982.5339377,
+    "seen": 1794755549.106396,
     "ast_hash": "ef8ff157e59574b482341cdd72260b7d",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-adguard-mobile.js": {
-    "mtime": 1794418945.1705904,
-    "seen": 1794501117.547071,
+    "mtime": 1794740982.522394,
+    "seen": 1794755549.106397,
     "ast_hash": "b5a6d6fbf482f4fc7d4c13b09a101f62",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-annoyances-cookies.js": {
-    "mtime": 1794418945.1675138,
-    "seen": 1794501117.547072,
+    "mtime": 1794740982.519397,
+    "seen": 1794755549.1063979,
     "ast_hash": "088b7a3fcff04bfa77b70751670fb8aa",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-annoyances-overlays.js": {
-    "mtime": 1794418945.1694875,
-    "seen": 1794501117.547072,
+    "mtime": 1794740982.5215547,
+    "seen": 1794755549.106399,
     "ast_hash": "5af23d226801a059cb9344a24723086f",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-easyprivacy.js": {
-    "mtime": 1794418945.166689,
-    "seen": 1794501117.5470731,
+    "mtime": 1794740982.518539,
+    "seen": 1794755549.106399,
     "ast_hash": "5493032946626bc1c1c42d0b40532c0e",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-fra-0.js": {
-    "mtime": 1794418945.1712408,
-    "seen": 1794501117.547074,
+    "mtime": 1794740982.5229516,
+    "seen": 1794755549.1064,
     "ast_hash": "151e0cb8bbd476ec311de3595f9e6fe3",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-ublock-badware.js": {
-    "mtime": 1794418945.1653657,
-    "seen": 1794501117.547075,
+    "mtime": 1794740982.5166843,
+    "seen": 1794755549.106401,
     "ast_hash": "35759ad5553f768d66670810d5a990ea",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-ublock-filters.js": {
-    "mtime": 1794418945.1645894,
-    "seen": 1794501117.547075,
+    "mtime": 1794740982.5151439,
+    "seen": 1794755549.106401,
     "ast_hash": "0bf7f99f54e42352e62c3d998140ca16",
     "semantic_hash": ""
   },
