@@ -36,15 +36,15 @@
     "semantic_hash": ""
   },
   "CloudSyncManager.swift": {
-    "mtime": 1794564814.5582228,
-    "seen": 1794567609.255471,
-    "ast_hash": "992908f1ac4d6d75051a19e4edbcf785",
+    "mtime": 1794695733.606802,
+    "seen": 1794740728.794564,
+    "ast_hash": "1edadc3522ca3da69d64d491d5a276fb",
     "semantic_hash": ""
   },
   "ContentView.swift": {
-    "mtime": 1794562813.5054288,
-    "seen": 1794567609.2554722,
-    "ast_hash": "c6535ec4c978c04828ad11a2828c7d9d",
+    "mtime": 1794695760.7899494,
+    "seen": 1794740728.7945652,
+    "ast_hash": "52af4ca29c04a09bd7d66a111771d8a0",
     "semantic_hash": ""
   },
   "CookieManager.swift": {
@@ -60,9 +60,9 @@
     "semantic_hash": ""
   },
   "GeneralSettingsView.swift": {
-    "mtime": 1794562818.0117261,
-    "seen": 1794567609.255475,
-    "ast_hash": "a508b028cdac229fa7ad8c904d0fc255",
+    "mtime": 1794695775.7600255,
+    "seen": 1794740728.7945678,
+    "ast_hash": "cb75b46175bdd435e6a154921d4487ea",
     "semantic_hash": ""
   },
   "GroupSettingsSheet.swift": {
@@ -156,9 +156,9 @@
     "semantic_hash": ""
   },
   "isowebappsApp.swift": {
-    "mtime": 1794562799.418276,
-    "seen": 1794567609.255486,
-    "ast_hash": "aeefc04bd74cbff60a091d4ad8ac264d",
+    "mtime": 1794695744.581152,
+    "seen": 1794740728.794581,
+    "ast_hash": "dec3257a05152e75f946150b1112c5e2",
     "semantic_hash": ""
   },
   "rulesets/main/adguard-mobile.json": {
