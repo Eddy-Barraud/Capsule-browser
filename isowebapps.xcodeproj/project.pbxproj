@@ -246,7 +246,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.3;
+				CURRENT_PROJECT_VERSION = 2.3.1;
 				DEVELOPMENT_TEAM = WPBZAUF723;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Open in a capsule/Info.plist";
@@ -276,7 +276,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.3;
+				CURRENT_PROJECT_VERSION = 2.3.1;
 				DEVELOPMENT_TEAM = WPBZAUF723;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Open in a capsule/Info.plist";
@@ -314,7 +314,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=xros*]" = "isowebapps/isowebapps-iOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=xrsimulator*]" = "isowebapps/isowebapps-iOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.3;
+				CURRENT_PROJECT_VERSION = 2.3.1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = WPBZAUF723;
 				ENABLE_APP_SANDBOX = YES;
@@ -379,7 +379,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=xros*]" = "isowebapps/isowebapps-iOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=xrsimulator*]" = "isowebapps/isowebapps-iOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.3;
+				CURRENT_PROJECT_VERSION = 2.3.1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = WPBZAUF723;
 				ENABLE_APP_SANDBOX = YES;
