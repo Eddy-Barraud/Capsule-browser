@@ -130,32 +130,42 @@ public final class UBlockOriginExtensionManager: ObservableObject {
         }
         #endif
         
+        let availableIdentifiers: Set<String> = await withCheckedContinuation { continuation in
+            WKContentRuleListStore.default().getAvailableContentRuleListIdentifiers { identifiers in
+                continuation.resume(returning: Set(identifiers ?? []))
+            }
+        }
+        
         var newCompiledLists: [WKContentRuleList] = []
         var totalRuleCount = 0
         
         for url in rulesetURLs {
             let listIdentifier = "uBlock_" + url.deletingPathExtension().lastPathComponent
+            let hasStoredList = availableIdentifiers.contains(listIdentifier)
             
-            let existingList: WKContentRuleList? = try? await withCheckedThrowingContinuation { continuation in
-                WKContentRuleListStore.default().lookUpContentRuleList(forIdentifier: listIdentifier) { list, error in
-                    if let list = list {
-                        continuation.resume(returning: list)
-                    } else if let error = error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume(returning: nil)
+            var existingList: WKContentRuleList? = nil
+            if !forceRecompile && hasStoredList {
+                existingList = try? await withCheckedThrowingContinuation { continuation in
+                    WKContentRuleListStore.default().lookUpContentRuleList(forIdentifier: listIdentifier) { list, error in
+                        if let list = list {
+                            continuation.resume(returning: list)
+                        } else if let error = error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume(returning: nil)
+                        }
                     }
                 }
             }
             
-            if !forceRecompile, existingList != nil {
+            if !forceRecompile, let loadedList = existingList {
                 #if DEBUG
                 print("[UBlockOriginExtensionManager] Loaded existing compiled ruleset: \(listIdentifier)")
                 #endif
-                newCompiledLists.append(existingList!)
+                newCompiledLists.append(loadedList)
                 totalRuleCount += defaults.integer(forKey: "ublock_rulecount_\(listIdentifier)")
             } else {
-                if forceRecompile {
+                if hasStoredList {
                     _ = try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                         WKContentRuleListStore.default().removeContentRuleList(forIdentifier: listIdentifier) { error in
                             if let error = error {
