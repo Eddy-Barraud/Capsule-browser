@@ -63,13 +63,14 @@ nonisolated enum ReaderModeError: LocalizedError, Sendable {
     case httpError(Int)
     case nonHTMLContent(String)
     case javaScriptRequired
+    case humanVerificationRequired(URL)
     case emptyContent
     case networkFailed(String)
     case conversionFailed(String)
 
     var shouldFallbackToBackgroundWebView: Bool {
         switch self {
-        case .javaScriptRequired, .emptyContent:
+        case .javaScriptRequired, .emptyContent, .humanVerificationRequired:
             return true
         case .httpError(let statusCode):
             return ReaderHTMLUtilities.shouldFallbackToBackgroundWebView(httpStatusCode: statusCode)
@@ -91,6 +92,8 @@ nonisolated enum ReaderModeError: LocalizedError, Sendable {
             return "This resource (\(mime)) is not an HTML article and cannot be rendered in Reader mode."
         case .javaScriptRequired:
             return "This page requires JavaScript to render its content. Load the full webpage to view it."
+        case .humanVerificationRequired:
+            return "This website requires a human verification check before it can be shown in Reader view."
         case .emptyContent:
             return "No readable article content could be extracted from this page."
         case .networkFailed(let reason):
@@ -257,6 +260,11 @@ nonisolated enum ReaderModeService {
             throw ReaderModeError.networkFailed(error.localizedDescription)
         }
 
+        let resolvedURL = response.url ?? url
+        if ReaderHTMLUtilities.isRobotCheckURL(resolvedURL) {
+            throw ReaderModeError.humanVerificationRequired(resolvedURL)
+        }
+
         if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
             throw ReaderModeError.httpError(httpResponse.statusCode)
         }
@@ -268,7 +276,6 @@ nonisolated enum ReaderModeService {
             }
         }
 
-        let resolvedURL = response.url ?? url
         let textEncodingName = response.textEncodingName
 
         return try await Task.detached(priority: .userInitiated) {
@@ -276,6 +283,13 @@ nonisolated enum ReaderModeService {
 
             let html = ReaderHTMLUtilities.decodeHTMLData(data, textEncodingName: textEncodingName)
             let metadata = ReaderHTMLUtilities.extractMetadata(from: html)
+            if ReaderHTMLUtilities.isRobotCheckContent(
+                urlString: resolvedURL.absoluteString,
+                html: html,
+                title: metadata.title
+            ) {
+                throw ReaderModeError.humanVerificationRequired(resolvedURL)
+            }
             let title = metadata.title ?? resolvedURL.host ?? resolvedURL.absoluteString
             let siteName = metadata.siteName ?? resolvedURL.host
 

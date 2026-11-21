@@ -20,6 +20,7 @@ nonisolated struct ReaderHTMLCapture: Sendable, Equatable {
     let readyState: String?
     let textLength: Int?
     let matchedPrimaryContainer: Bool
+    let hasRobotCheckWidget: Bool
 
     init(
         title: String,
@@ -29,7 +30,8 @@ nonisolated struct ReaderHTMLCapture: Sendable, Equatable {
         html: String,
         readyState: String? = nil,
         textLength: Int? = nil,
-        matchedPrimaryContainer: Bool = false
+        matchedPrimaryContainer: Bool = false,
+        hasRobotCheckWidget: Bool = false
     ) {
         self.title = title
         self.urlString = urlString
@@ -39,12 +41,14 @@ nonisolated struct ReaderHTMLCapture: Sendable, Equatable {
         self.readyState = readyState
         self.textLength = textLength
         self.matchedPrimaryContainer = matchedPrimaryContainer
+        self.hasRobotCheckWidget = hasRobotCheckWidget
     }
 }
 
 /// Readiness assessment for DOM captures polled from a background `WKWebView`.
 nonisolated enum BackgroundCaptureReadiness: Sendable, Equatable {
     case notReadyYet
+    case requiresHumanVerification
     case usableAfterSettle
     case readyImmediately
 }
@@ -434,11 +438,102 @@ nonisolated enum ReaderHTMLUtilities {
         }
     }
 
+    /// Returns `true` for URLs belonging to known anti-bot / human-verification gates (e.g. Google `/sorry/index`).
+    static func isRobotCheckURL(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        let path = url.path.lowercased()
+        if (host == "google.com" || host.hasSuffix(".google.com") || host.contains(".google.")) &&
+           (path == "/sorry" || path.hasPrefix("/sorry/")) {
+            return true
+        }
+        if path.hasPrefix("/cdn-cgi/challenge-platform") {
+            return true
+        }
+        if host == "geo.captcha-delivery.com" || host.hasSuffix(".captcha-delivery.com") {
+            return true
+        }
+        return false
+    }
+
+    /// Returns `true` when either the URL or visible page content represents an interactive robot/CAPTCHA verification check.
+    static func isRobotCheckContent(
+        urlString: String,
+        html: String,
+        title: String? = nil,
+        textLength: Int? = nil,
+        hasRobotCheckWidget: Bool = false
+    ) -> Bool {
+        if let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
+           isRobotCheckURL(url) {
+            return true
+        }
+
+        let effectiveTextLength = textLength ?? visibleHTMLTextLength(in: html)
+        if hasRobotCheckWidget && effectiveTextLength < 1500 {
+            return true
+        }
+
+        guard effectiveTextLength < 1500 else {
+            return false
+        }
+
+        let combinedLower = ((title ?? "") + "\n" + html).lowercased()
+        let directPhrases = [
+            "unusual traffic from your computer network",
+            "trafic inhabituel en provenance de votre réseau",
+            "trafic inhabituel en provenance de votre reseau",
+            "verify you are human",
+            "verifying you are human",
+            "i am not a robot",
+            "je ne suis pas un robot",
+            "are you a robot",
+            "complete the security check",
+            "please verify you are a human"
+        ]
+        if directPhrases.contains(where: { combinedLower.contains($0) }) {
+            return true
+        }
+
+        let widgetSignatures = [
+            "g-recaptcha",
+            "cf-turnstile",
+            "h-captcha",
+            "captcha-delivery.com",
+            "px-captcha",
+            "captcha-form"
+        ]
+        let contextWords = ["captcha", "robot", "human", "sorry", "verify", "vérif"]
+        if widgetSignatures.contains(where: { combinedLower.contains($0) }) &&
+           contextWords.contains(where: { combinedLower.contains($0) }) {
+            return true
+        }
+
+        return false
+    }
+
+    private static func visibleHTMLTextLength(in html: String) -> Int {
+        var stripped = html
+        stripped = replacingRegex(#"(?is)<script\b[^>]*>[\s\S]*?</script>"#, in: stripped, with: " ")
+        stripped = replacingRegex(#"(?is)<style\b[^>]*>[\s\S]*?</style>"#, in: stripped, with: " ")
+        stripped = replacingRegex(#"<[^>]+>"#, in: stripped, with: " ")
+        let compact = stripped.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+        return compact.count
+    }
+
     /// Evaluates whether a DOM snapshot polled from a hidden background `WKWebView` is ready for Reader display.
     static func evaluateBackgroundCaptureReadiness(_ capture: ReaderHTMLCapture) -> BackgroundCaptureReadiness {
         let trimmedURL = capture.urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedURL.isEmpty, trimmedURL.lowercased() != "about:blank" else {
             return .notReadyYet
+        }
+        if isRobotCheckContent(
+            urlString: trimmedURL,
+            html: capture.html,
+            title: capture.title,
+            textLength: capture.textLength,
+            hasRobotCheckWidget: capture.hasRobotCheckWidget
+        ) {
+            return .requiresHumanVerification
         }
         if let url = URL(string: trimmedURL), isKnownJSRedirectorURL(url) {
             return .notReadyYet

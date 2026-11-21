@@ -1355,6 +1355,53 @@ func testReaderHTMLUtilities() {
         ) == .usableAfterSettle
     )
     
+    // Test 9: Robot / human-verification check detection (Google /sorry/index & CAPTCHA widgets)
+    let googleSorryURL = URL(string: "https://www.google.com/sorry/index?continue=https://news.google.com/read/CBMi&hl=fr&q=EhAgAQ")!
+    let googleFrSorryURL = URL(string: "https://www.google.fr/sorry/index?continue=https://example.com")!
+    let cloudflareChallengeURL = URL(string: "https://example.com/cdn-cgi/challenge-platform/h/b/orchestrate")!
+    let datadomeCaptchaURL = URL(string: "https://geo.captcha-delivery.com/captcha/?initialCid=123")!
+    assert(ReaderHTMLUtilities.isRobotCheckURL(googleSorryURL) == true)
+    assert(ReaderHTMLUtilities.isRobotCheckURL(googleFrSorryURL) == true)
+    assert(ReaderHTMLUtilities.isRobotCheckURL(cloudflareChallengeURL) == true)
+    assert(ReaderHTMLUtilities.isRobotCheckURL(datadomeCaptchaURL) == true)
+    assert(ReaderHTMLUtilities.isRobotCheckURL(URL(string: "https://news.google.com/read/CBMiTest")!) == false)
+    assert(ReaderHTMLUtilities.isRobotCheckURL(URL(string: "https://www.lemonde.fr/article.html")!) == false)
+    
+    let frenchSorryHTML = "<html><body><p>Nos systèmes ont détecté un trafic inhabituel en provenance de votre réseau.</p><form id=\"captcha-form\"><div class=\"g-recaptcha\"></div></form></body></html>"
+    assert(
+        ReaderHTMLUtilities.isRobotCheckContent(
+            urlString: "https://www.google.com/sorry/index?continue=https://news.google.com/read/CBMi",
+            html: frenchSorryHTML,
+            title: "https://www.google.com/sorry/index"
+        ) == true
+    )
+    assert(
+        ReaderHTMLUtilities.isRobotCheckContent(
+            urlString: "https://publisher.example.com/article",
+            html: "<div class=\"cf-turnstile\">Verify you are human</div>",
+            hasRobotCheckWidget: true
+        ) == true
+    )
+    let longArticleWithCommentCaptcha = "<article><p>" + String(repeating: "Detailed journalism content paragraph. ", count: 60) + "</p></article>"
+    assert(
+        ReaderHTMLUtilities.isRobotCheckContent(
+            urlString: "https://publisher.example.com/long-article",
+            html: longArticleWithCommentCaptcha,
+            hasRobotCheckWidget: true
+        ) == false,
+        "Long genuine article with comment form reCAPTCHA must not trigger robot check passthrough"
+    )
+    assert(
+        ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(
+            ReaderHTMLCapture(title: "Sorry", urlString: googleSorryURL.absoluteString, html: "<p>Check</p>", readyState: "loading", textLength: 600, matchedPrimaryContainer: false, hasRobotCheckWidget: true)
+        ) == .requiresHumanVerification
+    )
+    assert(
+        ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(
+            ReaderHTMLCapture(title: "Security Check", urlString: "https://publisher.example.com/article", html: "<p>Please verify</p>", readyState: "complete", textLength: 180, matchedPrimaryContainer: false, hasRobotCheckWidget: true)
+        ) == .requiresHumanVerification
+    )
+    
     print("✓ testReaderHTMLUtilities passed!")
 }
 

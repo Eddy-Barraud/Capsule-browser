@@ -672,6 +672,11 @@ extension IsolatedWebViewRepresentable {
         var title = (document.title || '').trim();
         var siteName = getMeta('meta[property="og:site_name"]') || getMeta('meta[name="application-name"]');
         var author = getMeta('meta[name="author"]') || getMeta('meta[property="article:author"]');
+        var hasRobotCheckWidget = Boolean(
+            document.querySelector(
+                '#captcha-form, form[action*="/sorry"], .g-recaptcha, #recaptcha, iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="challenges.cloudflare.com"], .cf-turnstile, iframe[src*="captcha-delivery.com"], #px-captcha'
+            )
+        );
 
         var pickBestContainer = function() {
             var selectorGroups = [
@@ -743,7 +748,8 @@ extension IsolatedWebViewRepresentable {
             html: html,
             readyState: document.readyState || '',
             textLength: plainTextLength,
-            matchedPrimaryContainer: matchedPrimary
+            matchedPrimaryContainer: matchedPrimary,
+            hasRobotCheckWidget: hasRobotCheckWidget
         };
     })();
     """#
@@ -962,6 +968,7 @@ extension IsolatedWebViewRepresentable {
                 let readyState = (dict["readyState"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let textLength = dict["textLength"] as? Int
                 let matchedPrimary = (dict["matchedPrimaryContainer"] as? Bool) ?? false
+                let hasRobotCheckWidget = (dict["hasRobotCheckWidget"] as? Bool) ?? false
                 
                 return ReaderHTMLCapture(
                     title: resolvedTitle,
@@ -971,7 +978,8 @@ extension IsolatedWebViewRepresentable {
                     html: extractedHTML,
                     readyState: readyState?.isEmpty == false ? readyState : nil,
                     textLength: textLength,
-                    matchedPrimaryContainer: matchedPrimary
+                    matchedPrimaryContainer: matchedPrimary,
+                    hasRobotCheckWidget: hasRobotCheckWidget
                 )
             }
             
@@ -984,7 +992,8 @@ extension IsolatedWebViewRepresentable {
                 html: fallbackHTML,
                 readyState: nil,
                 textLength: nil,
-                matchedPrimaryContainer: false
+                matchedPrimaryContainer: false,
+                hasRobotCheckWidget: false
             )
         }
         #endif
@@ -1086,6 +1095,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
             self.urlObserver = webView.observe(\.url, options: [.new]) { [weak self] wv, _ in
                 DispatchQueue.main.async {
                     #if os(macOS)
+                    self?.navigationState.currentBackgroundWebViewURL = wv.url
                     if self?.navigationState.isReaderModeActive == true { return }
                     #endif
                     if let urlStr = wv.url?.absoluteString, !urlStr.isEmpty, urlStr != "about:blank" {
@@ -1213,6 +1223,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         #if os(macOS)
         navigationState.lastBackgroundLoadError = nil
+        navigationState.currentBackgroundWebViewURL = webView.url
         guard !navigationState.isReaderModeActive else { return }
         #endif
         navigationState.isLoading = true
@@ -1381,6 +1392,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
             hasCommittedAnyPage = true
             #if os(macOS)
+            navigationState.currentBackgroundWebViewURL = webView.url
             navigationState.webViewCommitGeneration += 1
             if !navigationState.isReaderModeActive {
                 navigationState.currentURLString = urlString
@@ -1394,6 +1406,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         #if os(macOS)
         let readerActive = navigationState.isReaderModeActive
+        navigationState.currentBackgroundWebViewURL = webView.url
         if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
             navigationState.webViewFinishGeneration += 1
         }

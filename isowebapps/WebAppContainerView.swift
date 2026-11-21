@@ -38,6 +38,7 @@ class WebViewNavigationState: ObservableObject {
     @Published var isReaderModeActive: Bool = false
     var webViewCommitGeneration: Int = 0
     var webViewFinishGeneration: Int = 0
+    var currentBackgroundWebViewURL: URL? = nil
     var lastBackgroundLoadError: String? = nil
     var onCaptureLiveHTML: (() async throws -> ReaderHTMLCapture)?
     var onSetReaderMediaSuspended: ((Bool) -> Void)?
@@ -81,6 +82,11 @@ struct WebAppContainerView: View {
     @State private var readerHistory = ReaderHistoryStack()
     @State private var readerCache: [URL: ReaderDocument] = [:]
     @State private var webViewURLBeforeReader: String? = nil
+    @State private var isAwaitingRobotCheckVerification: Bool = false
+    
+    private var shouldShowReaderOverlay: Bool {
+        isReaderModeActive && !isAwaitingRobotCheckVerification
+    }
     #endif
     
     @Environment(\.modelContext) private var modelContext
@@ -176,6 +182,27 @@ struct WebAppContainerView: View {
                     
                     Divider()
                     
+                    if isAwaitingRobotCheckVerification {
+                        HStack(spacing: 10) {
+                            Image(systemName: "checkmark.shield.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.orange)
+                            Text("Verification required — complete the check below to continue loading in Reader View.")
+                                .font(.system(size: 12, weight: .medium))
+                            Spacer()
+                            Button("Stay on Full Page") {
+                                exitReaderModeAndLoadFullWebpage()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.orange.opacity(0.12))
+                        
+                        Divider()
+                    }
+                    
                     // Web View + In-App Markdown Reader Content
                     ZStack {
                         if hasMountedWebView {
@@ -191,9 +218,9 @@ struct WebAppContainerView: View {
                                     handleSearchInNewEphemeralCapsule(url: url)
                                 }
                             )
-                            .opacity(isReaderModeActive ? 0 : 1)
-                            .allowsHitTesting(!isReaderModeActive)
-                            .accessibilityHidden(isReaderModeActive)
+                            .opacity(shouldShowReaderOverlay ? 0 : 1)
+                            .allowsHitTesting(!shouldShowReaderOverlay)
+                            .accessibilityHidden(shouldShowReaderOverlay)
                             .onTapGesture {
                                 if isURLExpanded {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -203,7 +230,7 @@ struct WebAppContainerView: View {
                             }
                         }
                         
-                        if isReaderModeActive {
+                        if shouldShowReaderOverlay {
                             MarkdownReaderView(
                                 state: readerState,
                                 onOpenLinkInPlace: { url in
@@ -665,6 +692,7 @@ struct WebAppContainerView: View {
         let activeURLString = navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString
         let currentURL = URL(string: activeURLString)
         webViewURLBeforeReader = activeURLString
+        isAwaitingRobotCheckVerification = false
         isReaderModeActive = true
         navigationState.isReaderModeActive = true
         navigationState.onSetReaderMediaSuspended?(true)
@@ -683,6 +711,10 @@ struct WebAppContainerView: View {
                 }
                 let capture = try await captureBlock()
                 try Task.checkCancellation()
+                if ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(capture) == .requiresHumanVerification {
+                    let verifyURL = URL(string: capture.urlString) ?? currentURL ?? URL(string: "https://example.com")!
+                    throw ReaderModeError.humanVerificationRequired(verifyURL)
+                }
                 let document = try await ReaderModeService.convertLiveCapture(capture)
                 try Task.checkCancellation()
                 applyLoadedReaderDocument(document, requestedURL: currentURL)
@@ -696,11 +728,18 @@ struct WebAppContainerView: View {
     }
     
     private func exitReaderModeAndLoadFullWebpage(overrideURL: URL? = nil) {
+        let wasAwaitingVerification = isAwaitingRobotCheckVerification
+        isAwaitingRobotCheckVerification = false
         readerTask?.cancel()
         readerTask = nil
         navigationState.isLoading = false
         isReaderModeActive = false
         navigationState.isReaderModeActive = false
+        
+        if wasAwaitingVerification && overrideURL == nil {
+            navigationState.onSetReaderMediaSuspended?(false)
+            return
+        }
         
         let targetURL = overrideURL
             ?? readerHistory.currentURL
@@ -785,6 +824,7 @@ struct WebAppContainerView: View {
     
     private func loadFastReader(url: URL, bypassCache: Bool) {
         readerTask?.cancel()
+        isAwaitingRobotCheckVerification = false
         navigationState.currentURLString = url.absoluteString
         editableURLString = url.absoluteString
         if let domain = WebAppNamingHelper.domainName(from: url.absoluteString) {
@@ -802,6 +842,15 @@ struct WebAppContainerView: View {
         
         readerTask = Task { @MainActor in
             do {
+                if ReaderHTMLUtilities.isRobotCheckURL(url) {
+                    try await loadReaderViaBackgroundWebView(
+                        url: url,
+                        requestedURL: url,
+                        initialVerificationRequired: true
+                    )
+                    return
+                }
+                
                 if ReaderHTMLUtilities.isKnownJSRedirectorURL(url) {
                     try await loadReaderViaBackgroundWebView(url: url, requestedURL: url)
                     return
@@ -814,31 +863,55 @@ struct WebAppContainerView: View {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch let readerError as ReaderModeError where readerError.shouldFallbackToBackgroundWebView {
-                    try await loadReaderViaBackgroundWebView(url: url, requestedURL: url)
+                    let isVerification: Bool
+                    let fallbackURL: URL
+                    if case .humanVerificationRequired(let verifyURL) = readerError {
+                        isVerification = true
+                        fallbackURL = verifyURL
+                    } else {
+                        isVerification = false
+                        fallbackURL = url
+                    }
+                    try await loadReaderViaBackgroundWebView(
+                        url: fallbackURL,
+                        requestedURL: url,
+                        initialVerificationRequired: isVerification
+                    )
                 }
             } catch is CancellationError {
-                // Ignore cancellation
+                isAwaitingRobotCheckVerification = false
             } catch {
+                isAwaitingRobotCheckVerification = false
                 readerState = .failed(message: error.localizedDescription, url: url)
                 navigationState.isLoading = false
             }
         }
     }
     
-    private func loadReaderViaBackgroundWebView(url: URL, requestedURL: URL) async throws {
-        readerState = .loading(url, statusMessage: "Rendering page for Reader View…")
+    private func loadReaderViaBackgroundWebView(
+        url: URL,
+        requestedURL: URL,
+        initialVerificationRequired: Bool = false
+    ) async throws {
+        isAwaitingRobotCheckVerification = initialVerificationRequired
+        if initialVerificationRequired {
+            navigationState.currentURLString = url.absoluteString
+            editableURLString = url.absoluteString
+        } else {
+            readerState = .loading(url, statusMessage: "Rendering page for Reader View…")
+        }
         navigationState.isLoading = true
         navigationState.lastBackgroundLoadError = nil
         
         let startCommitGen = navigationState.webViewCommitGeneration
-        let startFinishGen = navigationState.webViewFinishGeneration
+        var startFinishGen = navigationState.webViewFinishGeneration
         webViewURLBeforeReader = url.absoluteString
         
         if !hasMountedWebView {
             deferredWebViewInitialURL = url.absoluteString
             hasMountedWebView = true
         } else {
-            navigationState.onSetReaderMediaSuspended?(true)
+            navigationState.onSetReaderMediaSuspended?(!initialVerificationRequired)
             navigationState.onLoadURL?(url)
         }
         
@@ -853,17 +926,69 @@ struct WebAppContainerView: View {
             throw ReaderModeError.conversionFailed("Background web view is unavailable.")
         }
         
-        let totalDeadline = Date().addingTimeInterval(15.0)
+        var articleDeadline = Date().addingTimeInterval(15.0)
+        let verificationMaxDeadline = Date().addingTimeInterval(300.0)
         var trackedCommitGen = startCommitGen
         var finishObservedAt: Date? = nil
         var lastBestCapture: ReaderHTMLCapture? = nil
+        var verifiedURLStartedAtGate = initialVerificationRequired && ReaderHTMLUtilities.isRobotCheckURL(url)
         
-        while Date() < totalDeadline {
+        while Date() < (isAwaitingRobotCheckVerification ? verificationMaxDeadline : articleDeadline) {
             try Task.checkCancellation()
             
             if let errMsg = navigationState.lastBackgroundLoadError,
                navigationState.webViewCommitGeneration == startCommitGen {
                 throw ReaderModeError.networkFailed(errMsg)
+            }
+            
+            // Immediate URL-level robot check detection (covers HTTP 429 or mid-navigation transitions)
+            if let bgURL = navigationState.currentBackgroundWebViewURL,
+               ReaderHTMLUtilities.isRobotCheckURL(bgURL) {
+                verifiedURLStartedAtGate = true
+                if !isAwaitingRobotCheckVerification {
+                    isAwaitingRobotCheckVerification = true
+                    navigationState.onSetReaderMediaSuspended?(false)
+                    navigationState.currentURLString = bgURL.absoluteString
+                    editableURLString = bgURL.absoluteString
+                    finishObservedAt = nil
+                    lastBestCapture = nil
+                }
+                try await Task.sleep(nanoseconds: 250_000_000)
+                continue
+            }
+            
+            if isAwaitingRobotCheckVerification {
+                if navigationState.webViewCommitGeneration > startCommitGen,
+                   let bgURL = navigationState.currentBackgroundWebViewURL,
+                   !ReaderHTMLUtilities.isRobotCheckURL(bgURL),
+                   bgURL.absoluteString != "about:blank" {
+                    let capture = try? await captureBlock()
+                    try Task.checkCancellation()
+                    let readiness = capture.map { ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness($0) }
+                    
+                    let passedGate = (verifiedURLStartedAtGate && !ReaderHTMLUtilities.isRobotCheckURL(bgURL))
+                        || (readiness != nil && readiness != .requiresHumanVerification)
+                    
+                    if passedGate {
+                        isAwaitingRobotCheckVerification = false
+                        verifiedURLStartedAtGate = false
+                        navigationState.onSetReaderMediaSuspended?(true)
+                        readerState = .loading(bgURL, statusMessage: "Loading article for Reader View…")
+                        navigationState.currentURLString = bgURL.absoluteString
+                        editableURLString = bgURL.absoluteString
+                        webViewURLBeforeReader = bgURL.absoluteString
+                        articleDeadline = Date().addingTimeInterval(15.0)
+                        finishObservedAt = nil
+                        lastBestCapture = nil
+                        if ReaderHTMLUtilities.isKnownJSRedirectorURL(bgURL) {
+                            startFinishGen = navigationState.webViewFinishGeneration
+                        }
+                    }
+                }
+                if isAwaitingRobotCheckVerification {
+                    try await Task.sleep(nanoseconds: 250_000_000)
+                    continue
+                }
             }
             
             if navigationState.webViewCommitGeneration > startCommitGen {
@@ -878,6 +1003,22 @@ struct WebAppContainerView: View {
                     let readiness = ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(capture)
                     
                     switch readiness {
+                    case .requiresHumanVerification:
+                        isAwaitingRobotCheckVerification = true
+                        if let captureURL = URL(string: capture.urlString),
+                           ReaderHTMLUtilities.isRobotCheckURL(captureURL) {
+                            verifiedURLStartedAtGate = true
+                        }
+                        navigationState.onSetReaderMediaSuspended?(false)
+                        if !capture.urlString.isEmpty {
+                            navigationState.currentURLString = capture.urlString
+                            editableURLString = capture.urlString
+                        }
+                        finishObservedAt = nil
+                        lastBestCapture = nil
+                        try await Task.sleep(nanoseconds: 250_000_000)
+                        continue
+                        
                     case .readyImmediately:
                         if let doc = try? await ReaderModeService.convertLiveCapture(capture) {
                             try Task.checkCancellation()
@@ -921,13 +1062,17 @@ struct WebAppContainerView: View {
             try await Task.sleep(nanoseconds: 250_000_000)
         }
         
-        if let best = lastBestCapture,
+        if !isAwaitingRobotCheckVerification,
+           let best = lastBestCapture,
            let doc = try? await ReaderModeService.convertLiveCapture(best),
            !doc.blocks.isEmpty {
             applyLoadedReaderDocument(doc, requestedURL: requestedURL)
             return
         }
         
+        if isAwaitingRobotCheckVerification {
+            throw ReaderModeError.humanVerificationRequired(url)
+        }
         throw ReaderModeError.javaScriptRequired
     }
     
@@ -958,6 +1103,7 @@ struct WebAppContainerView: View {
         #endif
         summaryTask?.cancel()
         #if os(macOS)
+        isAwaitingRobotCheckVerification = false
         readerTask?.cancel()
         readerCache.removeAll()
         #endif
