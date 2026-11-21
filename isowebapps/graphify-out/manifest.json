@@ -78,9 +78,9 @@
     "semantic_hash": ""
   },
   "IsolatedWebView.swift": {
-    "mtime": 1795268610.443453,
-    "seen": 1795269106.733135,
-    "ast_hash": "7dc888f1400aac25b7054a4e3cc1bce0",
+    "mtime": 1795269354.7651298,
+    "seen": 1795272799.512717,
+    "ast_hash": "800b0fcf6a2b4a32c0ce8c92145be014",
     "semantic_hash": ""
   },
   "LiquidGlassStyles.swift": {
@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "WebAppContainerView.swift": {
-    "mtime": 1795268611.9662392,
-    "seen": 1795269106.733144,
-    "ast_hash": "ad70ed99a299ee36fbc15de64b320d5d",
+    "mtime": 1795269363.5127778,
+    "seen": 1795272799.512726,
+    "ast_hash": "b899cc25b0e6125fe4535bfd5d99712d",
     "semantic_hash": ""
   },
   "WebAppGroup.swift": {
@@ -486,15 +486,15 @@
     "semantic_hash": ""
   },
   "ReaderHTMLUtilities.swift": {
-    "mtime": 1795268543.5725946,
-    "seen": 1795269106.73314,
-    "ast_hash": "aef5df1211287e91bdf2b9ab471959ad",
+    "mtime": 1795269345.072166,
+    "seen": 1795272799.512722,
+    "ast_hash": "ab569c01b5f785530e21e63a33475912",
     "semantic_hash": ""
   },
   "ReaderModeService.swift": {
-    "mtime": 1795268544.7307706,
-    "seen": 1795269106.73314,
-    "ast_hash": "4da8b31e0adf37346512551557357dcd",
+    "mtime": 1795269347.293751,
+    "seen": 1795272799.512723,
+    "ast_hash": "f9ac14e7107a18805668bf68a3f1af8d",
     "semantic_hash": ""
   }
 }

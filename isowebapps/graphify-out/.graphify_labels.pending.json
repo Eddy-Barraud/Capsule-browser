@@ -30,7 +30,7 @@
   "28": ".webView",
   "29": "URL",
   "30": "AISummarizer",
-  "31": "CGFloat",
+  "31": ".reorderable",
   "32": "WebAppGroup",
   "33": "WebAppItem",
   "34": "WKHTTPCookieStore",
@@ -44,5 +44,11 @@
   "42": "WKWebView",
   "43": "ModelContext",
   "44": "Double",
-  "45": "UInt64"
+  "45": "UInt64",
+  "46": "NSObjectProtocol",
+  "47": "TimeInterval",
+  "48": "Data",
+  "49": "CGFloat",
+  "50": "Never",
+  "51": "Task"
 }
