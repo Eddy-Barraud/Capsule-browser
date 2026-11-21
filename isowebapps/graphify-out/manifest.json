@@ -78,9 +78,9 @@
     "semantic_hash": ""
   },
   "IsolatedWebView.swift": {
-    "mtime": 1795261805.5191681,
-    "seen": 1795262782.508116,
-    "ast_hash": "4c5cd2d184c1e6325119ef4a74d2544e",
+    "mtime": 1795263536.132954,
+    "seen": 1795263981.979706,
+    "ast_hash": "340d33734fd1e4fbd32d701a53e5f3e4",
     "semantic_hash": ""
   },
   "LiquidGlassStyles.swift": {
@@ -96,9 +96,9 @@
     "semantic_hash": ""
   },
   "SearchEngine.swift": {
-    "mtime": 1794306515.6062188,
-    "seen": 1794314424.7248588,
-    "ast_hash": "48f1ae21142324777cb5c8c5647a245a",
+    "mtime": 1795263530.978046,
+    "seen": 1795263981.979708,
+    "ast_hash": "68e413f9b947d0fd6566fdf778366f57",
     "semantic_hash": ""
   },
   "SerializableCookie.swift": {
@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "WebAppContainerView.swift": {
-    "mtime": 1795261712.8276618,
-    "seen": 1795262782.5081222,
-    "ast_hash": "5875fa4ca0afd12a9f54005e0bd9fc00",
+    "mtime": 1795263538.4277058,
+    "seen": 1795263981.979711,
+    "ast_hash": "fb1677217ea94c3b31ff4a805dd2282e",
     "semantic_hash": ""
   },
   "WebAppGroup.swift": {
