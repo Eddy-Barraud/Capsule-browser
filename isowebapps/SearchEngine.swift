@@ -76,7 +76,9 @@ public enum SearchEngine: String, CaseIterable, Identifiable, Sendable {
         for query: String,
         customTemplate: String = UserDefaults.standard.string(forKey: Self.customURLStorageKey) ?? ""
     ) -> String {
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&=+#?")
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query
         switch self {
         case .duckDuckGo, .google, .bing:
             return defaultQueryPrefix + encoded
@@ -89,6 +91,43 @@ public enum SearchEngine: String, CaseIterable, Identifiable, Sendable {
             } else {
                 return template + encoded
             }
+        }
+    }
+    
+    /// Returns the currently selected default search engine from UserDefaults.
+    public static func current() -> SearchEngine {
+        let rawEngine = UserDefaults.standard.string(forKey: storageKey) ?? SearchEngine.duckDuckGo.rawValue
+        return SearchEngine(rawValue: rawEngine) ?? .duckDuckGo
+    }
+    
+    /// Always builds a search URL for a selected text query (never treating dotted text as a direct URL).
+    public static func searchURL(for rawQuery: String) -> URL? {
+        let trimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let customURL = UserDefaults.standard.string(forKey: customURLStorageKey) ?? ""
+        let urlString = current().searchURLString(for: trimmed, customTemplate: customURL)
+        return URL(string: urlString)
+    }
+    
+    /// Context menu title replacing WebKit's default "Search with <SafariEngine>" item.
+    public func contextMenuSearchTitle(
+        customTemplate: String = UserDefaults.standard.string(forKey: Self.customURLStorageKey) ?? ""
+    ) -> String {
+        switch self {
+        case .duckDuckGo, .google, .bing:
+            return "Search with \(displayName) in New Capsule"
+        case .custom:
+            let trimmed = customTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  let url = URL(string: Self.normalizedCustomTemplate(trimmed)),
+                  let rawHost = url.host,
+                  !rawHost.isEmpty else {
+                return "Search in New Capsule"
+            }
+            let cleanHost = rawHost.lowercased().hasPrefix("www.")
+                ? String(rawHost.dropFirst(4))
+                : rawHost
+            return cleanHost.isEmpty ? "Search in New Capsule" : "Search with \(cleanHost) in New Capsule"
         }
     }
     

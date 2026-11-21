@@ -138,6 +138,9 @@ struct WebAppContainerView: View {
                         modelContext: modelContext,
                         onOpenNewWindowOrTab: { url in
                             handleOpenNewWindowOrTab(url: url)
+                        },
+                        onSearchInNewEphemeralCapsule: { url in
+                            handleSearchInNewEphemeralCapsule(url: url)
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -440,6 +443,40 @@ struct WebAppContainerView: View {
             openWindow(id: "capsuleWindow", value: payload)
         case .singleWindow:
             navigationState.onLoadURL?(url)
+        }
+    }
+    
+    private func handleSearchInNewEphemeralCapsule(url: URL) {
+        let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
+        let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
+        let openAsTab = (mode == .tabs)
+        let sourceWin = MainWindowTracker.shared.resolveSourceWindow(
+            preferred: hostingWindow,
+            includeFallbackTarget: openAsTab
+        )
+        if let win = sourceWin {
+            MainWindowTracker.shared.persistWindowSize(from: win)
+        }
+        let payload = CapsuleWindowPayload(
+            appId: nil,
+            urlString: url.absoluteString,
+            name: "Search",
+            isSecondaryWindow: true,
+            openAsTab: openAsTab,
+            sourceWindowNumber: sourceWin?.windowNumber,
+            sourceFrame: sourceWin?.serializedFrame
+        )
+        if openAsTab {
+            if MainWindowTracker.shared.openWindowAction != nil {
+                MainWindowTracker.shared.openNewTab(with: payload, from: sourceWin)
+            } else {
+                if let win = sourceWin {
+                    MainWindowTracker.shared.armPendingTabTarget(win)
+                }
+                openWindow(id: "capsuleWindow", value: payload)
+            }
+        } else {
+            openWindow(id: "capsuleWindow", value: payload)
         }
     }
     #endif

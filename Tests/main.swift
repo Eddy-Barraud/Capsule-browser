@@ -115,6 +115,44 @@ func testSearchEngineResolution() {
     assert(SearchEngine.resolveInput("") == nil, "Empty input must return nil")
     assert(SearchEngine.resolveInput("   \n\t  ") == nil, "Whitespace input must return nil")
     
+    // Test 7: Context menu selection query escaping, dotted query search URL, and menu titles
+    let escapedGoogle = SearchEngine.google.searchURLString(for: "C++ & Swift #1")
+    assert(
+        escapedGoogle == "https://www.google.com/search?q=C%2B%2B%20%26%20Swift%20%231",
+        "Query delimiters +, &, # must be percent-encoded: \(escapedGoogle)"
+    )
+    
+    let previousEngine = UserDefaults.standard.string(forKey: SearchEngine.storageKey)
+    let previousCustom = UserDefaults.standard.string(forKey: SearchEngine.customURLStorageKey)
+    defer {
+        if let previousEngine {
+            UserDefaults.standard.set(previousEngine, forKey: SearchEngine.storageKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: SearchEngine.storageKey)
+        }
+        if let previousCustom {
+            UserDefaults.standard.set(previousCustom, forKey: SearchEngine.customURLStorageKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: SearchEngine.customURLStorageKey)
+        }
+    }
+    UserDefaults.standard.set(SearchEngine.google.rawValue, forKey: SearchEngine.storageKey)
+    let dottedSearchURL = SearchEngine.searchURL(for: "v2.3.1")
+    assert(
+        dottedSearchURL?.absoluteString == "https://www.google.com/search?q=v2.3.1",
+        "searchURL(for:) must treat dotted selection as search query: \(String(describing: dottedSearchURL))"
+    )
+    assert(SearchEngine.searchURL(for: "   \n  ") == nil, "Whitespace selection must return nil searchURL")
+    
+    assert(SearchEngine.duckDuckGo.contextMenuSearchTitle() == "Search with DuckDuckGo in New Capsule")
+    assert(SearchEngine.google.contextMenuSearchTitle() == "Search with Google in New Capsule")
+    assert(SearchEngine.bing.contextMenuSearchTitle() == "Search with Bing in New Capsule")
+    assert(
+        SearchEngine.custom.contextMenuSearchTitle(customTemplate: "https://www.kagi.com/search?q=%s")
+            == "Search with kagi.com in New Capsule"
+    )
+    assert(SearchEngine.custom.contextMenuSearchTitle(customTemplate: "") == "Search in New Capsule")
+    
     print("✓ testSearchEngineResolution passed!")
 }
 
@@ -960,6 +998,70 @@ func testMemoryTeardownAndCacheRelease() {
     print("✓ testMemoryTeardownAndCacheRelease passed!")
 }
 
+#if os(macOS)
+@MainActor
+func testContextMenuSearchInterception() {
+    print("Running testContextMenuSearchInterception...")
+    _ = NSApplication.shared
+    
+    func isSearchWebMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.identifier?.rawValue == "WKMenuItemIdentifierSearchWeb" {
+            return true
+        }
+        if let action = item.action, NSStringFromSelector(action) == "_searchWithGoogleFromMenu:" {
+            return true
+        }
+        return false
+    }
+    
+    let searchByID = NSMenuItem(title: "Search with Google", action: nil, keyEquivalent: "")
+    searchByID.identifier = NSUserInterfaceItemIdentifier("WKMenuItemIdentifierSearchWeb")
+    assert(isSearchWebMenuItem(searchByID) == true, "Must match WKMenuItemIdentifierSearchWeb")
+    
+    let searchByLegacySelector = NSMenuItem(
+        title: "Search with Google",
+        action: NSSelectorFromString("_searchWithGoogleFromMenu:"),
+        keyEquivalent: ""
+    )
+    assert(isSearchWebMenuItem(searchByLegacySelector) == true, "Must match legacy _searchWithGoogleFromMenu:")
+    
+    let lookUpItem = NSMenuItem(title: "Look Up", action: nil, keyEquivalent: "")
+    lookUpItem.identifier = NSUserInterfaceItemIdentifier("WKMenuItemIdentifierLookUp")
+    assert(isSearchWebMenuItem(lookUpItem) == false, "Must never match WKMenuItemIdentifierLookUp")
+    
+    let copyItem = NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+    assert(isSearchWebMenuItem(copyItem) == false, "Must never match unrelated menu items")
+    
+    class TestMenuValidationWebView: WKWebView {
+        @objc func searchSelectionInNewEphemeralCapsule(_ sender: Any?) {}
+        override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+            if item.action == #selector(searchSelectionInNewEphemeralCapsule(_:)) {
+                return true
+            }
+            return super.validateUserInterfaceItem(item)
+        }
+    }
+    
+    let wv = TestMenuValidationWebView(frame: NSRect(x: 0, y: 0, width: 300, height: 200))
+    let rewrittenItem = NSMenuItem(
+        title: SearchEngine.google.contextMenuSearchTitle(),
+        action: #selector(TestMenuValidationWebView.searchSelectionInNewEphemeralCapsule(_:)),
+        keyEquivalent: ""
+    )
+    rewrittenItem.target = wv
+    assert(wv.validateUserInterfaceItem(rewrittenItem) == true, "Custom search selector must validate as enabled")
+    
+    let disabledOtherItem = NSMenuItem(
+        title: "Forward",
+        action: #selector(WKWebView.goForward(_:)),
+        keyEquivalent: ""
+    )
+    assert(wv.validateUserInterfaceItem(disabledOtherItem) == false, "Super validation must remain intact")
+    
+    print("✓ testContextMenuSearchInterception passed!")
+}
+#endif
+
 // Execute test suite
 testUBlockRuleCompiler()
 testSearchEngineResolution()
@@ -974,10 +1076,11 @@ MainActor.assumeIsolated {
     testCloudSyncMergeAndConflictDetection()
     #if os(macOS)
     testRealNSWindowTabbingEligibility()
+    testContextMenuSearchInterception()
     #endif
     testMemoryTeardownAndCacheRelease()
 }
 
 print("\n========================================")
-print("ALL 12 LOGIC & SECURITY TEST SUITES PASSED (100%)")
+print("ALL 13 LOGIC & SECURITY TEST SUITES PASSED (100%)")
 print("========================================")

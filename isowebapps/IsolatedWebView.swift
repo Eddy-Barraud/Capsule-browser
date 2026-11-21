@@ -159,12 +159,24 @@ class IsolatedWKWebView: WKWebView {
     private(set) var isSleeping: Bool = false
     private(set) var isClosedOrDismantled: Bool = false
     var onWindowClose: (() -> Void)?
+    var onSearchInNewEphemeralCapsule: ((URL) -> Void)?
+    private var cachedContextMenuSelection: String?
     private var activityAssertionToken: NSObjectProtocol?
     private var notificationObservers: [NSObjectProtocol] = []
     private var tabGroupObservation: NSKeyValueObservation?
     private var windowTabGroupObservation: NSKeyValueObservation?
     private var sleepWakeWorkItem: DispatchWorkItem?
     private var lastSleepingTabsEnabled: Bool = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
+    
+    static func isSearchWebMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.identifier?.rawValue == "WKMenuItemIdentifierSearchWeb" {
+            return true
+        }
+        if let action = item.action, NSStringFromSelector(action) == "_searchWithGoogleFromMenu:" {
+            return true
+        }
+        return false
+    }
     
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -173,17 +185,148 @@ class IsolatedWKWebView: WKWebView {
     
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        cachedContextMenuSelection = nil
         let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
         #if DEBUG
         print("[IsolatedWKWebView] willOpenMenu called! mode: \(modeRaw), menu items count: \(menu.items.count)")
         #endif
+        var didMatchSearchItem = false
         for item in menu.items {
             if modeRaw == "tabs" {
                 if item.identifier?.rawValue == "WKMenuItemIdentifierOpenLinkInNewWindow" || item.title.contains("New Window") {
                     item.title = item.title.replacingOccurrences(of: "New Window", with: "New Tab")
                 }
             }
+            if Self.isSearchWebMenuItem(item) {
+                item.title = SearchEngine.current().contextMenuSearchTitle()
+                item.target = self
+                item.action = #selector(searchSelectionInNewEphemeralCapsule(_:))
+                item.isEnabled = true
+                didMatchSearchItem = true
+            }
         }
+        if didMatchSearchItem {
+            extractSelectedText { [weak self] text in
+                guard let self, !self.isClosedOrDismantled else { return }
+                if let text, !text.isEmpty {
+                    self.cachedContextMenuSelection = text
+                }
+            }
+        }
+    }
+    
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(searchSelectionInNewEphemeralCapsule(_:)) {
+            return true
+        }
+        return super.validateUserInterfaceItem(item)
+    }
+    
+    @objc private func searchSelectionInNewEphemeralCapsule(_ sender: Any?) {
+        let cached = cachedContextMenuSelection
+        cachedContextMenuSelection = nil
+        extractSelectedText { [weak self] liveText in
+            guard let self, !self.isClosedOrDismantled else { return }
+            let liveTrimmed = liveText?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cachedTrimmed = cached?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let query = (liveTrimmed?.isEmpty == false) ? liveTrimmed! : (cachedTrimmed ?? "")
+            guard !query.isEmpty,
+                  let searchURL = SearchEngine.searchURL(for: query) else {
+                return
+            }
+            self.onSearchInNewEphemeralCapsule?(searchURL)
+        }
+    }
+    
+    private func extractSelectedText(completion: @escaping @MainActor (String?) -> Void) {
+        let script = """
+        (function() {
+            function selectionInDocument(doc, win) {
+                if (!doc) return '';
+                var active = doc.activeElement;
+                while (active) {
+                    var tag = active.tagName;
+                    if (tag === 'INPUT' || tag === 'TEXTAREA') {
+                        var start = active.selectionStart;
+                        var end = active.selectionEnd;
+                        if (typeof start === 'number' && typeof end === 'number' && end > start) {
+                            var val = active.value.slice(start, end);
+                            if (val && val.trim().length > 0) return val;
+                        }
+                    }
+                    if (active.shadowRoot) {
+                        if (typeof active.shadowRoot.getSelection === 'function') {
+                            var srSel = active.shadowRoot.getSelection();
+                            var srText = srSel ? srSel.toString() : '';
+                            if (srText && srText.trim().length > 0) return srText;
+                        }
+                        if (active.shadowRoot.activeElement) {
+                            active = active.shadowRoot.activeElement;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+                var sel = (win && typeof win.getSelection === 'function') ? win.getSelection() : (typeof doc.getSelection === 'function' ? doc.getSelection() : null);
+                var text = sel ? sel.toString() : '';
+                if (text && text.trim().length > 0) return text;
+                var frames = doc.querySelectorAll('iframe, frame');
+                for (var i = 0; i < frames.length; i++) {
+                    try {
+                        var childDoc = frames[i].contentDocument;
+                        var childWin = frames[i].contentWindow;
+                        if (childDoc) {
+                            var childText = selectionInDocument(childDoc, childWin);
+                            if (childText && childText.trim().length > 0) return childText;
+                        }
+                    } catch (e) {}
+                }
+                return '';
+            }
+            return selectionInDocument(document, window);
+        })();
+        """
+        evaluateJavaScript(script, in: nil, in: .defaultClient) { [weak self] result in
+            let rawText: String?
+            if case .success(let value) = result {
+                rawText = value as? String
+            } else {
+                rawText = nil
+            }
+            MainActor.assumeIsolated {
+                let trimmed = rawText?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let trimmed, !trimmed.isEmpty {
+                    completion(trimmed)
+                } else {
+                    completion(self?.extractSelectedTextViaServicesPasteboard())
+                }
+            }
+        }
+    }
+    
+    private func extractSelectedTextViaServicesPasteboard() -> String? {
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        let selector = #selector(NSServicesMenuRequestor.writeSelection(to:types:))
+        let types: NSArray = [NSPasteboard.PasteboardType.string]
+        typealias WriteSelectionFn = @convention(c) (AnyObject, Selector, NSPasteboard, NSArray) -> Bool
+        
+        let candidates: [AnyObject?] = [
+            validRequestor(forSendType: .string, returnType: nil) as AnyObject?,
+            self
+        ]
+        for case let candidate? in candidates {
+            if candidate.responds(to: selector),
+               let method = class_getMethodImplementation(type(of: candidate), selector) {
+                let fn = unsafeBitCast(method, to: WriteSelectionFn.self)
+                if fn(candidate, selector, pasteboard, types),
+                   let text = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !text.isEmpty {
+                    return text
+                }
+            }
+        }
+        return nil
     }
     
     // MARK: - Window & Tab Group Lifecycle Tracking
@@ -426,6 +569,8 @@ class IsolatedWKWebView: WKWebView {
         sleepWakeWorkItem?.cancel()
         sleepWakeWorkItem = nil
         onWindowClose = nil
+        onSearchInNewEphemeralCapsule = nil
+        cachedContextMenuSelection = nil
         releaseForegroundActivityToken()
         tabGroupObservation?.invalidate()
         tabGroupObservation = nil
@@ -449,6 +594,7 @@ struct IsolatedWebViewRepresentable: NSViewRepresentable {
     @ObservedObject var navigationState: WebViewNavigationState
     let modelContext: ModelContext
     var onOpenNewWindowOrTab: ((URL) -> Void)? = nil
+    var onSearchInNewEphemeralCapsule: ((URL) -> Void)? = nil
     
     func makeNSView(context: Context) -> WKWebView {
         let webView = createConfiguredWebView(context: context)
@@ -458,6 +604,9 @@ struct IsolatedWebViewRepresentable: NSViewRepresentable {
     
     func updateNSView(_ nsView: WKWebView, context: Context) {
         context.coordinator.onOpenNewWindowOrTab = onOpenNewWindowOrTab
+        if let isolatedWV = nsView as? IsolatedWKWebView {
+            isolatedWV.onSearchInNewEphemeralCapsule = onSearchInNewEphemeralCapsule
+        }
     }
     
     func makeCoordinator() -> WebViewCoordinator {
@@ -567,6 +716,7 @@ extension IsolatedWebViewRepresentable {
         #if os(macOS)
         let webView = IsolatedWKWebView(frame: .zero, configuration: configuration)
         webView.capsuleName = appItem.name
+        webView.onSearchInNewEphemeralCapsule = onSearchInNewEphemeralCapsule
         #else
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.scrollView.keyboardDismissMode = .interactive
