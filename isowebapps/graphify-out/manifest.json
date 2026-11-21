@@ -1,8 +1,8 @@
 {
   "AISummarizer.swift": {
-    "mtime": 1794305649.7295144,
-    "seen": 1794314424.7248452,
-    "ast_hash": "f98feaaa56ff633cc1a4c7f9e40c0096",
+    "mtime": 1795273775.084369,
+    "seen": 1795275124.611795,
+    "ast_hash": "319aa3eb71e4e66a1f7a7fedc5edbeb8",
     "semantic_hash": ""
   },
   "AddGroupSheet.swift": {
@@ -78,9 +78,9 @@
     "semantic_hash": ""
   },
   "IsolatedWebView.swift": {
-    "mtime": 1795273045.4954185,
-    "seen": 1795273310.32987,
-    "ast_hash": "2c152af1124e544f89b44d2215661200",
+    "mtime": 1795273780.8939476,
+    "seen": 1795275124.611812,
+    "ast_hash": "5b33b1ad75a768ec8024887d39c3beaa",
     "semantic_hash": ""
   },
   "LiquidGlassStyles.swift": {
@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "WebAppContainerView.swift": {
-    "mtime": 1795269363.5127778,
-    "seen": 1795272799.512726,
-    "ast_hash": "b899cc25b0e6125fe4535bfd5d99712d",
+    "mtime": 1795273784.6316128,
+    "seen": 1795275124.611819,
+    "ast_hash": "10dbd87061e5a7eb391e9ece6dd21f6f",
     "semantic_hash": ""
   },
   "WebAppGroup.swift": {
@@ -372,21 +372,21 @@
     "semantic_hash": ""
   },
   "Prompts/prompt_en.txt": {
-    "mtime": 1792227679.3444886,
-    "seen": 1794314424.724888,
-    "ast_hash": "279e819cac0ad100861f26054ff98a08",
+    "mtime": 1795273785.9379258,
+    "seen": 1795275124.611852,
+    "ast_hash": "618b620c7cf9f270f24ab348bcaa4179",
     "semantic_hash": ""
   },
   "Prompts/prompt_es.txt": {
-    "mtime": 1792227681.4944632,
-    "seen": 1794314424.724889,
-    "ast_hash": "7f07f2dbf7c5922976d197160fae83c4",
+    "mtime": 1795273788.3540125,
+    "seen": 1795275124.611852,
+    "ast_hash": "e12a056d899c529d4e5f1adef783e1d4",
     "semantic_hash": ""
   },
   "Prompts/prompt_fr.txt": {
-    "mtime": 1792227680.436148,
-    "seen": 1794314424.724889,
-    "ast_hash": "dcc4428d47430ebf2c8e39b81d4ae223",
+    "mtime": 1795273787.14583,
+    "seen": 1795275124.6118531,
+    "ast_hash": "b96b45556da39018aacb51773690b606",
     "semantic_hash": ""
   },
   "Assets.xcassets/AppIcon.appiconset/appiconv2-iOS-Dark-1024x1024@1x.png": {
@@ -486,15 +486,15 @@
     "semantic_hash": ""
   },
   "ReaderHTMLUtilities.swift": {
-    "mtime": 1795273040.2986832,
-    "seen": 1795273310.329874,
-    "ast_hash": "9dd858eb112d4df6ce0c5739613ce948",
+    "mtime": 1795273770.7914112,
+    "seen": 1795275124.611815,
+    "ast_hash": "b60b8eced9c1fbd024acd0171c9dec42",
     "semantic_hash": ""
   },
   "ReaderModeService.swift": {
-    "mtime": 1795269347.293751,
-    "seen": 1795272799.512723,
-    "ast_hash": "f9ac14e7107a18805668bf68a3f1af8d",
+    "mtime": 1795273769.2456212,
+    "seen": 1795275124.611816,
+    "ast_hash": "c06719791ec843eefde35c0206fcdeac",
     "semantic_hash": ""
   }
 }

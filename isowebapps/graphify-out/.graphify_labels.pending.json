@@ -10,13 +10,13 @@
   "8": "ContentView.swift",
   "9": ".willOpenMenu",
   "10": "NSObjectProtocol",
-  "11": "Any",
+  "11": "SafariView",
   "12": "ContentView",
   "13": "Bool",
   "14": "CGSize",
   "15": "Binding",
   "16": "ReaderHTMLUtilities",
-  "17": "Context",
+  "17": "OpenURLSheet",
   "18": "IsolatedWKWebView",
   "19": "Set",
   "20": "Date",
@@ -35,6 +35,7 @@
   "33": "WebAppItem",
   "34": "WKHTTPCookieStore",
   "35": "WKWebViewConfiguration",
+  "36": "SerializableCookie",
   "37": ".clearData",
   "38": "Error",
   "39": "MainActor",
@@ -49,5 +50,8 @@
   "48": "Data",
   "49": "CGFloat",
   "50": "Never",
-  "51": "Task"
+  "51": "Task",
+  "52": "AddGroupSheet",
+  "53": "Any",
+  "54": "Context"
 }
