@@ -1088,6 +1088,15 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
             IsolatedWebViewRepresentable.updateUserAgent(for: webView, targetURL: targetURL)
         }
         
+        // Handle links/actions explicitly flagged as downloads (e.g. <a download>)
+        if navigationAction.shouldPerformDownload {
+            #if DEBUG
+            print("[IsolatedWebView] decidePolicyFor navigationAction: shouldPerformDownload -> .download (\(String(describing: navigationAction.request.url)))")
+            #endif
+            decisionHandler(.download)
+            return
+        }
+        
         // Defer handling of target="_blank" (new window) links to createWebViewWith
         // to prevent the WKWebView from going blank when we cancel the navigation.
         if navigationAction.targetFrame == nil {
@@ -1236,6 +1245,52 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         navigationState.isLoading = false
         navigationState.canGoBack = webView.canGoBack
         navigationState.canGoForward = webView.canGoForward
+    }
+    
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        navigationState.isLoading = false
+        navigationState.canGoBack = webView.canGoBack
+        navigationState.canGoForward = webView.canGoForward
+    }
+    
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationResponse: WKNavigationResponse,
+        decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
+    ) {
+        if let httpResponse = navigationResponse.response as? HTTPURLResponse,
+           (httpResponse.statusCode == 204 || httpResponse.statusCode == 205) {
+            decisionHandler(.cancel)
+            return
+        }
+        
+        if CapsuleDownloadManager.shouldDownloadResponse(
+            navigationResponse.response,
+            canShowMIMEType: navigationResponse.canShowMIMEType,
+            isForMainFrame: navigationResponse.isForMainFrame
+        ) {
+            let allowedSchemes: Set<String> = ["http", "https", "data", "blob"]
+            let scheme = navigationResponse.response.url?.scheme?.lowercased()
+            if scheme == nil || allowedSchemes.contains(scheme!) {
+                #if DEBUG
+                print("[IsolatedWebView] decidePolicyFor navigationResponse: triggering .download for \(String(describing: navigationResponse.response.url)) (canShowMIME: \(navigationResponse.canShowMIMEType))")
+                #endif
+                decisionHandler(.download)
+                return
+            }
+        }
+        
+        decisionHandler(.allow)
+    }
+    
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        navigationState.isLoading = false
+        CapsuleDownloadManager.shared.registerDownload(download, originatingWebView: webView)
+    }
+    
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        navigationState.isLoading = false
+        CapsuleDownloadManager.shared.registerDownload(download, originatingWebView: webView)
     }
     
     // Handle target="_blank", popup windows, and "Open Link in New Window" context menu actions

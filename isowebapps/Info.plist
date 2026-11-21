@@ -28,5 +28,9 @@
 		<string>processing</string>
 		<string>fetch</string>
 	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>UIFileSharingEnabled</key>
+	<true/>
 </dict>
 </plist>

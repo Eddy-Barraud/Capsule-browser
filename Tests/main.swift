@@ -1062,6 +1062,153 @@ func testContextMenuSearchInterception() {
 }
 #endif
 
+@MainActor
+func testDownloadPolicyAndFileHelpers() {
+    print("Running testDownloadPolicyAndFileHelpers...")
+    
+    // Test 1: Content-Disposition attachment detection
+    assert(
+        CapsuleDownloadManager.isAttachmentContentDisposition("attachment; filename=AppCleaner.zip") == true,
+        "Standard attachment header must trigger download"
+    )
+    assert(
+        CapsuleDownloadManager.isAttachmentContentDisposition("ATTACHMENT") == true,
+        "Case-insensitive attachment header must trigger download"
+    )
+    assert(
+        CapsuleDownloadManager.isAttachmentContentDisposition("inline; filename=doc.pdf") == false,
+        "Inline Content-Disposition must not trigger download by disposition alone"
+    )
+    assert(
+        CapsuleDownloadManager.isAttachmentContentDisposition(nil) == false,
+        "Nil Content-Disposition must return false"
+    )
+    
+    // Test 2: Response download policy decisions
+    let zipURL = URL(string: "https://freemacsoft.net/downloads/AppCleaner_3.6.8.zip")!
+    let zipResponse = HTTPURLResponse(
+        url: zipURL,
+        statusCode: 200,
+        httpVersion: "HTTP/1.1",
+        headerFields: ["Content-Type": "application/zip", "Content-Length": "4194304"]
+    )!
+    assert(
+        CapsuleDownloadManager.shouldDownloadResponse(zipResponse, canShowMIMEType: false, isForMainFrame: true) == true,
+        "Main-frame .zip with canShowMIMEType=false must trigger download"
+    )
+    
+    let htmlURL = URL(string: "https://appcleaner.pro/")!
+    let htmlResponse = HTTPURLResponse(
+        url: htmlURL,
+        statusCode: 200,
+        httpVersion: "HTTP/1.1",
+        headerFields: ["Content-Type": "text/html"]
+    )!
+    assert(
+        CapsuleDownloadManager.shouldDownloadResponse(htmlResponse, canShowMIMEType: true, isForMainFrame: true) == false,
+        "Main-frame text/html must render in WebView, not download"
+    )
+    
+    let pdfAttachmentURL = URL(string: "https://example.com/report.pdf")!
+    let pdfAttachmentResponse = HTTPURLResponse(
+        url: pdfAttachmentURL,
+        statusCode: 200,
+        httpVersion: "HTTP/1.1",
+        headerFields: [
+            "Content-Type": "application/pdf",
+            "Content-Disposition": "attachment; filename=\"report.pdf\""
+        ]
+    )!
+    assert(
+        CapsuleDownloadManager.shouldDownloadResponse(pdfAttachmentResponse, canShowMIMEType: true, isForMainFrame: true) == true,
+        "Content-Disposition attachment must trigger download even if MIME is displayable"
+    )
+    
+    let noContentResponse = HTTPURLResponse(
+        url: URL(string: "https://example.com/ping")!,
+        statusCode: 204,
+        httpVersion: "HTTP/1.1",
+        headerFields: nil
+    )!
+    assert(
+        CapsuleDownloadManager.shouldDownloadResponse(noContentResponse, canShowMIMEType: false, isForMainFrame: true) == false,
+        "HTTP 204 No Content must never trigger download"
+    )
+    
+    let subframeEmptyResponse = URLResponse(
+        url: URL(string: "https://example.com/pixel")!,
+        mimeType: "application/octet-stream",
+        expectedContentLength: 0,
+        textEncodingName: nil
+    )
+    assert(
+        CapsuleDownloadManager.shouldDownloadResponse(subframeEmptyResponse, canShowMIMEType: false, isForMainFrame: false) == false,
+        "Subframe 0-byte non-attachment response must not trigger download"
+    )
+    
+    let subframeZipResponse = URLResponse(
+        url: zipURL,
+        mimeType: "application/zip",
+        expectedContentLength: 1024,
+        textEncodingName: nil
+    )
+    assert(
+        CapsuleDownloadManager.shouldDownloadResponse(subframeZipResponse, canShowMIMEType: false, isForMainFrame: false) == true,
+        "Subframe non-empty .zip response must trigger download"
+    )
+    
+    // Test 3: Filename sanitization
+    assert(
+        CapsuleDownloadManager.sanitizedFilename("AppCleaner_3.6.8.zip") == "AppCleaner_3.6.8.zip"
+    )
+    assert(
+        CapsuleDownloadManager.sanitizedFilename("../../.zshrc") == "zshrc",
+        "Path traversal & leading dots must be stripped"
+    )
+    assert(
+        CapsuleDownloadManager.sanitizedFilename("dir/sub:name.zip") == "sub_name.zip",
+        "Directory components and colons must be sanitized"
+    )
+    assert(
+        CapsuleDownloadManager.sanitizedFilename(".env") == "env",
+        "Hidden dotfiles must be stripped of leading dots"
+    )
+    assert(
+        CapsuleDownloadManager.sanitizedFilename("", fallbackURL: URL(string: "https://example.com/archive.tar.gz")) == "archive.tar.gz",
+        "Empty filename must fall back to URL lastPathComponent"
+    )
+    assert(
+        CapsuleDownloadManager.sanitizedFilename("   ", fallbackURL: nil) == "download",
+        "Empty filename with no fallback URL must return 'download'"
+    )
+    
+    // Test 4: Unique destination collision avoidance
+    let fm = FileManager.default
+    let tempDir = fm.temporaryDirectory.appendingPathComponent("capsule_dl_test_\(UUID().uuidString)", isDirectory: true)
+    try! fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: tempDir) }
+    
+    let firstURL = CapsuleDownloadManager.uniqueDestinationURL(in: tempDir, filename: "AppCleaner_3.6.8.zip", fileManager: fm)
+    assert(firstURL.lastPathComponent == "AppCleaner_3.6.8.zip")
+    fm.createFile(atPath: firstURL.path, contents: Data("1".utf8))
+    
+    let secondURL = CapsuleDownloadManager.uniqueDestinationURL(in: tempDir, filename: "AppCleaner_3.6.8.zip", fileManager: fm)
+    assert(secondURL.lastPathComponent == "AppCleaner_3.6.8 (2).zip")
+    fm.createFile(atPath: secondURL.path, contents: Data("2".utf8))
+    
+    let thirdURL = CapsuleDownloadManager.uniqueDestinationURL(in: tempDir, filename: "AppCleaner_3.6.8.zip", fileManager: fm)
+    assert(thirdURL.lastPathComponent == "AppCleaner_3.6.8 (3).zip")
+    
+    let extlessFirst = CapsuleDownloadManager.uniqueDestinationURL(in: tempDir, filename: "README", fileManager: fm)
+    assert(extlessFirst.lastPathComponent == "README")
+    fm.createFile(atPath: extlessFirst.path, contents: Data("readme".utf8))
+    
+    let extlessSecond = CapsuleDownloadManager.uniqueDestinationURL(in: tempDir, filename: "README", fileManager: fm)
+    assert(extlessSecond.lastPathComponent == "README (2)")
+    
+    print("✓ testDownloadPolicyAndFileHelpers passed!")
+}
+
 // Execute test suite
 testUBlockRuleCompiler()
 testSearchEngineResolution()
@@ -1079,8 +1226,9 @@ MainActor.assumeIsolated {
     testContextMenuSearchInterception()
     #endif
     testMemoryTeardownAndCacheRelease()
+    testDownloadPolicyAndFileHelpers()
 }
 
 print("\n========================================")
-print("ALL 13 LOGIC & SECURITY TEST SUITES PASSED (100%)")
+print("ALL 14 LOGIC & SECURITY TEST SUITES PASSED (100%)")
 print("========================================")
