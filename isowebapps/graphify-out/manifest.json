@@ -12,9 +12,9 @@
     "semantic_hash": ""
   },
   "AddWebAppSheet.swift": {
-    "mtime": 1794306624.9779942,
-    "seen": 1794314424.72485,
-    "ast_hash": "3ad6925771852fc1522568b87d27ae11",
+    "mtime": 1795267514.9968083,
+    "seen": 1795269106.733122,
+    "ast_hash": "e1c19de1b9492842b1820d1225271de3",
     "semantic_hash": ""
   },
   "Assets.xcassets/AccentColor.colorset/Contents.json": {
@@ -42,9 +42,9 @@
     "semantic_hash": ""
   },
   "ContentView.swift": {
-    "mtime": 1795261721.15716,
-    "seen": 1795262782.508111,
-    "ast_hash": "ef2363a70413fe74d6e21d96d7a01a47",
+    "mtime": 1795267676.0176094,
+    "seen": 1795269106.73313,
+    "ast_hash": "8d67971f984a61e865f59ec5a31b3d09",
     "semantic_hash": ""
   },
   "CookieManager.swift": {
@@ -78,9 +78,9 @@
     "semantic_hash": ""
   },
   "IsolatedWebView.swift": {
-    "mtime": 1795264968.541425,
-    "seen": 1795265168.333117,
-    "ast_hash": "15e829d989a90d71860c581cfee9fe07",
+    "mtime": 1795268610.443453,
+    "seen": 1795269106.733135,
+    "ast_hash": "7dc888f1400aac25b7054a4e3cc1bce0",
     "semantic_hash": ""
   },
   "LiquidGlassStyles.swift": {
@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "WebAppContainerView.swift": {
-    "mtime": 1795264978.992888,
-    "seen": 1795265168.333122,
-    "ast_hash": "e8735aa0ca99c98c6ee33fca28e5ce57",
+    "mtime": 1795268611.9662392,
+    "seen": 1795269106.733144,
+    "ast_hash": "ad70ed99a299ee36fbc15de64b320d5d",
     "semantic_hash": ""
   },
   "WebAppGroup.swift": {
@@ -150,9 +150,9 @@
     "semantic_hash": ""
   },
   "WindowPresentationMode.swift": {
-    "mtime": 1795261686.2555745,
-    "seen": 1795262782.508126,
-    "ast_hash": "e68373c41ccf64e847f5ebb9b3fd1314",
+    "mtime": 1795267503.3146873,
+    "seen": 1795269106.7331479,
+    "ast_hash": "1005bd2d9aa09e4372d7bc0e52df50bd",
     "semantic_hash": ""
   },
   "isowebappsApp.swift": {
@@ -471,6 +471,30 @@
     "mtime": 1795265021.2756927,
     "seen": 1795265168.333111,
     "ast_hash": "dc24c966bfecdce44ebf2e1da5004851",
+    "semantic_hash": ""
+  },
+  "MarkdownBlockParser.swift": {
+    "mtime": 1795267452.9439907,
+    "seen": 1795269106.733137,
+    "ast_hash": "3b6dfd46509d2f69ed21008621ec9bfc",
+    "semantic_hash": ""
+  },
+  "MarkdownReaderView.swift": {
+    "mtime": 1795268548.816077,
+    "seen": 1795269106.7331378,
+    "ast_hash": "06a021144e7a770972fad7e22a83f304",
+    "semantic_hash": ""
+  },
+  "ReaderHTMLUtilities.swift": {
+    "mtime": 1795268543.5725946,
+    "seen": 1795269106.73314,
+    "ast_hash": "aef5df1211287e91bdf2b9ab471959ad",
+    "semantic_hash": ""
+  },
+  "ReaderModeService.swift": {
+    "mtime": 1795268544.7307706,
+    "seen": 1795269106.73314,
+    "ast_hash": "4da8b31e0adf37346512551557357dcd",
     "semantic_hash": ""
   }
 }
