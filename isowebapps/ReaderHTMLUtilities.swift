@@ -500,6 +500,88 @@ nonisolated enum ReaderHTMLUtilities {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - Markdown Token Estimation & Capping (AI Summarization)
+
+    /// Estimates the LLM token count of Markdown text using contiguous alphanumeric word runs
+    /// and individual non-whitespace symbol tokens (`ceil(utf8Bytes / 4)` per word run).
+    static func estimateTokenCount(for text: String) -> Int {
+        scanMarkdownTokens(in: text, maxTokens: nil).tokenCount
+    }
+
+    /// Truncates Markdown text to at most `maxTokens` estimated tokens while preserving valid
+    /// UTF-8 and `Character` boundaries.
+    static func truncateMarkdownToTokenLimit(_ markdown: String, maxTokens: Int = 4000) -> String {
+        guard maxTokens > 0 else { return "" }
+        let trimmed = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        let scanResult = scanMarkdownTokens(in: trimmed, maxTokens: maxTokens)
+        guard let cutoffIndex = scanResult.cutoffIndex else {
+            return trimmed
+        }
+        return String(trimmed[..<cutoffIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func scanMarkdownTokens(
+        in text: String,
+        maxTokens: Int?
+    ) -> (tokenCount: Int, cutoffIndex: String.Index?) {
+        var tokenCount = 0
+        var index = text.startIndex
+
+        while index < text.endIndex {
+            let character = text[index]
+            if character.unicodeScalars.allSatisfy({ CharacterSet.whitespacesAndNewlines.contains($0) }) {
+                index = text.index(after: index)
+                continue
+            }
+
+            if character.unicodeScalars.contains(where: { CharacterSet.alphanumerics.contains($0) }) {
+                let spanStart = index
+                var spanUTF8Bytes = 0
+                while index < text.endIndex,
+                      text[index].unicodeScalars.contains(where: { CharacterSet.alphanumerics.contains($0) }) {
+                    spanUTF8Bytes += text[index].utf8.count
+                    index = text.index(after: index)
+                }
+
+                let spanTokens = max(1, (spanUTF8Bytes + 3) / 4)
+                if let limit = maxTokens, tokenCount + spanTokens > limit {
+                    let remainingTokens = limit - tokenCount
+                    let maxAllowedBytes = remainingTokens * 4
+                    var cut = spanStart
+                    var accumulatedBytes = 0
+                    while cut < index {
+                        let charBytes = text[cut].utf8.count
+                        if accumulatedBytes + charBytes > maxAllowedBytes {
+                            break
+                        }
+                        accumulatedBytes += charBytes
+                        cut = text.index(after: cut)
+                    }
+                    return (limit, cut)
+                }
+
+                tokenCount += spanTokens
+                if let limit = maxTokens, tokenCount == limit {
+                    return (tokenCount, index)
+                }
+            } else {
+                let symbolStart = index
+                if let limit = maxTokens, tokenCount + 1 > limit {
+                    return (limit, symbolStart)
+                }
+                tokenCount += 1
+                index = text.index(after: index)
+                if let limit = maxTokens, tokenCount == limit {
+                    return (tokenCount, index)
+                }
+            }
+        }
+
+        return (tokenCount, nil)
+    }
+
     /// Returns `true` when address bar text represents a direct URL rather than a search query.
     static func isLikelyDirectURLInput(_ rawInput: String) -> Bool {
         let trimmed = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)

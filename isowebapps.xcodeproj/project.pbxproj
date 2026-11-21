@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		3622915C304DB754003F8C9A /* Open in a capsule.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 36229152304DB754003F8C9A /* Open in a capsule.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		36B9798630B1CAC400E6FDBF /* HTMLToMarkdown in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 36B9798530B1CAC400E6FDBF /* HTMLToMarkdown */; };
+		36B9798630B1CAC400E6FDBF /* HTMLToMarkdown in Frameworks */ = {isa = PBXBuildFile; productRef = 36B9798530B1CAC400E6FDBF /* HTMLToMarkdown */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */

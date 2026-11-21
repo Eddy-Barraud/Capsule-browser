@@ -32,7 +32,7 @@ class WebViewNavigationState: ObservableObject {
     var onToggleUBlock: ((Bool) -> Void)?
     var onOpenSafari: ((URL) -> Void)?
     var onOpenSafariReader: ((URL) -> Void)?
-    var onCaptureFirstPagePDFText: (() async throws -> (title: String, url: String, text: String))?
+    var onCaptureLiveHTML: (() async throws -> ReaderHTMLCapture)?
     var onOpenNewWindowOrTab: ((URL) -> Void)?
     #if os(macOS)
     @Published var isReaderModeActive: Bool = false
@@ -40,7 +40,6 @@ class WebViewNavigationState: ObservableObject {
     var webViewFinishGeneration: Int = 0
     var currentBackgroundWebViewURL: URL? = nil
     var lastBackgroundLoadError: String? = nil
-    var onCaptureLiveHTML: (() async throws -> ReaderHTMLCapture)?
     var onSetReaderMediaSuspended: ((Bool) -> Void)?
     #endif
     
@@ -53,10 +52,9 @@ class WebViewNavigationState: ObservableObject {
         onToggleUBlock = nil
         onOpenSafari = nil
         onOpenSafariReader = nil
-        onCaptureFirstPagePDFText = nil
+        onCaptureLiveHTML = nil
         onOpenNewWindowOrTab = nil
         #if os(macOS)
-        onCaptureLiveHTML = nil
         onSetReaderMediaSuspended = nil
         #endif
     }
@@ -1180,43 +1178,35 @@ struct WebAppContainerView: View {
         
         summaryTask = Task { @MainActor in
             do {
+                var readerDocument: ReaderDocument? = nil
                 #if os(macOS)
                 if isReaderModeActive, case .loaded(let doc) = readerState {
-                    let result = try await AISummarizer.shared.summarize(
-                        title: doc.title,
-                        url: doc.url.absoluteString,
-                        firstPageText: doc.plainTextForSummary,
-                        onPartialUpdate: { partial in
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                self.summaryText = partial
-                            }
-                        }
-                    )
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        self.summaryText = result
-                        self.isGeneratingSummary = false
-                    }
-                    return
+                    readerDocument = doc
                 }
                 #endif
-                
-                guard let captureBlock = navigationState.onCaptureFirstPagePDFText else {
-                    throw WebPageSummaryError.webViewUnavailable
+
+                let document: ReaderDocument
+                if let readerDocument {
+                    document = readerDocument
+                } else {
+                    guard let captureBlock = navigationState.onCaptureLiveHTML else {
+                        throw WebPageSummaryError.webViewUnavailable
+                    }
+                    let capture = try await captureBlock()
+                    document = try await ReaderModeService.convertLiveCapture(capture)
                 }
-                
-                let captured = try await captureBlock()
-                
+
                 let result = try await AISummarizer.shared.summarize(
-                    title: captured.title,
-                    url: captured.url,
-                    firstPageText: captured.text,
+                    title: document.title,
+                    url: document.url.absoluteString,
+                    markdownContent: document.markdown,
                     onPartialUpdate: { partial in
                         withAnimation(.easeInOut(duration: 0.15)) {
                             self.summaryText = partial
                         }
                     }
                 )
-                
+
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     self.summaryText = result
                     self.isGeneratingSummary = false
@@ -1777,7 +1767,7 @@ struct SummaryDropdownView: View {
                 HStack(spacing: 10) {
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Rendering PDF & generating AI summary...")
+                    Text("Generating AI summary...")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }

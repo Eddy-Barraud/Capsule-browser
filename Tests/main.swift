@@ -1434,6 +1434,34 @@ func testReaderHTMLUtilities() {
     let srcsetHTML = "<img srcset=\"/img/small.jpg 320w, /img/large.jpg 1024w\" src=\"data:image/svg+xml;base64,PHN2Zz4=\">"
     assert(ReaderHTMLUtilities.normalizeLazyImages(in: srcsetHTML).contains("src=\"/img/large.jpg\""))
     
+    // Test 11: Markdown 4,000-token estimation and capping for AI summarization
+    assert(ReaderHTMLUtilities.estimateTokenCount(for: "   \n\t ") == 0)
+    assert(ReaderHTMLUtilities.truncateMarkdownToTokenLimit("   \n\t ", maxTokens: 4000) == "")
+    assert(ReaderHTMLUtilities.truncateMarkdownToTokenLimit("# Title\n\nBody.", maxTokens: 0) == "")
+
+    let shortMarkdown = "# Swift 6 Concurrency\n\nStructured tasks keep [apps](https://swift.org) responsive."
+    assert(ReaderHTMLUtilities.estimateTokenCount(for: shortMarkdown) < 4000)
+    assert(ReaderHTMLUtilities.truncateMarkdownToTokenLimit(shortMarkdown, maxTokens: 4000) == shortMarkdown)
+
+    let longParagraph = "- **Point**: Structured [Markdown](https://example.com/article?id=42) retains headings, emphasis, and lists cleanly.\n"
+    let longMarkdown = "# Main Report\n\n" + String(repeating: longParagraph, count: 400)
+    let rawTokenCount = ReaderHTMLUtilities.estimateTokenCount(for: longMarkdown)
+    assert(rawTokenCount > 4000, "Fixture must exceed 4,000 tokens, got \(rawTokenCount)")
+    let cappedMarkdown = ReaderHTMLUtilities.truncateMarkdownToTokenLimit(longMarkdown, maxTokens: 4000)
+    let cappedTokens = ReaderHTMLUtilities.estimateTokenCount(for: cappedMarkdown)
+    assert(cappedTokens > 3900 && cappedTokens <= 4000, "Capped Markdown must hit near 4,000 tokens without exceeding it, got \(cappedTokens)")
+    assert(cappedMarkdown.hasPrefix("# Main Report\n\n- **Point**:"))
+
+    let wordStream = String(repeating: "word ", count: 5000)
+    assert(ReaderHTMLUtilities.estimateTokenCount(for: wordStream) == 5000)
+    let cappedWords = ReaderHTMLUtilities.truncateMarkdownToTokenLimit(wordStream, maxTokens: 4000)
+    assert(ReaderHTMLUtilities.estimateTokenCount(for: cappedWords) == 4000)
+
+    let hugeToken = String(repeating: "a", count: 20000)
+    let cappedHugeToken = ReaderHTMLUtilities.truncateMarkdownToTokenLimit(hugeToken, maxTokens: 4000)
+    assert(cappedHugeToken.utf8.count == 16000)
+    assert(ReaderHTMLUtilities.estimateTokenCount(for: cappedHugeToken) == 4000)
+    
     print("✓ testReaderHTMLUtilities passed!")
 }
 

@@ -13,7 +13,6 @@
 import SwiftUI
 import WebKit
 import SwiftData
-import PDFKit
 #if os(iOS)
 import SafariServices
 #endif
@@ -664,7 +663,6 @@ extension IsolatedWebViewRepresentable {
         }
     }
     
-    #if os(macOS)
     /// Non-mutating DOM extraction script capturing article HTML and page metadata from a live WKWebView.
     static let readerDOMExtractionScript: String = #"""
     (function() {
@@ -796,7 +794,6 @@ extension IsolatedWebViewRepresentable {
         };
     })();
     """#
-    #endif
     
     func createConfiguredWebView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -928,48 +925,6 @@ extension IsolatedWebViewRepresentable {
             }
             webView.reloadFromOrigin()
         }
-        navigationState.onCaptureFirstPagePDFText = { [weak webView] in
-            guard let webView = webView else {
-                throw WebPageSummaryError.webViewUnavailable
-            }
-            
-            let title = webView.title ?? ""
-            let urlString = webView.url?.absoluteString ?? ""
-            
-            // 1. Generate PDF of the rendered web page
-            let pdfConfig = WKPDFConfiguration()
-            let pdfData: Data = try await withCheckedThrowingContinuation { continuation in
-                webView.createPDF(configuration: pdfConfig) { result in
-                    continuation.resume(with: result)
-                }
-            }
-            
-            // 2. Extract content from the first 3 pages
-            guard let document = PDFDocument(data: pdfData),
-                  document.pageCount > 0 else {
-                throw WebPageSummaryError.pdfExtractionFailed
-            }
-            
-            let maxPages = min(3, document.pageCount)
-            var extractedPages: [String] = []
-            for pageIndex in 0..<maxPages {
-                if let page = document.page(at: pageIndex),
-                   let text = page.string?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !text.isEmpty {
-                    extractedPages.append(text)
-                }
-            }
-            
-            var pageText = extractedPages.joined(separator: "\n\n")
-            if pageText.isEmpty {
-                // Fallback: If PDF text layer is empty or rasterized, extract DOM innerText
-                let evaluated = try? await webView.evaluateJavaScript("document.body.innerText") as? String
-                pageText = evaluated?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            }
-            
-            return (title: title, url: urlString, text: pageText)
-        }
-        
         #if os(macOS)
         if navigationState.isReaderModeActive {
             webView.setAllMediaPlaybackSuspended(true)
@@ -994,9 +949,10 @@ extension IsolatedWebViewRepresentable {
                 }
             }
         }
+        #endif
         navigationState.onCaptureLiveHTML = { [weak webView] in
             guard let webView = webView else {
-                throw ReaderModeError.conversionFailed("Web view is unavailable.")
+                throw WebPageSummaryError.webViewUnavailable
             }
             
             let result = try await webView.evaluateJavaScript(Self.readerDOMExtractionScript)
@@ -1039,7 +995,6 @@ extension IsolatedWebViewRepresentable {
                 hasRobotCheckWidget: false
             )
         }
-        #endif
         
         // 3. Ensure uBlock rules are prepared, restore isolated cookies (including grouped apps if applicable), and load start page
         let groupedItems = appItem.group?.items ?? []

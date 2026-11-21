@@ -3,12 +3,12 @@
 //  isowebapps
 //
 //  Description:
-//  macOS-only HTML fetching and conversion pipeline powering the in-app Markdown Reader.
+//  HTML fetching and conversion pipeline powering the in-app Markdown Reader (macOS)
+//  and AI Markdown summarization (macOS & iOS).
 //  Converts either live DOM HTML extracted from WKWebView or lightweight HTML-only HTTP fetches
 //  via `HTMLToMarkdown` into parsed `ReaderDocument` models.
 //
 
-#if os(macOS)
 import Foundation
 import HTMLToMarkdown
 
@@ -327,4 +327,3 @@ nonisolated enum ReaderModeService {
         }.value
     }
 }
-#endif

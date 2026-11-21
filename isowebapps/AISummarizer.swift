@@ -6,8 +6,8 @@
 //
 //  Description:
 //  Provides on-device AI web page summarization using Apple Foundation Models.
-//  Processes first-page rendered PDF text and streams or returns a concise summary
-//  limited to 5 sentences maximum.
+//  Processes HTML-to-Markdown extracted web page content capped at 4,000 tokens
+//  and streams or returns a concise summary limited to 4 sentences maximum.
 //
 
 import Foundation
@@ -15,12 +15,10 @@ import Combine
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
-import PDFKit
 
-/// Errors encountered during the web page PDF capture and AI summarization pipeline.
+/// Errors encountered during the web page Markdown capture and AI summarization pipeline.
 public enum WebPageSummaryError: LocalizedError {
     case webViewUnavailable
-    case pdfExtractionFailed
     case emptyContent
     case modelUnavailable(String)
     case generationFailed(String)
@@ -29,10 +27,8 @@ public enum WebPageSummaryError: LocalizedError {
         switch self {
         case .webViewUnavailable:
             return "The web page is not ready or unavailable."
-        case .pdfExtractionFailed:
-            return "Could not generate or read the rendered PDF from the web page."
         case .emptyContent:
-            return "No readable text could be found on the first page of the web page."
+            return "No readable content could be extracted from the web page."
         case .modelUnavailable(let reason):
             return "Apple Intelligence is unavailable: \(reason)"
         case .generationFailed(let reason):
@@ -45,6 +41,7 @@ public enum WebPageSummaryError: LocalizedError {
 /// Orchestrates on-device Foundation Models for summarizing web pages.
 public final class AISummarizer: ObservableObject {
     public static let shared = AISummarizer()
+    public static let maxInputTokens: Int = 4000
     
     private init() {}
     
@@ -60,16 +57,16 @@ public final class AISummarizer: ObservableObject {
         return false
     }
     
-    /// Summarizes the first-page content of a web page in 5 sentences maximum using Foundation Models.
+    /// Summarizes Markdown content extracted from a web page using Foundation Models.
     public func summarize(
         title: String,
         url: String,
-        firstPageText: String,
+        markdownContent: String,
         onPartialUpdate: ((String) -> Void)? = nil
     ) async throws -> String {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            let trimmedContent = firstPageText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedContent = markdownContent.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedContent.isEmpty else {
                 throw WebPageSummaryError.emptyContent
             }
@@ -96,8 +93,11 @@ public final class AISummarizer: ObservableObject {
             let language = Self.resolvedLanguageCode()
             let instructions = Self.loadInstructions(for: language)
             
-            // Bound text to ensure it stays well within context limits
-            let truncatedContent = String(trimmedContent.prefix(6000))
+            // Cap Markdown input to 4,000 estimated tokens to preserve structure within context limits
+            let truncatedContent = ReaderHTMLUtilities.truncateMarkdownToTokenLimit(
+                trimmedContent,
+                maxTokens: Self.maxInputTokens
+            )
             let resolvedTitle = title.isEmpty ? Self.defaultWebPageTitle(for: language) : title
             let prompt = Self.loadUserPrompt(for: language, title: resolvedTitle, content: truncatedContent)
             
