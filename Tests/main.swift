@@ -2,6 +2,10 @@ import Foundation
 import WebKit
 import SwiftData
 import CloudKit
+#if os(macOS)
+import AppKit
+import SwiftUI
+#endif
 
 // MARK: - Minimal Re-creations / Test Drivers for Independent Logic Verification
 
@@ -357,6 +361,12 @@ func testTabModeCmdWAndBlinkPreventionLogic() {
     print("Running testTabModeCmdWAndBlinkPreventionLogic...")
     
     // Test 1: Interception lifecycle before window display (zero-blink presentation)
+    enum MockOrderingMode {
+        case above
+        case below
+        case out
+    }
+    
     class MockTabGroup {
         var windows: [MockWindow] = []
         var selectedWindow: MockWindow?
@@ -370,8 +380,19 @@ func testTabModeCmdWAndBlinkPreventionLogic() {
         var isClosed: Bool = false
         var tabGroup: MockTabGroup?
         var isPanel: Bool = false
+        var isSheet: Bool = false
         var sheetParent: MockWindow? = nil
+        var parent: MockWindow? = nil
+        var isNormalLevel: Bool = true
+        var isTitled: Bool = true
+        var isClosable: Bool = true
+        var isResizable: Bool = true
+        var isUtilityOrHUDOrNonactivatingOrDocModal: Bool = false
+        var isSwiftUIHosted: Bool = true
+        var isMainAppWindow: Bool = false
+        var isConfigured: Bool = false
         var animationBehavior: Int = 0
+        var addTabbedWindowCallCount: Int = 0
         
         init() {
             let tg = MockTabGroup()
@@ -381,6 +402,7 @@ func testTabModeCmdWAndBlinkPreventionLogic() {
         }
         
         func addTabbedWindow(_ other: MockWindow) {
+            addTabbedWindowCallCount += 1
             tabGroup?.windows.append(other)
             other.tabGroup = self.tabGroup
             tabGroup?.selectedWindow = other
@@ -396,13 +418,68 @@ func testTabModeCmdWAndBlinkPreventionLogic() {
     }
     
     class MockCoordinator {
+        weak var mainWindow: MockWindow?
+        weak var targetWindowForNewTab: MockWindow?
         weak var pendingTabTargetWindow: MockWindow?
+        var handlePresentationCallCount: Int = 0
+        
+        static func supportsNativeTabbing(_ window: MockWindow) -> Bool {
+            !window.isPanel
+                && !window.isSheet
+                && window.sheetParent == nil
+                && window.parent == nil
+                && window.isNormalLevel
+                && window.isTitled
+                && window.isClosable
+                && window.isResizable
+                && !window.isUtilityOrHUDOrNonactivatingOrDocModal
+        }
+        
+        func simulateOrder(_ window: MockWindow, place: MockOrderingMode) -> Bool {
+            if place != .out {
+                return handleNewWindowPresentation(window)
+            }
+            return false
+        }
+        
+        func simulateWindowSyncMerge(_ window: MockWindow, target: MockWindow) -> Bool {
+            guard target !== window,
+                  Self.supportsNativeTabbing(window),
+                  Self.supportsNativeTabbing(target),
+                  window.tabbingMode != 2 else {
+                return false
+            }
+            if let tg = target.tabGroup, window.tabGroup === tg {
+                pendingTabTargetWindow = nil
+                return false
+            }
+            window.tabbingIdentifier = "CapsuleBrowserWindow"
+            window.tabbingMode = 1
+            target.tabbingIdentifier = "CapsuleBrowserWindow"
+            target.tabbingMode = 1
+            window.frame = target.frame
+            target.addTabbedWindow(window)
+            pendingTabTargetWindow = nil
+            return true
+        }
         
         func handleNewWindowPresentation(_ window: MockWindow) -> Bool {
-            guard !window.isPanel, window.sheetParent == nil else { return false }
-            guard let target = pendingTabTargetWindow,
-                  target !== window,
-                  window.tabGroup !== target.tabGroup else {
+            handlePresentationCallCount += 1
+            guard let target = pendingTabTargetWindow else { return false }
+            if window === target {
+                return false
+            }
+            if let tg = target.tabGroup, window.tabGroup === tg {
+                pendingTabTargetWindow = nil
+                return false
+            }
+            guard Self.supportsNativeTabbing(window),
+                  window.tabbingMode != 2,
+                  window.isSwiftUIHosted,
+                  window !== mainWindow,
+                  !window.isMainAppWindow,
+                  !window.isConfigured,
+                  Self.supportsNativeTabbing(target) else {
                 return false
             }
             pendingTabTargetWindow = nil
@@ -418,6 +495,7 @@ func testTabModeCmdWAndBlinkPreventionLogic() {
             let targetFrame = target.frame
             window.frame = targetFrame
             target.addTabbedWindow(window)
+            window.isConfigured = true
             return true
         }
     }
@@ -428,6 +506,7 @@ func testTabModeCmdWAndBlinkPreventionLogic() {
     parentWin.frame = CGRect(x: 100, y: 150, width: 1200, height: 800)
     
     // Simulate link click requesting a new tab
+    coordinator.targetWindowForNewTab = parentWin
     coordinator.pendingTabTargetWindow = parentWin
     
     // Newly created window prior to display
@@ -442,6 +521,7 @@ func testTabModeCmdWAndBlinkPreventionLogic() {
     assert(parentWin.tabGroup?.windows.count == 2, "Parent tab group must contain 2 windows")
     assert(parentWin.tabGroup?.selectedWindow === newTabWin, "New tab must be selected")
     assert(newTabWin.tabGroup === parentWin.tabGroup, "Both windows must share the same tabGroup")
+    assert(coordinator.pendingTabTargetWindow == nil, "Pending tab target must be cleared after intercept")
     
     // Now window is made visible:
     newTabWin.isVisible = true
@@ -507,21 +587,160 @@ func testTabModeCmdWAndBlinkPreventionLogic() {
     assert(actionResult3 == "closed_main_window")
     assert(parentWin.isClosed == true, "Parent window closes when no tabs or open capsules remain")
     
-    // Scenario D: Sheets and panels bypass tab close interception
+    // Scenario D: Regression checks for WTAffordanceWindow / system overlays & order(.out)
+    let activeTarget = MockWindow()
+    activeTarget.isVisible = true
+    activeTarget.frame = CGRect(x: 80, y: 120, width: 1280, height: 820)
+    coordinator.targetWindowForNewTab = activeTarget
+    coordinator.pendingTabTargetWindow = activeTarget
+    
+    // 1. order(.out, ...) during window close/dismiss must never call handleNewWindowPresentation
+    let countBeforeOrderOut = coordinator.handlePresentationCallCount
+    let wtClosingWindow = MockWindow()
+    wtClosingWindow.isTitled = false // WTAffordanceWindow-like borderless window
+    let didInterceptOrderOut = coordinator.simulateOrder(wtClosingWindow, place: .out)
+    assert(didInterceptOrderOut == false, "order(.out) must never trigger tab interception")
+    assert(coordinator.handlePresentationCallCount == countBeforeOrderOut, "order(.out) must not invoke handleNewWindowPresentation")
+    assert(coordinator.pendingTabTargetWindow === activeTarget, "order(.out) must not disturb pending tab target")
+    
+    // 2. Non-eligible windows must be rejected WITHOUT consuming pendingTabTargetWindow
+    let wtAffordance = MockWindow()
+    wtAffordance.isTitled = false
+    wtAffordance.isClosable = false
+    wtAffordance.isResizable = false
+    wtAffordance.isSwiftUIHosted = false
+    
+    let childOverlay = MockWindow()
+    childOverlay.parent = activeTarget
+    
+    let elevatedOverlay = MockWindow()
+    elevatedOverlay.isNormalLevel = false
+    
+    let nonSwiftUIWin = MockWindow()
+    nonSwiftUIWin.isSwiftUIHosted = false
+    
+    let utilityWin = MockWindow()
+    utilityWin.isUtilityOrHUDOrNonactivatingOrDocModal = true
+    
     let sheetWin = MockWindow()
-    sheetWin.sheetParent = parentWin
-    coordinator.pendingTabTargetWindow = parentWin
-    let didInterceptSheet = coordinator.handleNewWindowPresentation(sheetWin)
-    assert(didInterceptSheet == false, "Sheets must not be intercepted as tabs")
+    sheetWin.sheetParent = activeTarget
     
     let panelWin = MockWindow()
     panelWin.isPanel = true
-    coordinator.pendingTabTargetWindow = parentWin
-    let didInterceptPanel = coordinator.handleNewWindowPresentation(panelWin)
-    assert(didInterceptPanel == false, "Panels must not be intercepted as tabs")
+    
+    for invalidWin in [wtAffordance, childOverlay, elevatedOverlay, nonSwiftUIWin, utilityWin, sheetWin, panelWin] {
+        let result = coordinator.handleNewWindowPresentation(invalidWin)
+        assert(result == false, "Non-eligible window must never be intercepted as a tab")
+        assert(coordinator.pendingTabTargetWindow === activeTarget, "Rejecting a non-eligible overlay/system window must preserve pendingTabTargetWindow")
+        assert(activeTarget.addTabbedWindowCallCount == 0, "addTabbedWindow must never be called for non-eligible windows")
+    }
+    
+    // 3. Valid Capsule window arriving right after rejected overlays still merges cleanly
+    let validQueuedTab = MockWindow()
+    let didMergeValid = coordinator.handleNewWindowPresentation(validQueuedTab)
+    assert(didMergeValid == true, "Valid Capsule window arriving after overlay rejections must merge into tab group")
+    assert(validQueuedTab.tabGroup === activeTarget.tabGroup, "Valid window must join activeTarget's tab group")
+    assert(coordinator.pendingTabTargetWindow == nil, "pendingTabTargetWindow must clear once valid tab merges")
+    
+    // 4. Merging requires BOTH target and new window to support native tabbing
+    let invalidTarget = MockWindow()
+    invalidTarget.isTitled = false
+    coordinator.pendingTabTargetWindow = invalidTarget
+    let candidateTab = MockWindow()
+    assert(coordinator.handleNewWindowPresentation(candidateTab) == false, "Invalid target must not accept tabbed windows")
+    assert(coordinator.simulateWindowSyncMerge(candidateTab, target: invalidTarget) == false, "onWindowSync merge must also reject invalid targets")
+    assert(coordinator.simulateWindowSyncMerge(wtAffordance, target: activeTarget) == false, "onWindowSync merge must reject borderless windows")
+    coordinator.pendingTabTargetWindow = nil
+    
+    // 5. After onWindowSync merges a tab, pendingTabTargetWindow is cleared and targetWindowForNewTab alone never intercepts
+    coordinator.targetWindowForNewTab = activeTarget
+    coordinator.pendingTabTargetWindow = activeTarget
+    let syncTabWin = MockWindow()
+    assert(coordinator.simulateWindowSyncMerge(syncTabWin, target: activeTarget) == true, "onWindowSync should merge valid tab")
+    assert(coordinator.pendingTabTargetWindow == nil, "onWindowSync merge must clear pendingTabTargetWindow")
+    assert(coordinator.targetWindowForNewTab === activeTarget, "targetWindowForNewTab may remain as source fallback")
+    let unrelatedLaterWin = MockWindow()
+    assert(coordinator.handleNewWindowPresentation(unrelatedLaterWin) == false, "targetWindowForNewTab alone must NEVER trigger interception")
+    assert(unrelatedLaterWin.tabGroup !== activeTarget.tabGroup, "Later window must not be merged without an armed pendingTabTargetWindow")
     
     print("✓ testTabModeCmdWAndBlinkPreventionLogic passed!")
 }
+
+#if os(macOS)
+@MainActor
+func testRealNSWindowTabbingEligibility() {
+    print("Running testRealNSWindowTabbingEligibility...")
+    _ = NSApplication.shared
+    
+    func supportsNativeTabbing(_ window: NSWindow) -> Bool {
+        !(window is NSPanel)
+            && !window.isSheet
+            && window.sheetParent == nil
+            && window.parent == nil
+            && window.level == .normal
+            && window.styleMask.contains(.titled)
+            && window.styleMask.contains(.closable)
+            && window.styleMask.contains(.resizable)
+            && !window.styleMask.contains(.utilityWindow)
+            && !window.styleMask.contains(.hudWindow)
+            && !window.styleMask.contains(.nonactivatingPanel)
+            && !window.styleMask.contains(.docModalWindow)
+    }
+    
+    let docWindow = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    assert(supportsNativeTabbing(docWindow) == true, "Standard titled/closable/resizable NSWindow must support native tabbing")
+    
+    let borderlessOverlay = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 120, height: 40),
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+    assert(!borderlessOverlay.styleMask.contains(.titled), "Borderless WTAffordanceWindow-style window must not have .titled")
+    assert(supportsNativeTabbing(borderlessOverlay) == false, "Borderless NSWindow must be rejected before addTabbedWindow")
+    
+    let panel = NSPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
+        styleMask: [.titled, .closable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    assert(supportsNativeTabbing(panel) == false, "NSPanel must be rejected")
+    
+    let elevatedWindow = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
+        styleMask: [.titled, .closable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    elevatedWindow.level = .floating
+    assert(supportsNativeTabbing(elevatedWindow) == false, "Elevated-level NSWindow must be rejected")
+    
+    let childWindow = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
+        styleMask: [.titled, .closable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    docWindow.addChildWindow(childWindow, ordered: .above)
+    assert(childWindow.parent === docWindow, "Attached child window must report parent")
+    assert(supportsNativeTabbing(childWindow) == false, "Child window with parent must be rejected")
+    docWindow.removeChildWindow(childWindow)
+    
+    docWindow.close()
+    borderlessOverlay.close()
+    panel.close()
+    elevatedWindow.close()
+    childWindow.close()
+    
+    print("✓ testRealNSWindowTabbingEligibility passed!")
+}
+#endif
 
 @MainActor
 func testCloudSyncMergeAndConflictDetection() {
@@ -627,6 +846,120 @@ func testCloudSyncMergeAndConflictDetection() {
     print("✓ testCloudSyncMergeAndConflictDetection passed!")
 }
 
+@MainActor
+func testMemoryTeardownAndCacheRelease() {
+    print("Running testMemoryTeardownAndCacheRelease...")
+    
+    // Test 1: UBlockOriginExtensionManager cache release clears in-memory state without zeroing badge counts
+    let ublock = UBlockOriginExtensionManager.shared
+    ublock.releaseInMemoryCaches()
+    assert(ublock.isLoaded == false, "releaseInMemoryCaches must mark uBlock manager as unloaded")
+    assert(ublock.hasInMemoryCaches == false, "releaseInMemoryCaches must empty compiled rule lists and cosmetic user scripts")
+    
+    // Test 2: IsolatedCookieManager cache release & flushAllPendingSaves execute cleanly
+    let cookieManager = IsolatedCookieManager.shared
+    cookieManager.releaseInMemoryCaches()
+    var flushed = false
+    Task { @MainActor in
+        await cookieManager.flushAllPendingSaves()
+        flushed = true
+    }
+    let flushDeadline = Date().addingTimeInterval(2.0)
+    while !flushed && Date() < flushDeadline {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+    }
+    assert(flushed == true, "flushAllPendingSaves must complete cleanly when queue is empty")
+    
+    // Test 3: Real WKWebView inside NSHostingView with WeakWindowBox deallocates completely on return to Home Screen
+    #if os(macOS)
+    final class WeakWindowBox {
+        weak var window: NSWindow?
+    }
+    final class TestDeinitWebView: WKWebView {}
+    struct TestWebRepresentable: NSViewRepresentable {
+        let onCreated: (TestDeinitWebView) -> Void
+        func makeNSView(context: Context) -> TestDeinitWebView {
+            let wv = TestDeinitWebView(frame: .zero)
+            onCreated(wv)
+            return wv
+        }
+        func updateNSView(_ nsView: TestDeinitWebView, context: Context) {}
+        static func dismantleNSView(_ nsView: TestDeinitWebView, coordinator: ()) {
+            nsView.stopLoading()
+            nsView.pauseAllMediaPlayback(completionHandler: nil)
+            nsView.closeAllMediaPresentations(completionHandler: nil)
+            nsView.setAllMediaPlaybackSuspended(true)
+            nsView.navigationDelegate = nil
+            nsView.uiDelegate = nil
+            let controller = nsView.configuration.userContentController
+            controller.removeAllContentRuleLists()
+            controller.removeAllUserScripts()
+            controller.removeAllScriptMessageHandlers()
+            nsView.removeFromSuperview()
+        }
+    }
+    final class TestNavModel: ObservableObject {
+        @Published var showWeb: Bool = true
+    }
+    struct TestRootView: View {
+        @ObservedObject var model: TestNavModel
+        let windowBox: WeakWindowBox
+        let onCreated: (TestDeinitWebView) -> Void
+        var body: some View {
+            Group {
+                if model.showWeb {
+                    TestWebRepresentable(onCreated: onCreated)
+                } else {
+                    Text("Home Screen Cached")
+                }
+            }
+            .onAppear {
+                _ = windowBox.window
+            }
+        }
+    }
+    
+    _ = NSApplication.shared
+    let navModel = TestNavModel()
+    let windowBox = WeakWindowBox()
+    weak var weakWebView: TestDeinitWebView?
+    
+    let homeWindow = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+        styleMask: [.titled, .closable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    homeWindow.isReleasedWhenClosed = false
+    windowBox.window = homeWindow
+    
+    autoreleasepool {
+        homeWindow.contentView = NSHostingView(
+            rootView: TestRootView(
+                model: navModel,
+                windowBox: windowBox,
+                onCreated: { weakWebView = $0 }
+            )
+        )
+        homeWindow.contentView?.layoutSubtreeIfNeeded()
+    }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    assert(weakWebView != nil, "WKWebView should be alive while presented")
+    
+    // Switch back to cached Home Screen (without loadHTMLString("", baseURL: nil))
+    autoreleasepool {
+        navModel.showWeb = false
+    }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+    assert(weakWebView == nil, "WKWebView must fully deallocate when dismissed back to Home Screen")
+    assert(windowBox.window === homeWindow, "Home Screen window should remain cached while open")
+    
+    homeWindow.close()
+    #endif
+    
+    print("✓ testMemoryTeardownAndCacheRelease passed!")
+}
+
 // Execute test suite
 testUBlockRuleCompiler()
 testSearchEngineResolution()
@@ -639,8 +972,12 @@ testTabModePayloadAndSizeConstraints()
 testTabModeCmdWAndBlinkPreventionLogic()
 MainActor.assumeIsolated {
     testCloudSyncMergeAndConflictDetection()
+    #if os(macOS)
+    testRealNSWindowTabbingEligibility()
+    #endif
+    testMemoryTeardownAndCacheRelease()
 }
 
 print("\n========================================")
-print("ALL 10 LOGIC & SECURITY TEST SUITES PASSED (100%)")
+print("ALL 12 LOGIC & SECURITY TEST SUITES PASSED (100%)")
 print("========================================")

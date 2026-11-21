@@ -54,6 +54,25 @@ struct isowebappsApp: App {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 cloudSyncManager.handleAppDidBecomeActive()
+                #if os(iOS)
+                if !UBlockOriginExtensionManager.shared.isLoaded {
+                    Task {
+                        await UBlockOriginExtensionManager.shared.prepare()
+                    }
+                }
+                #else
+                if MainWindowTracker.shared.hasAnyVisibleCapsuleWindow(), !UBlockOriginExtensionManager.shared.isLoaded {
+                    Task {
+                        await UBlockOriginExtensionManager.shared.prepare()
+                    }
+                }
+                #endif
+            } else if newPhase == .background {
+                #if os(iOS)
+                Task {
+                    await WebKitMemoryManager.shared.purgeIdleResources(teardownAllWebViews: false)
+                }
+                #endif
             }
         }
         #if os(macOS)

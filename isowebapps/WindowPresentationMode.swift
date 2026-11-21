@@ -13,6 +13,10 @@ import SwiftData
 #if os(macOS)
 import AppKit
 
+final class WeakWindowBox {
+    weak var window: NSWindow?
+}
+
 enum WindowPresentationMode: String, CaseIterable, Identifiable, Codable {
     case singleWindow = "singleWindow"
     case separateWindows = "separateWindows"
@@ -181,8 +185,9 @@ extension NSWindow {
         }
     }()
     
-    @objc func capsule_newWindowForTab(_ sender: Any?) {
-        MainWindowTracker.shared.openNewTab(from: self)
+    @objc @MainActor func capsule_newWindowForTab(_ sender: Any?) {
+        let source = MainWindowTracker.shared.isManagedCapsuleWindow(self) ? self : nil
+        MainWindowTracker.shared.openNewTab(from: source)
     }
     
     @objc @MainActor func capsule_makeKeyAndOrderFront(_ sender: Any?) {
@@ -196,12 +201,14 @@ extension NSWindow {
     }
     
     @objc @MainActor func capsule_order(_ place: NSWindow.OrderingMode, relativeTo otherWin: Int) {
-        _ = MainWindowTracker.shared.handleNewWindowPresentation(self)
+        if place != .out {
+            _ = MainWindowTracker.shared.handleNewWindowPresentation(self)
+        }
         capsule_order(place, relativeTo: otherWin)
     }
     
     @objc @MainActor func capsule_performClose(_ sender: Any?) {
-        if !(self is NSPanel) && self.sheetParent == nil {
+        if MainWindowTracker.shared.isManagedCapsuleWindow(self) {
             MainWindowTracker.shared.closeTab(self)
             return
         }
@@ -232,10 +239,176 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     private(set) var isReopeningFromDock: Bool = false
     private(set) var isClosingAllTabs: Bool = false
     private var configuredWindows = NSHashTable<NSWindow>.weakObjects()
+    private var knownCapsuleWindows = NSHashTable<NSWindow>.weakObjects()
     private var closeHookedWindows = NSHashTable<NSWindow>.weakObjects()
+    private var pendingTabRequestID: UInt64 = 0
+    private var idlePurgeTask: Task<Void, Never>?
     
     private override init() {
         super.init()
+    }
+    
+    static func supportsNativeTabbing(_ window: NSWindow) -> Bool {
+        !(window is NSPanel)
+            && !window.isSheet
+            && window.sheetParent == nil
+            && window.parent == nil
+            && window.level == .normal
+            && window.styleMask.contains(.titled)
+            && window.styleMask.contains(.closable)
+            && window.styleMask.contains(.resizable)
+            && !window.styleMask.contains(.utilityWindow)
+            && !window.styleMask.contains(.hudWindow)
+            && !window.styleMask.contains(.nonactivatingPanel)
+            && !window.styleMask.contains(.docModalWindow)
+    }
+    
+    static func isSwiftUIHostedWindow(_ window: NSWindow) -> Bool {
+        if let rawID = window.identifier?.rawValue,
+           rawID.hasPrefix("capsuleWindow") || rawID.hasPrefix("mainWindow") {
+            return true
+        }
+        if let vc = window.contentViewController,
+           NSStringFromClass(type(of: vc)).contains("Hosting") {
+            return true
+        }
+        if let cv = window.contentView,
+           NSStringFromClass(type(of: cv)).contains("Hosting") {
+            return true
+        }
+        return false
+    }
+    
+    func registerCapsuleWindow(_ window: NSWindow) {
+        guard Self.supportsNativeTabbing(window) else { return }
+        cancelIdleMemoryPurge()
+        knownCapsuleWindows.add(window)
+    }
+    
+    func cancelIdleMemoryPurge() {
+        idlePurgeTask?.cancel()
+        idlePurgeTask = nil
+    }
+    
+    func hasAnyVisibleCapsuleWindow() -> Bool {
+        NSApp.windows.contains { win in
+            isManagedCapsuleWindow(win) && (win.isVisible || win.isMiniaturized)
+        }
+    }
+    
+    func scheduleIdleMemoryPurgeIfNoVisibleWindows(delaySeconds: TimeInterval = 0.35) {
+        idlePurgeTask?.cancel()
+        idlePurgeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.idlePurgeTask = nil
+            guard !self.hasAnyVisibleCapsuleWindow() else { return }
+            await WebKitMemoryManager.shared.purgeIdleResources(teardownAllWebViews: true)
+        }
+    }
+    
+    func isManagedCapsuleWindow(_ window: NSWindow) -> Bool {
+        guard Self.supportsNativeTabbing(window) else { return false }
+        return window === mainWindow
+            || knownCapsuleWindows.contains(window)
+            || configuredWindows.contains(window)
+            || window.tabbingIdentifier == "CapsuleBrowserWindow"
+    }
+    
+    func armPendingTabTarget(_ target: NSWindow) {
+        guard Self.supportsNativeTabbing(target) else { return }
+        targetWindowForNewTab = target
+        pendingTabTargetWindow = target
+        pendingTabRequestID &+= 1
+        let requestID = pendingTabRequestID
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self, self.pendingTabRequestID == requestID else { return }
+            self.pendingTabTargetWindow = nil
+        }
+    }
+    
+    func clearPendingTabTarget() {
+        pendingTabRequestID &+= 1
+        pendingTabTargetWindow = nil
+    }
+    
+    func resolveSourceWindow(
+        preferred: NSWindow? = nil,
+        sourceWindowNumber: Int? = nil,
+        excluding excludedWindow: NSWindow? = nil,
+        includeFallbackTarget: Bool = true
+    ) -> NSWindow? {
+        func isValidCandidate(_ candidate: NSWindow?) -> Bool {
+            guard let w = candidate,
+                  w !== excludedWindow,
+                  Self.supportsNativeTabbing(w),
+                  !w.isMiniaturized else {
+                return false
+            }
+            return isManagedCapsuleWindow(w) || Self.isSwiftUIHostedWindow(w)
+        }
+        
+        if isValidCandidate(preferred) {
+            return preferred
+        }
+        if let num = sourceWindowNumber,
+           let win = NSApp.window(withWindowNumber: num),
+           isValidCandidate(win) {
+            return win
+        }
+        if includeFallbackTarget, isValidCandidate(targetWindowForNewTab) {
+            return targetWindowForNewTab
+        }
+        if isValidCandidate(NSApp.keyWindow) {
+            return NSApp.keyWindow
+        }
+        if isValidCandidate(mainWindow) {
+            return mainWindow
+        }
+        if let tagged = NSApp.windows.first(where: {
+            isValidCandidate($0) && $0.isVisible && $0.tabbingIdentifier == "CapsuleBrowserWindow"
+        }) {
+            return tagged
+        }
+        return NSApp.windows.first(where: { isValidCandidate($0) && $0.isVisible })
+    }
+    
+    @discardableResult
+    func mergeWindowIntoTabGroup(_ window: NSWindow, target: NSWindow, targetFrame: NSRect? = nil) -> Bool {
+        guard target !== window,
+              Self.supportsNativeTabbing(window),
+              Self.supportsNativeTabbing(target),
+              window.tabbingMode != .disallowed else {
+            return false
+        }
+        if let targetGroup = target.tabGroup, window.tabGroup === targetGroup {
+            return false
+        }
+        
+        window.animationBehavior = .none
+        target.animationBehavior = .none
+        
+        window.tabbingIdentifier = "CapsuleBrowserWindow"
+        window.tabbingMode = .preferred
+        target.tabbingIdentifier = "CapsuleBrowserWindow"
+        target.tabbingMode = .preferred
+        
+        let resolvedFrame = targetFrame ?? target.frame
+        window.setFrame(resolvedFrame, display: false)
+        if target.frame != resolvedFrame {
+            target.setFrame(resolvedFrame, display: false)
+        }
+        target.addTabbedWindow(window, ordered: .above)
+        
+        if let tg = target.tabGroup {
+            for w in tg.windows where w.frame != resolvedFrame {
+                w.setFrame(resolvedFrame, display: false)
+            }
+            tg.selectedWindow = window
+        }
+        registerCapsuleWindow(window)
+        registerCapsuleWindow(target)
+        return true
     }
     
     func markWindowConfigured(_ window: NSWindow) {
@@ -247,38 +420,32 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     }
     
     func handleNewWindowPresentation(_ window: NSWindow) -> Bool {
-        guard !(window is NSPanel), window.sheetParent == nil else { return false }
-        guard let target = pendingTabTargetWindow ?? targetWindowForNewTab,
-              target !== window,
-              window.tabGroup !== target.tabGroup else {
+        guard let target = pendingTabTargetWindow else { return false }
+        if window === target {
             return false
         }
-        pendingTabTargetWindow = nil
-        targetWindowForNewTab = nil
+        if let targetGroup = target.tabGroup, window.tabGroup === targetGroup {
+            clearPendingTabTarget()
+            return false
+        }
+        guard Self.supportsNativeTabbing(window),
+              window.tabbingMode != .disallowed,
+              Self.isSwiftUIHostedWindow(window),
+              window !== mainWindow,
+              !(window.identifier?.rawValue.hasPrefix("mainWindow") ?? false),
+              !configuredWindows.contains(window),
+              Self.supportsNativeTabbing(target) else {
+            return false
+        }
+        
+        clearPendingTabTarget()
         
         #if DEBUG
         print("[WindowTabbing] Intercepted new window before presentation, merging into target tab group")
         #endif
         
-        window.animationBehavior = .none
-        target.animationBehavior = .none
-        
-        window.tabbingIdentifier = "CapsuleBrowserWindow"
-        window.tabbingMode = .preferred
-        target.tabbingIdentifier = "CapsuleBrowserWindow"
-        target.tabbingMode = .preferred
-        
-        let targetFrame = target.frame
-        window.setFrame(targetFrame, display: false)
-        target.addTabbedWindow(window, ordered: .above)
-        
-        if let tg = target.tabGroup {
-            for w in tg.windows {
-                if w.frame != targetFrame {
-                    w.setFrame(targetFrame, display: false)
-                }
-            }
-            tg.selectedWindow = window
+        guard mergeWindowIntoTabGroup(window, target: target, targetFrame: target.frame) else {
+            return false
         }
         markWindowConfigured(window)
         return true
@@ -303,16 +470,14 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
         let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
         guard mode == .tabs else { return }
+        guard let openWindowAction = openWindowAction else { return }
+        cancelIdleMemoryPurge()
         
-        let targetWin = sourceWindow
-            ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
-            ?? mainWindow
-            ?? NSApp.windows.first(where: { !($0 is NSPanel) && $0.isVisible && !$0.isMiniaturized })
-            
+        let targetWin = resolveSourceWindow(preferred: sourceWindow, includeFallbackTarget: false)
+        
         if let win = targetWin {
             persistWindowSize(from: win)
-            targetWindowForNewTab = win
-            pendingTabTargetWindow = win
+            armPendingTabTarget(win)
         }
         
         let finalPayload: CapsuleWindowPayload
@@ -343,7 +508,7 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
                 sourceFrame: targetWin?.serializedFrame
             )
         }
-        openWindowAction?(finalPayload)
+        openWindowAction(finalPayload)
     }
     
     var savedWindowSize: CGSize {
@@ -355,7 +520,8 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     }
     
     func persistWindowSize(from window: NSWindow) {
-        guard !window.isMiniaturized,
+        guard Self.supportsNativeTabbing(window),
+              !window.isMiniaturized,
               !window.styleMask.contains(.fullScreen) else {
             return
         }
@@ -424,34 +590,60 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         #if DEBUG
         print("[CapsuleClose] closeTab called for window '\(windowToClose.title)' (isMainWindow: \(windowToClose === mainWindow))")
         #endif
+        if windowToClose === pendingTabTargetWindow {
+            clearPendingTabTarget()
+        }
+        if windowToClose === targetWindowForNewTab {
+            targetWindowForNewTab = nil
+        }
+        configuredWindows.remove(windowToClose)
+        knownCapsuleWindows.remove(windowToClose)
+        closeHookedWindows.remove(windowToClose)
         persistWindowSize(from: windowToClose)
         if windowToClose === mainWindow {
             if let dismissAction = mainWindowContentDismissAction {
                 dismissAction()
                 return
             }
-            if let tabGroup = windowToClose.tabGroup, tabGroup.windows.count > 1 {
-                windowToClose.delegate = nil
-                windowToClose.close()
-                return
-            }
+            mainWindow = nil
+            mainWindowContentDismissAction = nil
+            NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: windowToClose)
+            windowToClose.makeFirstResponder(nil)
             windowToClose.delegate = nil
             windowToClose.close()
         } else {
+            windowToClose.makeFirstResponder(nil)
             windowToClose.delegate = nil
             windowToClose.close()
         }
+        scheduleIdleMemoryPurgeIfNoVisibleWindows()
+    }
+    
+    private func activeManagedWindow() -> NSWindow? {
+        if let key = NSApp.keyWindow, isManagedCapsuleWindow(key) {
+            return key
+        }
+        if let main = NSApp.mainWindow, isManagedCapsuleWindow(main) {
+            return main
+        }
+        return mainWindow
     }
     
     func closeActiveTab() {
-        guard let keyWindow = NSApp.keyWindow ?? NSApp.mainWindow ?? mainWindow else { return }
-        let targetTab = keyWindow.tabGroup?.selectedWindow ?? keyWindow
+        if let key = NSApp.keyWindow,
+           !isManagedCapsuleWindow(key),
+           (key.sheetParent != nil || key is NSPanel) {
+            key.performClose(nil)
+            return
+        }
+        guard let active = activeManagedWindow() else { return }
+        let targetTab = active.tabGroup?.selectedWindow ?? active
         closeTab(targetTab)
     }
     
     func closeActiveWindow() {
-        guard let keyWindow = NSApp.keyWindow ?? NSApp.mainWindow ?? mainWindow else { return }
-        closeAllTabsAndMainWindow(startingFrom: keyWindow)
+        guard let active = activeManagedWindow() else { return }
+        closeAllTabsAndMainWindow(startingFrom: active)
     }
     
     func closeAllTabsAndMainWindow(startingFrom window: NSWindow) {
@@ -459,6 +651,8 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         isClosingAllTabs = true
         defer { isClosingAllTabs = false }
         
+        clearPendingTabTarget()
+        targetWindowForNewTab = nil
         persistWindowSize(from: window)
         
         let tabsToClose = window.tabGroup?.windows ?? [window]
@@ -466,24 +660,40 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         print("[CapsuleClose] Closing all tabs and main window (\(tabsToClose.count) window(s))")
         #endif
         for tabWin in tabsToClose where tabWin !== window && tabWin !== mainWindow {
+            configuredWindows.remove(tabWin)
+            knownCapsuleWindows.remove(tabWin)
+            closeHookedWindows.remove(tabWin)
+            tabWin.makeFirstResponder(nil)
             tabWin.delegate = nil
             tabWin.close()
         }
         if let main = mainWindow, main !== window {
             mainWindow = nil
+            mainWindowContentDismissAction = nil
+            configuredWindows.remove(main)
+            knownCapsuleWindows.remove(main)
+            closeHookedWindows.remove(main)
             NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: main)
+            main.makeFirstResponder(nil)
             main.delegate = nil
             main.close()
         }
         if window === mainWindow {
             mainWindow = nil
+            mainWindowContentDismissAction = nil
             NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: window)
         }
+        configuredWindows.remove(window)
+        knownCapsuleWindows.remove(window)
+        closeHookedWindows.remove(window)
+        window.makeFirstResponder(nil)
         window.delegate = nil
         window.close()
+        scheduleIdleMemoryPurgeIfNoVisibleWindows()
     }
     
     func focusMainWindow() {
+        cancelIdleMemoryPurge()
         if let window = mainWindow, window.isVisible {
             if let tabGroup = window.tabGroup, tabGroup.windows.count > 1 {
                 if tabGroup.selectedWindow !== window {
@@ -503,10 +713,16 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     }
     
     func handleDockReopen(hasVisibleWindows flag: Bool) {
+        cancelIdleMemoryPurge()
+        if !UBlockOriginExtensionManager.shared.isLoaded {
+            Task {
+                await UBlockOriginExtensionManager.shared.prepare()
+            }
+        }
         if !flag {
             isReopeningFromDock = true
             // Close any hidden/lingering secondary capsule windows so reopening starts with only the main window
-            for win in NSApp.windows where !(win is NSPanel) && win !== mainWindow {
+            for win in NSApp.windows where isManagedCapsuleWindow(win) && win !== mainWindow {
                 win.delegate = nil
                 win.close()
             }
@@ -549,11 +765,22 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         #if DEBUG
         print("[CapsuleClose] MainWindowTracker windowWillClose: '\(closingWindow.title)' (isMainWindow: \(closingWindow === mainWindow))")
         #endif
+        if closingWindow === pendingTabTargetWindow {
+            clearPendingTabTarget()
+        }
+        if closingWindow === targetWindowForNewTab {
+            targetWindowForNewTab = nil
+        }
+        configuredWindows.remove(closingWindow)
+        knownCapsuleWindows.remove(closingWindow)
+        closeHookedWindows.remove(closingWindow)
         persistWindowSize(from: closingWindow)
         if closingWindow === mainWindow {
             mainWindow = nil
+            mainWindowContentDismissAction = nil
             NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: closingWindow)
         }
+        scheduleIdleMemoryPurgeIfNoVisibleWindows()
     }
 }
 
@@ -614,10 +841,14 @@ struct CapsuleWindowHostView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var cachedAppItem: WebAppItem?
     @State private var currentDomainTitle: String = ""
-    @State private var hostingWindow: NSWindow?
+    @State private var hostingWindowBox = WeakWindowBox()
     @State private var hasConfiguredWindow = false
     @State private var isWindowClosed = false
     @State private var windowCloseObserver: NSObjectProtocol?
+    
+    private var hostingWindow: NSWindow? {
+        hostingWindowBox.window
+    }
     
     private func lookupAppItem() -> WebAppItem {
         if let appId = payload.appId {
@@ -663,17 +894,27 @@ struct CapsuleWindowHostView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .navigationTitle(currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle)
                 .onAppear {
+                    MainWindowTracker.shared.cancelIdleMemoryPurge()
+                    if !UBlockOriginExtensionManager.shared.isLoaded {
+                        Task {
+                            await UBlockOriginExtensionManager.shared.prepare()
+                        }
+                    }
                     if currentDomainTitle.isEmpty {
                         currentDomainTitle = initialDomainTitle
                     }
                     if cachedAppItem == nil {
                         cachedAppItem = lookupAppItem()
                     }
-                    MainWindowTracker.shared.openWindowAction = { payload in
-                        openWindow(id: "capsuleWindow", value: payload)
+                    if MainWindowTracker.shared.openWindowAction == nil {
+                        MainWindowTracker.shared.openWindowAction = { payload in
+                            openWindow(id: "capsuleWindow", value: payload)
+                        }
                     }
-                    MainWindowTracker.shared.openMainWindowAction = {
-                        openWindow(id: "mainWindow")
+                    if MainWindowTracker.shared.openMainWindowAction == nil {
+                        MainWindowTracker.shared.openMainWindowAction = {
+                            openWindow(id: "mainWindow")
+                        }
                     }
                 }
                 .onDisappear {
@@ -687,6 +928,7 @@ struct CapsuleWindowHostView: View {
         .background(
             WindowAccessor(
                 onWindowSync: { window in
+                    MainWindowTracker.shared.registerCapsuleWindow(window)
                     if payload.openAsTab {
                         window.animationBehavior = .none
                         window.tabbingMode = .preferred
@@ -696,37 +938,29 @@ struct CapsuleWindowHostView: View {
                         window.title = titleToSet
                         window.tab.title = titleToSet
                         
-                        let sourceWindowFromPayload = payload.sourceWindowNumber.flatMap { NSApp.window(withWindowNumber: $0) }
-                        let keyWindow = NSApp.keyWindow
-                        let targetWindow: NSWindow? = sourceWindowFromPayload
-                            ?? MainWindowTracker.shared.targetWindowForNewTab
-                            ?? (keyWindow !== window && !(keyWindow is NSPanel) && !(keyWindow?.isMiniaturized ?? true) ? keyWindow : nil)
-                            ?? (MainWindowTracker.shared.mainWindow !== window ? MainWindowTracker.shared.mainWindow : nil)
-                            ?? NSApp.windows.first(where: {
-                                $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel) && $0.tabbingIdentifier == "CapsuleBrowserWindow"
-                            }) ?? NSApp.windows.first(where: {
-                                $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel)
-                            })
+                        let targetWindow = MainWindowTracker.shared.resolveSourceWindow(
+                            sourceWindowNumber: payload.sourceWindowNumber,
+                            excluding: window,
+                            includeFallbackTarget: true
+                        )
                         
                         let targetFrame = payload.sourceFrameRect
                             ?? targetWindow?.frame
                             ?? (window.tabGroup?.windows.first(where: { $0 !== window })?.frame)
                             ?? MainWindowTracker.shared.savedWindowSizeRect(for: window)
                         
-                        if let target = targetWindow, target !== window, window.tabGroup !== target.tabGroup {
-                            window.setFrame(targetFrame, display: false)
-                            target.setFrame(targetFrame, display: false)
-                            target.addTabbedWindow(window, ordered: .above)
-                            if let tg = target.tabGroup {
-                                for w in tg.windows {
-                                    if w.frame != targetFrame {
-                                        w.setFrame(targetFrame, display: false)
-                                    }
-                                }
-                                tg.selectedWindow = window
+                        if let target = targetWindow, target !== window {
+                            let merged = MainWindowTracker.shared.mergeWindowIntoTabGroup(
+                                window,
+                                target: target,
+                                targetFrame: targetFrame
+                            )
+                            if merged || (target.tabGroup != nil && window.tabGroup === target.tabGroup) {
+                                MainWindowTracker.shared.clearPendingTabTarget()
                             }
                         }
                     } else {
+                        window.tabbingMode = .disallowed
                         if let sourceRect = payload.sourceFrameRect {
                             var frame = window.frame
                             frame.size = sourceRect.size
@@ -735,8 +969,9 @@ struct CapsuleWindowHostView: View {
                     }
                 },
                 onWindow: { window in
-                    if hostingWindow !== window {
-                        hostingWindow = window
+                    MainWindowTracker.shared.registerCapsuleWindow(window)
+                    if hostingWindowBox.window !== window {
+                        hostingWindowBox.window = window
                     }
                     let titleToSet = currentDomainTitle.isEmpty ? initialDomainTitle : currentDomainTitle
                     if window.title != titleToSet {
@@ -765,25 +1000,22 @@ struct CapsuleWindowHostView: View {
                             NotificationCenter.default.removeObserver(obs)
                             windowCloseObserver = nil
                         }
-                        hostingWindow = nil
+                        hostingWindowBox.window = nil
+                        cachedAppItem = nil
                         isWindowClosed = true
                     }
                     
                     if payload.openAsTab {
+                        MainWindowTracker.shared.clearPendingTabTarget()
                         window.tabbingMode = .preferred
                         window.tabbingIdentifier = "CapsuleBrowserWindow"
                         window.delegate = MainWindowTracker.shared
                         
-                        let sourceWindowFromPayload = payload.sourceWindowNumber.flatMap { NSApp.window(withWindowNumber: $0) }
-                        let keyWindow = NSApp.keyWindow
-                        let targetWindow: NSWindow? = sourceWindowFromPayload
-                            ?? (keyWindow !== window && !(keyWindow is NSPanel) && !(keyWindow?.isMiniaturized ?? true) ? keyWindow : nil)
-                            ?? (MainWindowTracker.shared.mainWindow !== window ? MainWindowTracker.shared.mainWindow : nil)
-                            ?? NSApp.windows.first(where: {
-                                $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel) && $0.tabbingIdentifier == "CapsuleBrowserWindow"
-                            }) ?? NSApp.windows.first(where: {
-                                $0 !== window && $0.isVisible && !$0.isMiniaturized && !($0 is NSPanel)
-                            })
+                        let targetWindow = MainWindowTracker.shared.resolveSourceWindow(
+                            sourceWindowNumber: payload.sourceWindowNumber,
+                            excluding: window,
+                            includeFallbackTarget: false
+                        )
                         
                         let targetFrame = payload.sourceFrameRect
                             ?? targetWindow?.frame
@@ -800,16 +1032,12 @@ struct CapsuleWindowHostView: View {
                             window.makeKeyAndOrderFront(nil)
                             window.makeFirstResponder(window.contentView)
                         } else if let target = targetWindow, target !== window {
-                            window.setFrame(targetFrame, display: false)
-                            target.setFrame(targetFrame, display: false)
-                            target.addTabbedWindow(window, ordered: .above)
-                            if let tg = target.tabGroup {
-                                for w in tg.windows {
-                                    if w.frame != targetFrame {
-                                        w.setFrame(targetFrame, display: false)
-                                    }
-                                }
-                                tg.selectedWindow = window
+                            if !MainWindowTracker.shared.mergeWindowIntoTabGroup(
+                                window,
+                                target: target,
+                                targetFrame: targetFrame
+                            ) {
+                                window.setFrame(targetFrame, display: false)
                             }
                             window.makeKeyAndOrderFront(nil)
                             window.makeFirstResponder(window.contentView)

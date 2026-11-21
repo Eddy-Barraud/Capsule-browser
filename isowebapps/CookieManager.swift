@@ -30,6 +30,12 @@ final class IsolatedCookieManager {
     /// Coalesced debounced persistence tasks keyed by `WebAppItem.id`.
     private var pendingPersistTasks: [UUID: Task<Void, Never>] = [:]
     
+    /// Immediate flush closures matching scheduled debounced saves, keyed by `WebAppItem.id`.
+    private var pendingFlushActions: [UUID: @MainActor () async -> Void] = [:]
+    
+    /// In-flight background flush tasks keyed by `WebAppItem.id` so idle purge can await completion.
+    private var inFlightPersistTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
+    
     /// Latest pending URL string to persist for a `WebAppItem.id`.
     private var pendingURLByItem: [UUID: String] = [:]
     
@@ -208,11 +214,66 @@ final class IsolatedCookieManager {
         
         pendingPersistTasks[item.id]?.cancel()
         let itemId = item.id
+        pendingFlushActions[itemId] = { @MainActor [weak self] in
+            await self?.persistCookiesNow(for: item, from: cookieStore, context: context)
+        }
         pendingPersistTasks[itemId] = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
             await self?.persistCookiesNow(for: item, from: cookieStore, context: context)
         }
+    }
+    
+    /// Launches a tracked background flush for a closing/tearing-down WebView so idle purges can await it.
+    func flushPendingSaveInBackground(
+        for item: WebAppItem,
+        from cookieStore: WKHTTPCookieStore,
+        context: ModelContext,
+        lastOpenedURL: String? = nil
+    ) {
+        guard item.modelContext != nil else { return }
+        let itemId = item.id
+        let previousTask = inFlightPersistTasks[itemId]?.task
+        let token = UUID()
+        let task = Task { @MainActor [weak self] in
+            await previousTask?.value
+            await self?.flushPendingSaveIfNeeded(
+                for: item,
+                from: cookieStore,
+                context: context,
+                lastOpenedURL: lastOpenedURL
+            )
+            if self?.inFlightPersistTasks[itemId]?.token == token {
+                self?.inFlightPersistTasks.removeValue(forKey: itemId)
+            }
+        }
+        inFlightPersistTasks[itemId] = (token: token, task: task)
+    }
+    
+    /// Flushes all scheduled debounced saves and awaits any in-flight cookie persistence tasks.
+    func flushAllPendingSaves() async {
+        for (_, task) in pendingPersistTasks {
+            task.cancel()
+        }
+        pendingPersistTasks.removeAll()
+        
+        let actions = Array(pendingFlushActions.values)
+        pendingFlushActions.removeAll()
+        for action in actions {
+            await action()
+        }
+        
+        let activeTasks = inFlightPersistTasks.values.map(\.task)
+        for task in activeTasks {
+            await task.value
+        }
+    }
+    
+    /// Releases in-memory cookie diff caches after pending saves are flushed while preserving `restoredItemIDsByStore`.
+    func releaseInMemoryCaches() {
+        lastSavedCookiesByItem.removeAll(keepingCapacity: false)
+        lastSavedCookiesByStore.removeAll(keepingCapacity: false)
+        pendingURLByItem.removeAll(keepingCapacity: false)
     }
     
     /// Flushes pending cookies and URL metadata only if a debounced save is currently scheduled or the URL changed.
@@ -241,6 +302,7 @@ final class IsolatedCookieManager {
     ) async {
         pendingPersistTasks[item.id]?.cancel()
         pendingPersistTasks.removeValue(forKey: item.id)
+        pendingFlushActions.removeValue(forKey: item.id)
         
         guard item.modelContext != nil else { return }
         let storeId = item.group?.id ?? item.id
@@ -315,6 +377,7 @@ final class IsolatedCookieManager {
         
         pendingPersistTasks[item.id]?.cancel()
         pendingPersistTasks.removeValue(forKey: item.id)
+        pendingFlushActions.removeValue(forKey: item.id)
         pendingURLByItem.removeValue(forKey: item.id)
         lastSavedCookiesByItem.removeValue(forKey: item.id)
         let storeId = item.group?.id ?? item.id
@@ -372,6 +435,7 @@ final class IsolatedCookieManager {
         for item in items {
             pendingPersistTasks[item.id]?.cancel()
             pendingPersistTasks.removeValue(forKey: item.id)
+            pendingFlushActions.removeValue(forKey: item.id)
             pendingURLByItem.removeValue(forKey: item.id)
             lastSavedCookiesByItem.removeValue(forKey: item.id)
             item.isolatedCookiesData = nil

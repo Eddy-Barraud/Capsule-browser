@@ -14,6 +14,9 @@ import SwiftUI
 import SwiftData
 import WebKit
 import UniformTypeIdentifiers
+#if os(iOS)
+import UIKit
+#endif
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
@@ -44,8 +47,9 @@ struct ContentView: View {
     #if os(macOS)
     @AppStorage("windowPresentationMode") private var windowPresentationMode: WindowPresentationMode = .singleWindow
     @Environment(\.openWindow) private var openWindow
-    @State private var hostingWindow: NSWindow?
+    @State private var hostingWindowBox = WeakWindowBox()
     @State private var hasConfiguredMainWindow = false
+    private var hostingWindow: NSWindow? { hostingWindowBox.window }
     #endif
     @State private var activeDomainTitle: String = ""
     #if DEBUG
@@ -113,6 +117,11 @@ struct ContentView: View {
             await UBlockOriginExtensionManager.shared.prepare()
         }
         .onAppear {
+            if !UBlockOriginExtensionManager.shared.isLoaded {
+                Task {
+                    await UBlockOriginExtensionManager.shared.prepare()
+                }
+            }
             _ = CloudSyncManager.shared.deduplicateStore(in: modelContext)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 withAnimation {
@@ -120,6 +129,7 @@ struct ContentView: View {
                 }
             }
             #if os(macOS)
+            MainWindowTracker.shared.cancelIdleMemoryPurge()
             MainWindowTracker.shared.openWindowAction = { payload in
                 openWindow(id: "capsuleWindow", value: payload)
             }
@@ -181,6 +191,10 @@ struct ContentView: View {
                 hostingWindow?.title = "Capsule Browser"
                 hostingWindow?.tab.title = "Capsule Browser"
             }
+            if let closedWindow, closedWindow === hostingWindow {
+                hostingWindowBox.window = nil
+                hasConfiguredMainWindow = false
+            }
         }
         .onChange(of: selectedWebApp) { _, newApp in
             if newApp != nil {
@@ -194,6 +208,12 @@ struct ContentView: View {
                 }
             } else {
                 MainWindowTracker.shared.mainWindowContentDismissAction = nil
+            }
+        }
+        #else
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            Task {
+                await WebKitMemoryManager.shared.purgeIdleResources(teardownAllWebViews: false)
             }
         }
         #endif
@@ -791,11 +811,47 @@ struct ContentView: View {
             )
             #if os(macOS)
             .background(
-                WindowAccessor { window in
-                    if hostingWindow !== window {
-                        hostingWindow = window
-                    }
-                    guard !hasConfiguredMainWindow else {
+                WindowAccessor(
+                    onWindowSync: { window in
+                        MainWindowTracker.shared.registerCapsuleWindow(window)
+                    },
+                    onWindow: { window in
+                        MainWindowTracker.shared.registerCapsuleWindow(window)
+                        if hostingWindowBox.window !== window {
+                            hostingWindowBox.window = window
+                        }
+                        guard !hasConfiguredMainWindow else {
+                            if selectedWebApp == nil {
+                                if window.title != "Capsule Browser" {
+                                    window.title = "Capsule Browser"
+                                }
+                                if window.tab.title != "Capsule Browser" {
+                                    window.tab.title = "Capsule Browser"
+                                }
+                            }
+                            return
+                        }
+                        hasConfiguredMainWindow = true
+                        let tracker = MainWindowTracker.shared
+                        let currentMain = tracker.mainWindow
+                        if currentMain == nil || currentMain === window || !(currentMain?.isVisible ?? false) || tracker.isReopeningFromDock {
+                            tracker.mainWindow = window
+                            tracker.registerCapsuleWindow(window)
+                            window.delegate = tracker
+                            tracker.applySavedSizeIfNeeded(to: window)
+                            tracker.persistWindowSize(from: window)
+                        } else if currentMain !== window {
+                            // Prevent duplicate main ContentView windows restored or spawned by macOS on reopen
+                            window.delegate = nil
+                            window.close()
+                            return
+                        }
+                        window.tabbingIdentifier = "CapsuleBrowserWindow"
+                        if windowPresentationMode == .tabs {
+                            window.tabbingMode = .preferred
+                        } else {
+                            window.tabbingMode = .disallowed
+                        }
                         if selectedWebApp == nil {
                             if window.title != "Capsule Browser" {
                                 window.title = "Capsule Browser"
@@ -804,37 +860,8 @@ struct ContentView: View {
                                 window.tab.title = "Capsule Browser"
                             }
                         }
-                        return
                     }
-                    hasConfiguredMainWindow = true
-                    let tracker = MainWindowTracker.shared
-                    let currentMain = tracker.mainWindow
-                    if currentMain == nil || currentMain === window || !(currentMain?.isVisible ?? false) || tracker.isReopeningFromDock {
-                        tracker.mainWindow = window
-                        window.delegate = tracker
-                        tracker.applySavedSizeIfNeeded(to: window)
-                        tracker.persistWindowSize(from: window)
-                    } else if currentMain !== window {
-                        // Prevent duplicate main ContentView windows restored or spawned by macOS on reopen
-                        window.delegate = nil
-                        window.close()
-                        return
-                    }
-                    window.tabbingIdentifier = "CapsuleBrowserWindow"
-                    if windowPresentationMode == .tabs {
-                        window.tabbingMode = .preferred
-                    } else {
-                        window.tabbingMode = .disallowed
-                    }
-                    if selectedWebApp == nil {
-                        if window.title != "Capsule Browser" {
-                            window.title = "Capsule Browser"
-                        }
-                        if window.tab.title != "Capsule Browser" {
-                            window.tab.title = "Capsule Browser"
-                        }
-                    }
-                }
+                )
             )
             #endif
         }
@@ -969,9 +996,10 @@ struct ContentView: View {
                 selectedWebApp = app
             }
         case .separateWindows:
-            let sourceWin = hostingWindow
-                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
-                ?? MainWindowTracker.shared.mainWindow
+            let sourceWin = MainWindowTracker.shared.resolveSourceWindow(
+                preferred: hostingWindow,
+                includeFallbackTarget: false
+            )
             if let win = sourceWin {
                 MainWindowTracker.shared.persistWindowSize(from: win)
             }
@@ -986,13 +1014,12 @@ struct ContentView: View {
             )
             openWindow(id: "capsuleWindow", value: payload)
         case .tabs:
-            let sourceWin = hostingWindow
-                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
-                ?? MainWindowTracker.shared.targetWindowForNewTab
-                ?? MainWindowTracker.shared.mainWindow
+            let sourceWin = MainWindowTracker.shared.resolveSourceWindow(
+                preferred: hostingWindow,
+                includeFallbackTarget: true
+            )
             if let win = sourceWin {
                 MainWindowTracker.shared.persistWindowSize(from: win)
-                MainWindowTracker.shared.targetWindowForNewTab = win
             }
             let payload = CapsuleWindowPayload(
                 appId: app.id,
@@ -1006,6 +1033,9 @@ struct ContentView: View {
             if MainWindowTracker.shared.openWindowAction != nil {
                 MainWindowTracker.shared.openNewTab(with: payload, from: sourceWin)
             } else {
+                if let win = sourceWin {
+                    MainWindowTracker.shared.armPendingTabTarget(win)
+                }
                 openWindow(id: "capsuleWindow", value: payload)
             }
         }
@@ -1027,9 +1057,10 @@ struct ContentView: View {
                 selectedWebApp = ephemeralApp
             }
         case .separateWindows:
-            let sourceWin = hostingWindow
-                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
-                ?? MainWindowTracker.shared.mainWindow
+            let sourceWin = MainWindowTracker.shared.resolveSourceWindow(
+                preferred: hostingWindow,
+                includeFallbackTarget: false
+            )
             if let win = sourceWin {
                 MainWindowTracker.shared.persistWindowSize(from: win)
             }
@@ -1044,13 +1075,12 @@ struct ContentView: View {
             )
             openWindow(id: "capsuleWindow", value: payload)
         case .tabs:
-            let sourceWin = hostingWindow
-                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
-                ?? MainWindowTracker.shared.targetWindowForNewTab
-                ?? MainWindowTracker.shared.mainWindow
+            let sourceWin = MainWindowTracker.shared.resolveSourceWindow(
+                preferred: hostingWindow,
+                includeFallbackTarget: true
+            )
             if let win = sourceWin {
                 MainWindowTracker.shared.persistWindowSize(from: win)
-                MainWindowTracker.shared.targetWindowForNewTab = win
             }
             let payload = CapsuleWindowPayload(
                 appId: nil,
@@ -1064,6 +1094,9 @@ struct ContentView: View {
             if MainWindowTracker.shared.openWindowAction != nil {
                 MainWindowTracker.shared.openNewTab(with: payload, from: sourceWin)
             } else {
+                if let win = sourceWin {
+                    MainWindowTracker.shared.armPendingTabTarget(win)
+                }
                 openWindow(id: "capsuleWindow", value: payload)
             }
         }

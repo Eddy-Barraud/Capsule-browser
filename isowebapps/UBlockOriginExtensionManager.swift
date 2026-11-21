@@ -17,14 +17,15 @@ import Combine
 
 /// Loads uBlock Origin Lite DNR rules, cosmetic filter scripts, and WebKit content blocker rules
 /// to provide full ad-blocking and privacy protection inside WKWebView.
+@MainActor
 public final class UBlockOriginExtensionManager: ObservableObject {
     public static let shared = UBlockOriginExtensionManager()
     
     /// Notification broadcast when rules and scripts are recompiled
-    public static let didUpdateRulesNotification = Notification.Name("UBlockOriginDidUpdateRulesNotification")
+    public nonisolated static let didUpdateRulesNotification = Notification.Name("UBlockOriginDidUpdateRulesNotification")
     
     /// Notification broadcast when a specific capsule's uBlock toggle is updated in settings
-    public static let capsuleUBlockSettingChangedNotification = Notification.Name("UBlockOriginCapsuleUBlockSettingChangedNotification")
+    public nonisolated static let capsuleUBlockSettingChangedNotification = Notification.Name("UBlockOriginCapsuleUBlockSettingChangedNotification")
     
     /// Array of actively compiled WebKit native rule lists
     private var compiledRuleLists: [WKContentRuleList] = []
@@ -33,28 +34,80 @@ public final class UBlockOriginExtensionManager: ObservableObject {
     private var cosmeticUserScripts: [WKUserScript] = []
     
     private var isInitialized = false
+    private var loadTask: Task<Void, Never>?
+    private var loadGeneration: UInt64 = 0
     @Published public private(set) var activeRulesCount: Int = 0
     @Published public private(set) var activeListsCount: Int = 0
     
+    public var isLoaded: Bool {
+        isInitialized
+    }
+    
+    public var hasInMemoryCaches: Bool {
+        !compiledRuleLists.isEmpty || !cosmeticUserScripts.isEmpty
+    }
+    
     private init() {}
     
-    /// Prepares content blocking rule lists and user scripts asynchronously during app startup
+    /// Prepares content blocking rule lists and user scripts asynchronously during app startup or reopen
     public func prepare() async {
-        guard !isInitialized else { return }
+        if isInitialized { return }
+        if let existing = loadTask {
+            await existing.value
+            return
+        }
+        
+        loadGeneration &+= 1
+        let expectedGeneration = loadGeneration
         let currentCompilerVersion = 2
         let savedCompilerVersion = UserDefaults.standard.integer(forKey: "ublock_compiler_version")
         let needsForcedRecompile = (savedCompilerVersion < currentCompilerVersion)
-        await loadRulesAndScriptsAsync(forceRecompile: needsForcedRecompile)
-        if needsForcedRecompile {
-            UserDefaults.standard.set(currentCompilerVersion, forKey: "ublock_compiler_version")
+        
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.loadRulesAndScriptsAsync(
+                forceRecompile: needsForcedRecompile,
+                expectedGeneration: expectedGeneration
+            )
+            guard self.loadGeneration == expectedGeneration, !Task.isCancelled else { return }
+            if needsForcedRecompile {
+                UserDefaults.standard.set(currentCompilerVersion, forKey: "ublock_compiler_version")
+            }
+            self.isInitialized = true
         }
-        isInitialized = true
+        loadTask = task
+        await task.value
+        if loadGeneration == expectedGeneration {
+            loadTask = nil
+        }
     }
     
     /// Recompiles rule lists dynamically based on updated user settings from the settings view
     public func recompile() async {
-        await loadRulesAndScriptsAsync(forceRecompile: true)
+        loadTask?.cancel()
+        loadTask = nil
+        loadGeneration &+= 1
+        let expectedGeneration = loadGeneration
+        isInitialized = false
+        
+        await loadRulesAndScriptsAsync(forceRecompile: true, expectedGeneration: expectedGeneration)
+        guard loadGeneration == expectedGeneration, !Task.isCancelled else { return }
+        isInitialized = true
         NotificationCenter.default.post(name: Self.didUpdateRulesNotification, object: nil)
+    }
+    
+    /// Releases in-memory compiled rule lists and user scripts when no web capsules are active.
+    /// Keeps `activeRulesCount` and `activeListsCount` intact so Settings UI remains accurate.
+    public func releaseInMemoryCaches() {
+        loadGeneration &+= 1
+        loadTask?.cancel()
+        loadTask = nil
+        compiledRuleLists.removeAll(keepingCapacity: false)
+        cosmeticUserScripts.removeAll(keepingCapacity: false)
+        isInitialized = false
+        #if DEBUG
+        print("[Memory] UBlockOriginExtensionManager released in-memory rule lists and user scripts")
+        #endif
     }
     
     /// Applies active uBlock Origin rules and scripts to a `WKWebViewConfiguration`
@@ -81,17 +134,16 @@ public final class UBlockOriginExtensionManager: ObservableObject {
     }
     
     /// Loads enabled rulesets from bundle/symlinks, converts them, and compiles them in parallel
-    private func loadRulesAndScriptsAsync(forceRecompile: Bool = false) async {
+    private func loadRulesAndScriptsAsync(forceRecompile: Bool = false, expectedGeneration: UInt64) async {
         let defaults = UserDefaults.standard
         let masterEnabled = defaults.object(forKey: "ublock_master_enabled") as? Bool ?? true
         
         guard masterEnabled else {
-            await MainActor.run {
-                self.compiledRuleLists = []
-                self.cosmeticUserScripts = []
-                self.activeRulesCount = 0
-                self.activeListsCount = 0
-            }
+            guard loadGeneration == expectedGeneration, !Task.isCancelled else { return }
+            self.compiledRuleLists = []
+            self.cosmeticUserScripts = []
+            self.activeRulesCount = 0
+            self.activeListsCount = 0
             #if DEBUG
             print("[UBlockOriginExtensionManager] uBlock is master-disabled: purged all rules and scripts.")
             #endif
@@ -214,11 +266,10 @@ public final class UBlockOriginExtensionManager: ObservableObject {
         }
         
         
-        await MainActor.run {
-            self.compiledRuleLists = newCompiledLists
-            self.activeRulesCount = totalRuleCount
-            self.activeListsCount = newCompiledLists.count
-        }
+        guard loadGeneration == expectedGeneration, !Task.isCancelled else { return }
+        self.compiledRuleLists = newCompiledLists
+        self.activeRulesCount = totalRuleCount
+        self.activeListsCount = newCompiledLists.count
         
         #if DEBUG
         print("[UBlockOriginExtensionManager] Total active rule lists: \(newCompiledLists.count), total rules active: \(totalRuleCount)")
@@ -326,6 +377,7 @@ public final class UBlockOriginExtensionManager: ObservableObject {
             scripts.append(genericScript)
         }
         
+        guard loadGeneration == expectedGeneration, !Task.isCancelled else { return }
         self.cosmeticUserScripts = scripts
         #if DEBUG
         print("[UBlockOriginExtensionManager] Total active user scripts: \(scripts.count)")

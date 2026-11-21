@@ -34,6 +34,19 @@ class WebViewNavigationState: ObservableObject {
     var onOpenSafariReader: ((URL) -> Void)?
     var onCaptureFirstPagePDFText: (() async throws -> (title: String, url: String, text: String))?
     var onOpenNewWindowOrTab: ((URL) -> Void)?
+    
+    func clearCallbacks() {
+        onGoBack = nil
+        onGoForward = nil
+        onReload = nil
+        onLoadURL = nil
+        onStopLoading = nil
+        onToggleUBlock = nil
+        onOpenSafari = nil
+        onOpenSafariReader = nil
+        onCaptureFirstPagePDFText = nil
+        onOpenNewWindowOrTab = nil
+    }
 }
 
 struct WebAppContainerView: View {
@@ -45,7 +58,8 @@ struct WebAppContainerView: View {
     
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
-    @State private var hostingWindow: NSWindow?
+    @State private var hostingWindowBox = WeakWindowBox()
+    private var hostingWindow: NSWindow? { hostingWindowBox.window }
     #endif
     
     @Environment(\.modelContext) private var modelContext
@@ -171,8 +185,10 @@ struct WebAppContainerView: View {
                 handleOpenNewWindowOrTab(url: url)
             }
             #if os(macOS)
-            MainWindowTracker.shared.openWindowAction = { payload in
-                openWindow(id: "capsuleWindow", value: payload)
+            if MainWindowTracker.shared.openWindowAction == nil {
+                MainWindowTracker.shared.openWindowAction = { payload in
+                    openWindow(id: "capsuleWindow", value: payload)
+                }
             }
             #endif
         }
@@ -199,6 +215,9 @@ struct WebAppContainerView: View {
                 return
             }
             summaryTask?.cancel()
+            summaryText = ""
+            summaryErrorMessage = nil
+            isGeneratingSummary = false
             navigationState.onStopLoading?()
         }
         .sheet(isPresented: $isShowingAddSheet) {
@@ -328,6 +347,9 @@ struct WebAppContainerView: View {
         }
         .onDisappear {
             summaryTask?.cancel()
+            summaryText = ""
+            summaryErrorMessage = nil
+            isGeneratingSummary = false
             navigationState.onStopLoading?()
         }
         .sheet(isPresented: $isShowingAddSheet) {
@@ -350,8 +372,8 @@ struct WebAppContainerView: View {
         #if os(macOS)
         .background(
             WindowAccessor { window in
-                if hostingWindow !== window {
-                    hostingWindow = window
+                if hostingWindowBox.window !== window {
+                    hostingWindowBox.window = window
                 }
                 if window.title != activeDomainTitle {
                     window.title = activeDomainTitle
@@ -374,13 +396,12 @@ struct WebAppContainerView: View {
         
         switch mode {
         case .tabs:
-            let sourceWin = hostingWindow
-                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
-                ?? MainWindowTracker.shared.targetWindowForNewTab
-                ?? MainWindowTracker.shared.mainWindow
+            let sourceWin = MainWindowTracker.shared.resolveSourceWindow(
+                preferred: hostingWindow,
+                includeFallbackTarget: true
+            )
             if let win = sourceWin {
                 MainWindowTracker.shared.persistWindowSize(from: win)
-                MainWindowTracker.shared.targetWindowForNewTab = win
             }
             let payload = CapsuleWindowPayload(
                 appId: appItem.modelContext != nil ? appItem.id : nil,
@@ -394,12 +415,16 @@ struct WebAppContainerView: View {
             if MainWindowTracker.shared.openWindowAction != nil {
                 MainWindowTracker.shared.openNewTab(with: payload, from: sourceWin)
             } else {
+                if let win = sourceWin {
+                    MainWindowTracker.shared.armPendingTabTarget(win)
+                }
                 openWindow(id: "capsuleWindow", value: payload)
             }
         case .separateWindows:
-            let sourceWin = hostingWindow
-                ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel) && !(NSApp.keyWindow?.isMiniaturized ?? true) ? NSApp.keyWindow : nil)
-                ?? MainWindowTracker.shared.mainWindow
+            let sourceWin = MainWindowTracker.shared.resolveSourceWindow(
+                preferred: hostingWindow,
+                includeFallbackTarget: false
+            )
             if let win = sourceWin {
                 MainWindowTracker.shared.persistWindowSize(from: win)
             }

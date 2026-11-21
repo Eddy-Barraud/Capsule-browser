@@ -17,6 +17,108 @@ import PDFKit
 #if os(iOS)
 import SafariServices
 #endif
+
+@MainActor
+final class WebKitMemoryManager {
+    static let shared = WebKitMemoryManager()
+    
+    private var activeWebViews = NSHashTable<WKWebView>.weakObjects()
+    private var tornDownWebViews = NSHashTable<WKWebView>.weakObjects()
+    private var activeDataStores = NSHashTable<WKWebsiteDataStore>.weakObjects()
+    
+    private init() {}
+    
+    var liveWebViewCount: Int {
+        activeWebViews.allObjects.count
+    }
+    
+    func register(webView: WKWebView) {
+        activeWebViews.add(webView)
+        activeDataStores.add(webView.configuration.websiteDataStore)
+    }
+    
+    func isTornDown(_ webView: WKWebView) -> Bool {
+        tornDownWebViews.contains(webView)
+    }
+    
+    func teardownWebView(_ webView: WKWebView, purgeMemoryCache: Bool = true) {
+        guard !tornDownWebViews.contains(webView) else { return }
+        tornDownWebViews.add(webView)
+        activeWebViews.remove(webView)
+        
+        webView.stopLoading()
+        webView.pauseAllMediaPlayback(completionHandler: nil)
+        webView.closeAllMediaPresentations(completionHandler: nil)
+        
+        #if os(macOS)
+        webView.setAllMediaPlaybackSuspended(true)
+        if let isolatedWV = webView as? IsolatedWKWebView {
+            isolatedWV.cleanup()
+        }
+        if let window = webView.window,
+           let responderView = window.firstResponder as? NSView,
+           responderView === webView || responderView.isDescendant(of: webView) {
+            window.makeFirstResponder(nil)
+        }
+        #endif
+        
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        
+        let controller = webView.configuration.userContentController
+        controller.removeAllContentRuleLists()
+        controller.removeAllUserScripts()
+        controller.removeAllScriptMessageHandlers()
+        
+        let dataStore = webView.configuration.websiteDataStore
+        activeDataStores.add(dataStore)
+        webView.removeFromSuperview()
+        
+        if purgeMemoryCache {
+            dataStore.removeData(ofTypes: [WKWebsiteDataTypeMemoryCache], modifiedSince: .distantPast) {}
+        }
+    }
+    
+    func purgeIdleResources(teardownAllWebViews: Bool) async {
+        await IsolatedCookieManager.shared.flushAllPendingSaves()
+        
+        if teardownAllWebViews {
+            for webView in activeWebViews.allObjects {
+                teardownWebView(webView, purgeMemoryCache: false)
+            }
+            activeWebViews.removeAllObjects()
+        }
+        
+        var seenStores = Set<ObjectIdentifier>()
+        var storesToPurge: [WKWebsiteDataStore] = []
+        for store in activeDataStores.allObjects {
+            let id = ObjectIdentifier(store)
+            if seenStores.insert(id).inserted {
+                storesToPurge.append(store)
+            }
+        }
+        let defaultStore = WKWebsiteDataStore.default()
+        if seenStores.insert(ObjectIdentifier(defaultStore)).inserted {
+            storesToPurge.append(defaultStore)
+        }
+        
+        for store in storesToPurge {
+            await store.removeData(ofTypes: [WKWebsiteDataTypeMemoryCache], modifiedSince: .distantPast)
+        }
+        if teardownAllWebViews {
+            activeDataStores.removeAllObjects()
+        }
+        
+        UBlockOriginExtensionManager.shared.releaseInMemoryCaches()
+        URLCache.shared.removeAllCachedResponses()
+        IsolatedCookieManager.shared.releaseInMemoryCaches()
+        
+        #if DEBUG
+        print("[Memory] Purged idle WebKit caches (teardownAllWebViews: \(teardownAllWebViews), stores: \(storesToPurge.count), remainingLiveWebViews: \(liveWebViewCount))")
+        #endif
+    }
+}
+
 #if os(iOS)
 
 struct IsolatedWebViewRepresentable: UIViewRepresentable {
@@ -43,11 +145,10 @@ struct IsolatedWebViewRepresentable: UIViewRepresentable {
     
     static func dismantleUIView(_ uiView: WKWebView, coordinator: WebViewCoordinator) {
         #if DEBUG
-        print("[CapsuleClose] Dismantling UIView for capsule '\(coordinator.appItem.name)' and stopping webView loading")
+        print("[CapsuleClose] Dismantling UIView for capsule '\(coordinator.appItem.name)' and tearing down webView")
         #endif
-        uiView.stopLoading()
-        uiView.loadHTMLString("", baseURL: nil)
         coordinator.cleanup()
+        WebKitMemoryManager.shared.teardownWebView(uiView)
     }
 }
 #else
@@ -121,19 +222,15 @@ class IsolatedWKWebView: WKWebView {
         
         // Immediately tear down the webView when its hosting NSWindow or tab is closed
         let closeObs = nc.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
-            guard let self = self, !self.isClosedOrDismantled else { return }
-            self.isClosedOrDismantled = true
-            self.sleepWakeWorkItem?.cancel()
-            self.sleepWakeWorkItem = nil
-            #if DEBUG
-            print("[CapsuleClose] Window/Tab willClose for capsule '\(self.capsuleName)' (url: \(self.url?.absoluteString ?? "untitled")) — tearing down webView")
-            #endif
-            self.onWindowClose?()
-            self.onWindowClose = nil
-            self.stopLoading()
-            self.loadHTMLString("", baseURL: nil)
-            self.cleanup()
-            self.removeFromSuperview()
+            MainActor.assumeIsolated {
+                guard let self = self, !self.isClosedOrDismantled else { return }
+                #if DEBUG
+                print("[CapsuleClose] Window/Tab willClose for capsule '\(self.capsuleName)' (url: \(self.url?.absoluteString ?? "untitled")) — tearing down webView")
+                #endif
+                self.onWindowClose?()
+                self.onWindowClose = nil
+                WebKitMemoryManager.shared.teardownWebView(self)
+            }
         }
         notificationObservers.append(closeObs)
         
@@ -339,6 +436,9 @@ class IsolatedWKWebView: WKWebView {
     }
     
     deinit {
+        #if DEBUG
+        print("[Memory] IsolatedWKWebView deinit: '\(capsuleName)'")
+        #endif
         cleanup()
     }
 }
@@ -368,14 +468,10 @@ struct IsolatedWebViewRepresentable: NSViewRepresentable {
     
     static func dismantleNSView(_ nsView: WKWebView, coordinator: WebViewCoordinator) {
         #if DEBUG
-        print("[CapsuleClose] Dismantling NSView for capsule '\(coordinator.appItem.name)' and stopping webView loading")
+        print("[CapsuleClose] Dismantling NSView for capsule '\(coordinator.appItem.name)' and tearing down webView")
         #endif
-        if let isolatedWV = nsView as? IsolatedWKWebView {
-            isolatedWV.cleanup()
-        }
-        nsView.stopLoading()
-        nsView.loadHTMLString("", baseURL: nil)
         coordinator.cleanup()
+        WebKitMemoryManager.shared.teardownWebView(nsView)
     }
 }
 #endif
@@ -462,8 +558,9 @@ extension IsolatedWebViewRepresentable {
         configuration.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
         #endif
         
-        // 3. Conditional Content Blocking
-        if appItem.isUBlockEnabled {
+        // 3. Conditional Content Blocking (applied synchronously if already loaded; otherwise prepared asynchronously before load)
+        let needsUBlockLoad = appItem.isUBlockEnabled && !UBlockOriginExtensionManager.shared.isLoaded
+        if appItem.isUBlockEnabled && !needsUBlockLoad {
             UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
         }
         
@@ -490,6 +587,7 @@ extension IsolatedWebViewRepresentable {
         
         
         context.coordinator.setup(webView: webView)
+        WebKitMemoryManager.shared.register(webView: webView)
         
         // Connect navigation actions
         navigationState.onGoBack = { [weak webView] in
@@ -525,11 +623,12 @@ extension IsolatedWebViewRepresentable {
         #endif
         navigationState.onStopLoading = { [weak webView, weak coordinator] in
             #if DEBUG
-            print("[CapsuleClose] Stopping webView & clearing page for '\(coordinator?.appItem.name ?? "Capsule")'")
+            print("[CapsuleClose] Stopping webView & tearing down page for '\(coordinator?.appItem.name ?? "Capsule")'")
             #endif
             coordinator?.flushCookiesNow()
-            webView?.stopLoading()
-            webView?.loadHTMLString("", baseURL: nil)
+            if let webView {
+                WebKitMemoryManager.shared.teardownWebView(webView)
+            }
         }
         navigationState.onToggleUBlock = { [weak webView] isEnabled in
             guard let webView = webView else { return }
@@ -584,12 +683,23 @@ extension IsolatedWebViewRepresentable {
             return (title: title, url: urlString, text: pageText)
         }
         
-        // 3. Restore isolated cookies (including grouped apps if applicable) and load start page
+        // 3. Ensure uBlock rules are prepared, restore isolated cookies (including grouped apps if applicable), and load start page
         let groupedItems = appItem.group?.items ?? []
         let startURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
-        if IsolatedCookieManager.shared.needsRestore(for: appItem, groupedItems: groupedItems) {
-            Task { @MainActor in
-                await IsolatedCookieManager.shared.restoreCookies(for: appItem, groupedItems: groupedItems, into: dataStore.httpCookieStore)
+        let needsCookieRestore = IsolatedCookieManager.shared.needsRestore(for: appItem, groupedItems: groupedItems)
+        if needsUBlockLoad || needsCookieRestore {
+            Task { @MainActor [weak webView] in
+                if needsUBlockLoad {
+                    await UBlockOriginExtensionManager.shared.prepare()
+                    guard let webView, !WebKitMemoryManager.shared.isTornDown(webView) else { return }
+                    if appItem.isUBlockEnabled {
+                        UBlockOriginExtensionManager.shared.applyToConfiguration(webView.configuration)
+                    }
+                }
+                if needsCookieRestore {
+                    await IsolatedCookieManager.shared.restoreCookies(for: appItem, groupedItems: groupedItems, into: dataStore.httpCookieStore)
+                }
+                guard let webView, !WebKitMemoryManager.shared.isTornDown(webView) else { return }
                 let resolvedStartURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
                 if let url = URL(string: resolvedStartURLString) {
                     #if DEBUG
@@ -706,14 +816,16 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                guard let self = self, let webView = self.webView else { return }
-                let config = webView.configuration
-                if self.appItem.isUBlockEnabled {
-                    UBlockOriginExtensionManager.shared.applyToConfiguration(config)
-                } else {
-                    UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
+                MainActor.assumeIsolated {
+                    guard let self = self, let webView = self.webView else { return }
+                    let config = webView.configuration
+                    if self.appItem.isUBlockEnabled {
+                        UBlockOriginExtensionManager.shared.applyToConfiguration(config)
+                    } else {
+                        UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
+                    }
+                    webView.reloadFromOrigin()
                 }
-                webView.reloadFromOrigin()
             }
             
             // Observe per-capsule uBlock toggle from settings
@@ -722,37 +834,36 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                guard let self = self,
-                      let webView = self.webView,
-                      let targetId = notification.object as? UUID,
-                      targetId == self.appItem.id else { return }
-                
-                let isEnabled = (notification.userInfo?["isUBlockEnabled"] as? Bool) ?? self.appItem.isUBlockEnabled
-                self.navigationState.isUBlockEnabled = isEnabled
-                let config = webView.configuration
-                if isEnabled {
-                    UBlockOriginExtensionManager.shared.applyToConfiguration(config)
-                } else {
-                    UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
+                let targetId = notification.object as? UUID
+                let overrideEnabled = notification.userInfo?["isUBlockEnabled"] as? Bool
+                MainActor.assumeIsolated {
+                    guard let self = self,
+                          let webView = self.webView,
+                          let targetId,
+                          targetId == self.appItem.id else { return }
+                    
+                    let isEnabled = overrideEnabled ?? self.appItem.isUBlockEnabled
+                    self.navigationState.isUBlockEnabled = isEnabled
+                    let config = webView.configuration
+                    if isEnabled {
+                        UBlockOriginExtensionManager.shared.applyToConfiguration(config)
+                    } else {
+                        UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
+                    }
+                    webView.reloadFromOrigin()
                 }
-                webView.reloadFromOrigin()
             }
         }
     }
     
     func flushCookiesNow() {
         guard appItem.modelContext != nil, let cookieStore = observedCookieStore else { return }
-        let item = appItem
-        let context = modelContext
-        let currentURL = navigationState.currentURLString
-        Task { @MainActor in
-            await IsolatedCookieManager.shared.flushPendingSaveIfNeeded(
-                for: item,
-                from: cookieStore,
-                context: context,
-                lastOpenedURL: currentURL
-            )
-        }
+        IsolatedCookieManager.shared.flushPendingSaveInBackground(
+            for: appItem,
+            from: cookieStore,
+            context: modelContext,
+            lastOpenedURL: navigationState.currentURLString
+        )
     }
     
     func cleanup() {
@@ -762,6 +873,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         print("[CapsuleClose] WebViewCoordinator cleanup for '\(appItem.name)'")
         #endif
         flushCookiesNow()
+        navigationState.clearCallbacks()
         backForwardObserver?.invalidate()
         backForwardObserver = nil
         canGoForwardObserver?.invalidate()
