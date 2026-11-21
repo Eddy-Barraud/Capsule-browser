@@ -78,9 +78,9 @@
     "semantic_hash": ""
   },
   "IsolatedWebView.swift": {
-    "mtime": 1795263536.132954,
-    "seen": 1795263981.979706,
-    "ast_hash": "340d33734fd1e4fbd32d701a53e5f3e4",
+    "mtime": 1795264968.541425,
+    "seen": 1795265168.333117,
+    "ast_hash": "15e829d989a90d71860c581cfee9fe07",
     "semantic_hash": ""
   },
   "LiquidGlassStyles.swift": {
@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "WebAppContainerView.swift": {
-    "mtime": 1795263538.4277058,
-    "seen": 1795263981.979711,
-    "ast_hash": "fb1677217ea94c3b31ff4a805dd2282e",
+    "mtime": 1795264978.992888,
+    "seen": 1795265168.333122,
+    "ast_hash": "e8735aa0ca99c98c6ee33fca28e5ce57",
     "semantic_hash": ""
   },
   "WebAppGroup.swift": {
@@ -465,6 +465,12 @@
     "mtime": 1794418155.8013759,
     "seen": 1794501117.5470898,
     "ast_hash": "ea98e3fa8dd2ef9714725a6b504c5ad6",
+    "semantic_hash": ""
+  },
+  "CapsuleDownloadManager.swift": {
+    "mtime": 1795265021.2756927,
+    "seen": 1795265168.333111,
+    "ast_hash": "dc24c966bfecdce44ebf2e1da5004851",
     "semantic_hash": ""
   }
 }
