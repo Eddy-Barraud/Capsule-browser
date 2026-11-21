@@ -42,15 +42,15 @@
     "semantic_hash": ""
   },
   "ContentView.swift": {
-    "mtime": 1794695760.7899494,
-    "seen": 1794740728.7945652,
-    "ast_hash": "52af4ca29c04a09bd7d66a111771d8a0",
+    "mtime": 1795261721.15716,
+    "seen": 1795262782.508111,
+    "ast_hash": "ef2363a70413fe74d6e21d96d7a01a47",
     "semantic_hash": ""
   },
   "CookieManager.swift": {
-    "mtime": 1794305574.6900024,
-    "seen": 1794314424.724854,
-    "ast_hash": "61a444a75b8d5ec2789310956a41d0b8",
+    "mtime": 1795261599.9732144,
+    "seen": 1795262782.508112,
+    "ast_hash": "e6787b73d135a6af09c52cc8d5742ca3",
     "semantic_hash": ""
   },
   "FaviconFetcher.swift": {
@@ -78,9 +78,9 @@
     "semantic_hash": ""
   },
   "IsolatedWebView.swift": {
-    "mtime": 1794491233.3568313,
-    "seen": 1794501117.5470421,
-    "ast_hash": "d3f5be4a7ef239472ce6e42d5f7f0340",
+    "mtime": 1795261805.5191681,
+    "seen": 1795262782.508116,
+    "ast_hash": "4c5cd2d184c1e6325119ef4a74d2544e",
     "semantic_hash": ""
   },
   "LiquidGlassStyles.swift": {
@@ -108,9 +108,9 @@
     "semantic_hash": ""
   },
   "UBlockOriginExtensionManager.swift": {
-    "mtime": 1794741385.086474,
-    "seen": 1794755549.106373,
-    "ast_hash": "ce0091865054304a84e143eb6271b5ae",
+    "mtime": 1795261593.732708,
+    "seen": 1795262782.50812,
+    "ast_hash": "df07d0e1bcdd00dee3c4e7cdc79c3043",
     "semantic_hash": ""
   },
   "UBlockRuleCompiler.swift": {
@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "WebAppContainerView.swift": {
-    "mtime": 1794492319.5667992,
-    "seen": 1794501117.547047,
-    "ast_hash": "33cfb067ac7f4630740ea5ddbf18943c",
+    "mtime": 1795261712.8276618,
+    "seen": 1795262782.5081222,
+    "ast_hash": "5875fa4ca0afd12a9f54005e0bd9fc00",
     "semantic_hash": ""
   },
   "WebAppGroup.swift": {
@@ -150,15 +150,15 @@
     "semantic_hash": ""
   },
   "WindowPresentationMode.swift": {
-    "mtime": 1794562801.1456456,
-    "seen": 1794567609.255486,
-    "ast_hash": "58f9a42959557fb0c6c4e5dc172fa0ad",
+    "mtime": 1795261686.2555745,
+    "seen": 1795262782.508126,
+    "ast_hash": "e68373c41ccf64e847f5ebb9b3fd1314",
     "semantic_hash": ""
   },
   "isowebappsApp.swift": {
-    "mtime": 1794695744.581152,
-    "seen": 1794740728.794581,
-    "ast_hash": "dec3257a05152e75f946150b1112c5e2",
+    "mtime": 1795261722.853407,
+    "seen": 1795262782.508126,
+    "ast_hash": "404b5326ebb42f7967dc0aabd1bf6ca6",
     "semantic_hash": ""
   },
   "rulesets/main/adguard-mobile.json": {
