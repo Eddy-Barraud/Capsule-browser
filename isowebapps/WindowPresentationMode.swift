@@ -76,9 +76,22 @@ struct CapsuleWindowPayload: Codable, Hashable, Identifiable {
     let name: String?
     let isSecondaryWindow: Bool
     let openAsTab: Bool
+    let startInReaderMode: Bool
     let instanceId: UUID
     let sourceWindowNumber: Int?
     let sourceFrame: [Double]?
+    
+    enum CodingKeys: String, CodingKey {
+        case appId
+        case urlString
+        case name
+        case isSecondaryWindow
+        case openAsTab
+        case startInReaderMode
+        case instanceId
+        case sourceWindowNumber
+        case sourceFrame
+    }
     
     init(
         appId: UUID?,
@@ -86,6 +99,7 @@ struct CapsuleWindowPayload: Codable, Hashable, Identifiable {
         name: String?,
         isSecondaryWindow: Bool = true,
         openAsTab: Bool = false,
+        startInReaderMode: Bool = false,
         instanceId: UUID = UUID(),
         sourceWindowNumber: Int? = nil,
         sourceFrame: [Double]? = nil
@@ -95,9 +109,23 @@ struct CapsuleWindowPayload: Codable, Hashable, Identifiable {
         self.name = name
         self.isSecondaryWindow = isSecondaryWindow
         self.openAsTab = openAsTab
+        self.startInReaderMode = startInReaderMode
         self.instanceId = instanceId
         self.sourceWindowNumber = sourceWindowNumber
         self.sourceFrame = sourceFrame
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.appId = try container.decodeIfPresent(UUID.self, forKey: .appId)
+        self.urlString = try container.decodeIfPresent(String.self, forKey: .urlString)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name)
+        self.isSecondaryWindow = try container.decodeIfPresent(Bool.self, forKey: .isSecondaryWindow) ?? true
+        self.openAsTab = try container.decodeIfPresent(Bool.self, forKey: .openAsTab) ?? false
+        self.startInReaderMode = try container.decodeIfPresent(Bool.self, forKey: .startInReaderMode) ?? false
+        self.instanceId = try container.decodeIfPresent(UUID.self, forKey: .instanceId) ?? UUID()
+        self.sourceWindowNumber = try container.decodeIfPresent(Int.self, forKey: .sourceWindowNumber)
+        self.sourceFrame = try container.decodeIfPresent([Double].self, forKey: .sourceFrame)
     }
     
     #if os(macOS)
@@ -489,6 +517,7 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
                     name: payload.name,
                     isSecondaryWindow: payload.isSecondaryWindow,
                     openAsTab: payload.openAsTab,
+                    startInReaderMode: payload.startInReaderMode,
                     instanceId: payload.instanceId,
                     sourceWindowNumber: payload.sourceWindowNumber ?? targetWin?.windowNumber,
                     sourceFrame: payload.sourceFrame ?? targetWin?.serializedFrame
@@ -881,6 +910,7 @@ struct CapsuleWindowHostView: View {
                     appItem: resolvedAppItem,
                     initialURLString: payload.urlString,
                     isSecondaryWindow: payload.isSecondaryWindow,
+                    startInReaderMode: payload.startInReaderMode,
                     onActiveDomainChange: { newDomain in
                         currentDomainTitle = newDomain
                         hostingWindow?.title = newDomain

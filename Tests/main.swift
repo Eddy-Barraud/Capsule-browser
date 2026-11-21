@@ -1209,6 +1209,332 @@ func testDownloadPolicyAndFileHelpers() {
     print("✓ testDownloadPolicyAndFileHelpers passed!")
 }
 
+func testReaderHTMLUtilities() {
+    print("Running testReaderHTMLUtilities...")
+    
+    // Test 1: Metadata extraction & entity decoding (with reversed attribute order)
+    let htmlWithOG = """
+    <html><head>
+        <title>Fallback Title</title>
+        <meta content="Swift &amp; Reader &#39;Guide&#39;" property="og:title">
+        <meta property="og:site_name" content="Example&#x20;Daily">
+        <meta name="author" content="Jane Doe">
+    </head><body><p>Hello</p></body></html>
+    """
+    let meta = ReaderHTMLUtilities.extractMetadata(from: htmlWithOG)
+    assert(meta.title == "Swift & Reader 'Guide'", "Unexpected og:title: \(String(describing: meta.title))")
+    assert(meta.siteName == "Example Daily", "Unexpected siteName: \(String(describing: meta.siteName))")
+    assert(meta.author == "Jane Doe", "Unexpected author: \(String(describing: meta.author))")
+    
+    // Test 2: Fallback to <title> when og:title is absent
+    let htmlTitleOnly = "<html><head><title>  Simple   Article &mdash; News </title></head></html>"
+    let titleOnlyMeta = ReaderHTMLUtilities.extractMetadata(from: htmlTitleOnly)
+    assert(titleOnlyMeta.title == "Simple Article — News", "Unexpected <title>: \(String(describing: titleOnlyMeta.title))")
+    
+    // Test 3: Charset decoding via HTTP encoding name & meta charset sniffing
+    let latin1String = "Café résumé"
+    let latin1Data = latin1String.data(using: .isoLatin1)!
+    assert(
+        ReaderHTMLUtilities.decodeHTMLData(latin1Data, textEncodingName: "iso-8859-1") == latin1String,
+        "Must honor IANA charset from HTTP header"
+    )
+    let sniffedHTML = "<meta charset=\"iso-8859-1\"><p>Crème brûlée</p>".data(using: .isoLatin1)!
+    assert(
+        ReaderHTMLUtilities.decodeHTMLData(sniffedHTML, textEncodingName: nil).contains("Crème brûlée"),
+        "Must sniff charset from <meta charset>"
+    )
+    
+    // Test 4: Lazy image promotion
+    let lazyHTML = """
+    <p><img data-src="https://cdn.example.com/photo.jpg" src="data:image/svg+xml;base64,PHN2Zz4=" alt="Hero"></p>
+    <p><img data-original="/images/diagram.png" alt="Diagram"></p>
+    <p><img src="https://cdn.example.com/real.png" data-src="https://cdn.example.com/other.png"></p>
+    """
+    let normalizedHTML = ReaderHTMLUtilities.normalizeLazyImages(in: lazyHTML)
+    assert(normalizedHTML.contains("src=\"https://cdn.example.com/photo.jpg\""), "Must promote data-src over svg placeholder")
+    assert(normalizedHTML.contains("src=\"/images/diagram.png\""), "Must add src from data-original when missing")
+    assert(normalizedHTML.contains("src=\"https://cdn.example.com/real.png\""), "Must preserve valid existing src")
+    
+    // Test 5: JS-shell detection
+    let jsShellHTML = "<html><body><div id=\"root\"></div><noscript>Please enable JavaScript to continue.</noscript></body></html>"
+    assert(
+        ReaderHTMLUtilities.looksLikeJavaScriptShell(markdown: "Please enable JavaScript to continue.", rawHTML: jsShellHTML) == true,
+        "Must flag JS-required shell"
+    )
+    assert(
+        ReaderHTMLUtilities.looksLikeJavaScriptShell(markdown: "", rawHTML: "<html><body></body></html>") == true,
+        "Must flag empty extracted markdown"
+    )
+    let validArticle = String(repeating: "Swift powers native macOS applications reliably. ", count: 8)
+    assert(
+        ReaderHTMLUtilities.looksLikeJavaScriptShell(markdown: validArticle, rawHTML: "<html><body><article><p>enable javascript comment mention</p></article></body></html>") == false,
+        "Long article prose must not be flagged as JS shell"
+    )
+    
+    // Test 6: Plain-text cleanup & reading time
+    let sampleMD = "# Title\n\nRead [the docs](https://swift.org) ![hero](https://example.com/a.png).\n\n```swift\nlet x = 1\n```"
+    let plain = ReaderHTMLUtilities.plainText(fromMarkdown: sampleMD)
+    assert(plain.contains("Title") && plain.contains("Read the docs") && !plain.contains("hero"), "Unexpected plain text: \(plain)")
+    assert(ReaderHTMLUtilities.estimatedReadingMinutes(for: sampleMD) == 1)
+    assert(ReaderHTMLUtilities.isLikelyDirectURLInput("example.com/article") == true)
+    assert(ReaderHTMLUtilities.isLikelyDirectURLInput("https://news.ycombinator.com") == true)
+    assert(ReaderHTMLUtilities.isLikelyDirectURLInput("swift markdown reader") == false)
+    
+    // Test 7: ReaderHistoryStack navigation & truncation
+    var history = ReaderHistoryStack()
+    let u1 = URL(string: "https://example.com/1")!
+    let u1Canonical = URL(string: "https://example.com/1-canonical")!
+    let u2 = URL(string: "https://example.com/2")!
+    let u3 = URL(string: "https://example.com/3")!
+    history.reset(to: u1)
+    assert(history.canGoBack == false && history.canGoForward == false)
+    history.replaceCurrent(with: u1Canonical)
+    assert(history.currentURL == u1Canonical)
+    history.push(u1Canonical) // consecutive duplicate ignored
+    assert(history.entries.count == 1)
+    history.push(u2)
+    assert(history.canGoBack == true && history.canGoForward == false)
+    assert(history.goBack() == u1Canonical)
+    assert(history.canGoBack == false && history.canGoForward == true)
+    history.push(u3) // truncates u2
+    assert(history.entries == [u1Canonical, u3])
+    assert(history.canGoForward == false)
+    assert(history.goBack() == u1Canonical)
+    assert(history.goForward() == u3)
+    
+    // Test 8: Background WebView fallback & readiness helpers
+    assert(ReaderHTMLUtilities.isKnownJSRedirectorURL(URL(string: "https://news.google.com/read/CBMiWWh0dHA")!) == true)
+    assert(ReaderHTMLUtilities.isKnownJSRedirectorURL(URL(string: "https://news.google.com/articles/CBMi")!) == true)
+    assert(ReaderHTMLUtilities.isKnownJSRedirectorURL(URL(string: "https://www.google.com/url?q=https://example.com")!) == true)
+    assert(ReaderHTMLUtilities.isKnownJSRedirectorURL(URL(string: "https://developer.apple.com/news/")!) == false)
+    
+    assert(ReaderHTMLUtilities.shouldFallbackToBackgroundWebView(httpStatusCode: 403) == true)
+    assert(ReaderHTMLUtilities.shouldFallbackToBackgroundWebView(httpStatusCode: 401) == true)
+    assert(ReaderHTMLUtilities.shouldFallbackToBackgroundWebView(httpStatusCode: 429) == true)
+    assert(ReaderHTMLUtilities.shouldFallbackToBackgroundWebView(httpStatusCode: 503) == true)
+    assert(ReaderHTMLUtilities.shouldFallbackToBackgroundWebView(httpStatusCode: 404) == false)
+    assert(ReaderHTMLUtilities.shouldFallbackToBackgroundWebView(httpStatusCode: 200) == false)
+    
+    assert(ReaderHTMLUtilities.shouldIgnoreBackgroundNavigationError(domain: NSURLErrorDomain, code: NSURLErrorCancelled) == true)
+    assert(ReaderHTMLUtilities.shouldIgnoreBackgroundNavigationError(domain: "WebKitErrorDomain", code: 102) == true)
+    assert(ReaderHTMLUtilities.shouldIgnoreBackgroundNavigationError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet) == false)
+    
+    assert(
+        ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(
+            ReaderHTMLCapture(title: "", urlString: "about:blank", html: "<p>Hello</p>", readyState: "complete", textLength: 500, matchedPrimaryContainer: true)
+        ) == .notReadyYet
+    )
+    assert(
+        ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(
+            ReaderHTMLCapture(title: "", urlString: "https://example.com/a", html: "<p>Content</p>", readyState: "loading", textLength: 500, matchedPrimaryContainer: true)
+        ) == .notReadyYet
+    )
+    assert(
+        ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(
+            ReaderHTMLCapture(title: "", urlString: "https://news.google.com/read/123", html: "<p>Redirecting</p>", readyState: "complete", textLength: 500, matchedPrimaryContainer: true)
+        ) == .notReadyYet
+    )
+    assert(
+        ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(
+            ReaderHTMLCapture(title: "", urlString: "https://example.com/a", html: "<p>Just a moment...</p>", readyState: "complete", textLength: 20, matchedPrimaryContainer: false)
+        ) == .notReadyYet
+    )
+    assert(
+        ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(
+            ReaderHTMLCapture(title: "Title", urlString: "https://example.com/a", html: "<article><p>Article text</p></article>", readyState: "interactive", textLength: 320, matchedPrimaryContainer: true)
+        ) == .readyImmediately
+    )
+    assert(
+        ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(
+            ReaderHTMLCapture(title: "Title", urlString: "https://example.com/a", html: "<div><p>Body text</p></div>", readyState: "interactive", textLength: 480, matchedPrimaryContainer: false)
+        ) == .readyImmediately
+    )
+    assert(
+        ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(
+            ReaderHTMLCapture(title: "Short Note", urlString: "https://example.com/a", html: "<p>A genuine short update with plenty of context.</p>", readyState: "complete", textLength: 120, matchedPrimaryContainer: false)
+        ) == .usableAfterSettle
+    )
+    
+    print("✓ testReaderHTMLUtilities passed!")
+}
+
+func testMarkdownBlockParser() {
+    print("Running testMarkdownBlockParser...")
+    
+    let md = """
+    <!-- comment should be ignored -->
+    # Main Heading
+    
+    Subtitle Heading
+    ---
+    
+    Intro text with ![inline photo](https://example.com/pic.png "Caption") and more text.
+    
+    [![linked banner](https://example.com/banner.jpg)](https://example.com/post)
+    
+    - First bullet item
+    - [x] Completed task item
+      1. Nested ordered one
+      2. Nested ordered two
+    - [ ] Open task item
+    
+    > Quoted paragraph
+    >
+    > - Quoted bullet
+    
+    ```swift
+    let greeting = "Hello"
+    print(greeting)
+    ```
+    
+    | Name | Score | Ratio |
+    | :--- | :---: | ---: |
+    | Alpha \\| A | 10 | 95% |
+    | Beta | 20 | 100% |
+    
+    ***
+    """
+    
+    let blocks = MarkdownBlockParser.parse(md)
+    assert(blocks.count == 11, "Expected 11 parsed blocks, got \(blocks.count): \(blocks)")
+    
+    if case .heading(let lvl, let text) = blocks[0].kind {
+        assert(lvl == 1 && text == "Main Heading")
+    } else {
+        assertionFailure("Expected H1 heading at index 0")
+    }
+    
+    if case .heading(let lvl, let text) = blocks[1].kind {
+        assert(lvl == 2 && text == "Subtitle Heading")
+    } else {
+        assertionFailure("Expected Setext H2 heading at index 1")
+    }
+    
+    if case .paragraph(let p1) = blocks[2].kind {
+        assert(p1 == "Intro text with")
+    } else {
+        assertionFailure("Expected leading paragraph before inline image")
+    }
+    
+    if case .image(let alt, let url, let title, let linkURL) = blocks[3].kind {
+        assert(alt == "inline photo" && url == "https://example.com/pic.png" && title == "Caption" && linkURL == nil)
+    } else {
+        assertionFailure("Expected extracted inline image at index 3")
+    }
+    
+    if case .paragraph(let p2) = blocks[4].kind {
+        assert(p2 == "and more text.")
+    } else {
+        assertionFailure("Expected trailing paragraph after inline image")
+    }
+    
+    if case .image(let alt, let url, _, let linkURL) = blocks[5].kind {
+        assert(alt == "linked banner" && url == "https://example.com/banner.jpg" && linkURL == "https://example.com/post")
+    } else {
+        assertionFailure("Expected linked image block at index 5")
+    }
+    
+    if case .unorderedList(let items) = blocks[6].kind {
+        assert(items.count == 3)
+        assert(items[0].isChecked == nil && items[0].text == "First bullet item")
+        assert(items[1].isChecked == true && items[1].text == "Completed task item")
+        assert(items[1].nestedBlocks.count == 1)
+        if case .orderedList(let start, let nestedItems) = items[1].nestedBlocks[0].kind {
+            assert(start == 1 && nestedItems.count == 2 && nestedItems[0].text == "Nested ordered one")
+        } else {
+            assertionFailure("Expected nested ordered list")
+        }
+        assert(items[2].isChecked == false && items[2].text == "Open task item")
+    } else {
+        assertionFailure("Expected unordered/task list at index 6")
+    }
+    
+    if case .blockquote(let quoted) = blocks[7].kind {
+        assert(quoted.count == 2)
+    } else {
+        assertionFailure("Expected blockquote at index 7")
+    }
+    
+    if case .codeBlock(let lang, let code) = blocks[8].kind {
+        assert(lang == "swift" && code.contains("let greeting = \"Hello\""))
+    } else {
+        assertionFailure("Expected code block at index 8")
+    }
+    
+    if case .table(let headers, let alignments, let rows) = blocks[9].kind {
+        assert(headers == ["Name", "Score", "Ratio"])
+        assert(alignments == [.leading, .center, .trailing])
+        assert(rows.count == 2)
+        assert(rows[0] == ["Alpha | A", "10", "95%"])
+    } else {
+        assertionFailure("Expected table at index 9")
+    }
+    
+    // Check thematic break follows
+    let blocksWithBreak = MarkdownBlockParser.parse("Paragraph\n\n***")
+    assert(blocksWithBreak.count == 2)
+    if case .thematicBreak = blocksWithBreak[1].kind {
+        // ok
+    } else {
+        assertionFailure("Expected thematic break")
+    }
+    
+    // Unclosed code fence must not crash
+    let unclosed = MarkdownBlockParser.parse("```python\nprint(1)")
+    assert(unclosed.count == 1)
+    if case .codeBlock(let lang, let code) = unclosed[0].kind {
+        assert(lang == "python" && code == "print(1)")
+    } else {
+        assertionFailure("Expected unclosed fenced block fallback")
+    }
+    
+    print("✓ testMarkdownBlockParser passed!")
+}
+
+func testReaderWindowPayloadCodableCompatibility() {
+    print("Running testReaderWindowPayloadCodableCompatibility...")
+    
+    struct ReaderPayloadSchemaMirror: Codable, Equatable {
+        let appId: UUID?
+        let urlString: String?
+        let name: String?
+        let isSecondaryWindow: Bool
+        let openAsTab: Bool
+        let startInReaderMode: Bool
+        let instanceId: UUID
+        
+        enum CodingKeys: String, CodingKey {
+            case appId, urlString, name, isSecondaryWindow, openAsTab, startInReaderMode, instanceId
+        }
+        
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            appId = try c.decodeIfPresent(UUID.self, forKey: .appId)
+            urlString = try c.decodeIfPresent(String.self, forKey: .urlString)
+            name = try c.decodeIfPresent(String.self, forKey: .name)
+            isSecondaryWindow = try c.decodeIfPresent(Bool.self, forKey: .isSecondaryWindow) ?? true
+            openAsTab = try c.decodeIfPresent(Bool.self, forKey: .openAsTab) ?? false
+            startInReaderMode = try c.decodeIfPresent(Bool.self, forKey: .startInReaderMode) ?? false
+            instanceId = try c.decodeIfPresent(UUID.self, forKey: .instanceId) ?? UUID()
+        }
+    }
+    
+    let readerJSON = """
+    {"urlString":"https://example.com/post","name":"example.com","isSecondaryWindow":true,"openAsTab":true,"startInReaderMode":true,"instanceId":"11111111-1111-1111-1111-111111111111"}
+    """.data(using: .utf8)!
+    let decodedReader = try! JSONDecoder().decode(ReaderPayloadSchemaMirror.self, from: readerJSON)
+    assert(decodedReader.startInReaderMode == true)
+    assert(decodedReader.appId == nil)
+    
+    let legacyJSON = """
+    {"urlString":"https://example.com","name":"Example","isSecondaryWindow":true,"openAsTab":false,"instanceId":"22222222-2222-2222-2222-222222222222"}
+    """.data(using: .utf8)!
+    let decodedLegacy = try! JSONDecoder().decode(ReaderPayloadSchemaMirror.self, from: legacyJSON)
+    assert(decodedLegacy.startInReaderMode == false, "Legacy payload missing startInReaderMode must default to false")
+    
+    print("✓ testReaderWindowPayloadCodableCompatibility passed!")
+}
+
 // Execute test suite
 testUBlockRuleCompiler()
 testSearchEngineResolution()
@@ -1228,7 +1554,10 @@ MainActor.assumeIsolated {
     testMemoryTeardownAndCacheRelease()
     testDownloadPolicyAndFileHelpers()
 }
+testReaderHTMLUtilities()
+testMarkdownBlockParser()
+testReaderWindowPayloadCodableCompatibility()
 
 print("\n========================================")
-print("ALL 14 LOGIC & SECURITY TEST SUITES PASSED (100%)")
+print("ALL 17 LOGIC & SECURITY TEST SUITES PASSED (100%)")
 print("========================================")

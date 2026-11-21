@@ -661,6 +661,94 @@ extension IsolatedWebViewRepresentable {
         }
     }
     
+    #if os(macOS)
+    /// Non-mutating DOM extraction script capturing article HTML and page metadata from a live WKWebView.
+    static let readerDOMExtractionScript: String = #"""
+    (function() {
+        var getMeta = function(selector) {
+            var el = document.querySelector(selector);
+            return el ? (el.getAttribute('content') || '').trim() : '';
+        };
+        var title = (document.title || '').trim();
+        var siteName = getMeta('meta[property="og:site_name"]') || getMeta('meta[name="application-name"]');
+        var author = getMeta('meta[name="author"]') || getMeta('meta[property="article:author"]');
+
+        var pickBestContainer = function() {
+            var selectorGroups = [
+                'article',
+                'main, [role="main"]',
+                '#mw-content-text, .article-content, .post-content, .entry-content, .story-body, [itemprop="articleBody"]'
+            ];
+            for (var i = 0; i < selectorGroups.length; i++) {
+                var nodes = document.querySelectorAll(selectorGroups[i]);
+                var best = null;
+                var bestLen = 0;
+                for (var j = 0; j < nodes.length; j++) {
+                    var textLen = (nodes[j].innerText || nodes[j].textContent || '').trim().length;
+                    if (textLen > bestLen) {
+                        bestLen = textLen;
+                        best = nodes[j];
+                    }
+                }
+                if (best && bestLen >= 250) {
+                    return { node: best, matchedPrimary: true };
+                }
+            }
+            return { node: document.body || document.documentElement, matchedPrimary: false };
+        };
+
+        var selection = pickBestContainer();
+        var target = selection.node;
+        var matchedPrimary = selection.matchedPrimary;
+        var html = '';
+        var plainTextLength = 0;
+        if (target) {
+            var clone = target.cloneNode(true);
+            var imgs = clone.querySelectorAll('img');
+            for (var k = 0; k < imgs.length; k++) {
+                var img = imgs[k];
+                var lazy = img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('data-lazy-src');
+                var src = (img.getAttribute('src') || '').trim().toLowerCase();
+                if (lazy && (!src || src.indexOf('data:image/svg+xml') === 0 || src.indexOf('about:') === 0)) {
+                    img.setAttribute('src', lazy);
+                }
+            }
+            var junk = clone.querySelectorAll('script, style, noscript, iframe, nav, footer, aside, form, button, dialog, svg, canvas, template, [hidden], [aria-hidden="true"]');
+            for (var m = junk.length - 1; m >= 0; m--) {
+                if (junk[m].parentNode) {
+                    junk[m].parentNode.removeChild(junk[m]);
+                }
+            }
+            var styled = clone.querySelectorAll('[style]');
+            for (var n = styled.length - 1; n >= 0; n--) {
+                var st = (styled[n].getAttribute('style') || '').toLowerCase().replace(/\s+/g, '');
+                if (st.indexOf('display:none') !== -1 || st.indexOf('visibility:hidden') !== -1) {
+                    if (styled[n].parentNode) {
+                        styled[n].parentNode.removeChild(styled[n]);
+                    }
+                }
+            }
+            html = clone.innerHTML || '';
+            plainTextLength = (clone.textContent || '').replace(/\s+/g, ' ').trim().length;
+        }
+        if (!html.trim() && document.body) {
+            html = document.body.innerHTML || '';
+            plainTextLength = (document.body.innerText || document.body.textContent || '').replace(/\s+/g, ' ').trim().length;
+        }
+        return {
+            title: title,
+            url: window.location.href || '',
+            siteName: siteName,
+            author: author,
+            html: html,
+            readyState: document.readyState || '',
+            textLength: plainTextLength,
+            matchedPrimaryContainer: matchedPrimary
+        };
+    })();
+    """#
+    #endif
+    
     func createConfiguredWebView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         
@@ -833,6 +921,74 @@ extension IsolatedWebViewRepresentable {
             return (title: title, url: urlString, text: pageText)
         }
         
+        #if os(macOS)
+        if navigationState.isReaderModeActive {
+            webView.setAllMediaPlaybackSuspended(true)
+        }
+        navigationState.onSetReaderMediaSuspended = { [weak webView, weak navigationState] suspended in
+            guard let webView else { return }
+            if suspended {
+                webView.pauseAllMediaPlayback(completionHandler: nil)
+                webView.setAllMediaPlaybackSuspended(true)
+            } else {
+                let isSleeping = webView.isSleeping
+                if !isSleeping {
+                    webView.setAllMediaPlaybackSuspended(false)
+                }
+                if let navigationState {
+                    navigationState.isLoading = webView.isLoading
+                    navigationState.canGoBack = webView.canGoBack
+                    navigationState.canGoForward = webView.canGoForward
+                    if let liveURL = webView.url?.absoluteString, !liveURL.isEmpty, liveURL != "about:blank" {
+                        navigationState.currentURLString = liveURL
+                    }
+                }
+            }
+        }
+        navigationState.onCaptureLiveHTML = { [weak webView] in
+            guard let webView = webView else {
+                throw ReaderModeError.conversionFailed("Web view is unavailable.")
+            }
+            
+            let result = try await webView.evaluateJavaScript(Self.readerDOMExtractionScript)
+            if let dict = result as? [String: Any],
+               let extractedHTML = dict["html"] as? String {
+                let rawTitle = (dict["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let resolvedTitle = (rawTitle?.isEmpty == false) ? rawTitle! : (webView.title ?? "")
+                let rawURL = (dict["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let resolvedURL = (rawURL?.isEmpty == false) ? rawURL! : (webView.url?.absoluteString ?? "")
+                let rawSite = (dict["siteName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let rawAuthor = (dict["author"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let readyState = (dict["readyState"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let textLength = dict["textLength"] as? Int
+                let matchedPrimary = (dict["matchedPrimaryContainer"] as? Bool) ?? false
+                
+                return ReaderHTMLCapture(
+                    title: resolvedTitle,
+                    urlString: resolvedURL,
+                    siteName: rawSite?.isEmpty == false ? rawSite : nil,
+                    author: rawAuthor?.isEmpty == false ? rawAuthor : nil,
+                    html: extractedHTML,
+                    readyState: readyState?.isEmpty == false ? readyState : nil,
+                    textLength: textLength,
+                    matchedPrimaryContainer: matchedPrimary
+                )
+            }
+            
+            let fallbackHTML = try await webView.evaluateJavaScript("document.documentElement.outerHTML") as? String ?? ""
+            return ReaderHTMLCapture(
+                title: webView.title ?? "",
+                urlString: webView.url?.absoluteString ?? "",
+                siteName: nil,
+                author: nil,
+                html: fallbackHTML,
+                readyState: nil,
+                textLength: nil,
+                matchedPrimaryContainer: false
+            )
+        }
+        #endif
+        
         // 3. Ensure uBlock rules are prepared, restore isolated cookies (including grouped apps if applicable), and load start page
         let groupedItems = appItem.group?.items ?? []
         let startURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
@@ -929,6 +1085,9 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
             // Observe current URL
             self.urlObserver = webView.observe(\.url, options: [.new]) { [weak self] wv, _ in
                 DispatchQueue.main.async {
+                    #if os(macOS)
+                    if self?.navigationState.isReaderModeActive == true { return }
+                    #endif
                     if let urlStr = wv.url?.absoluteString, !urlStr.isEmpty, urlStr != "about:blank" {
                         self?.navigationState.currentURLString = urlStr
                     }
@@ -938,6 +1097,9 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
             // Observe isLoading
             self.loadingObserver = webView.observe(\.isLoading, options: [.new]) { [weak self] wv, _ in
                 DispatchQueue.main.async {
+                    #if os(macOS)
+                    if self?.navigationState.isReaderModeActive == true { return }
+                    #endif
                     self?.navigationState.isLoading = wv.isLoading
                 }
             }
@@ -1049,6 +1211,10 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
     
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        #if os(macOS)
+        navigationState.lastBackgroundLoadError = nil
+        guard !navigationState.isReaderModeActive else { return }
+        #endif
         navigationState.isLoading = true
         if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
             navigationState.currentURLString = urlString
@@ -1107,7 +1273,13 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
             return
         }
         
-        if appItem.openLinksInSafariReaderMode, let url = navigationAction.request.url {
+        #if os(macOS)
+        let shouldInterceptReaderLinks = appItem.openLinksInSafariReaderMode && !navigationState.isReaderModeActive
+        #else
+        let shouldInterceptReaderLinks = appItem.openLinksInSafariReaderMode
+        #endif
+        
+        if shouldInterceptReaderLinks, let url = navigationAction.request.url {
             let isUserClick = navigationAction.navigationType == .linkActivated
             let isExternalRedirect = navigationAction.navigationType == .other && (
                 !hasCommittedAnyPage || (webView.url != nil && webView.url?.absoluteString != "about:blank")
@@ -1117,7 +1289,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
             // open it in Safari Reader mode and cancel navigation inside the isolated WKWebView.
             if (isUserClick || isExternalRedirect) && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
                 #if DEBUG
-                print("[IsolatedWebView] decidePolicyFor: external domain, canceling and opening in Safari Reader")
+                print("[IsolatedWebView] decidePolicyFor: external domain, canceling and opening in Reader")
                 #endif
                 decisionHandler(.cancel)
                 openInSafariReader(url: url)
@@ -1208,17 +1380,40 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
             hasCommittedAnyPage = true
+            #if os(macOS)
+            navigationState.webViewCommitGeneration += 1
+            if !navigationState.isReaderModeActive {
+                navigationState.currentURLString = urlString
+            }
+            #else
             navigationState.currentURLString = urlString
+            #endif
         }
     }
     
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        navigationState.isLoading = false
+        #if os(macOS)
+        let readerActive = navigationState.isReaderModeActive
+        if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
+            navigationState.webViewFinishGeneration += 1
+        }
+        if readerActive {
+            webView.pauseAllMediaPlayback(completionHandler: nil)
+            webView.setAllMediaPlaybackSuspended(true)
+        }
+        #else
+        let readerActive = false
+        #endif
+        if !readerActive {
+            navigationState.isLoading = false
+        }
         navigationState.canGoBack = webView.canGoBack
         navigationState.canGoForward = webView.canGoForward
         let activeURLString: String?
         if let urlString = webView.url?.absoluteString, !urlString.isEmpty, urlString != "about:blank" {
-            navigationState.currentURLString = urlString
+            if !readerActive {
+                navigationState.currentURLString = urlString
+            }
             activeURLString = urlString
         } else {
             activeURLString = nil
@@ -1242,13 +1437,35 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
     
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        #if os(macOS)
+        if navigationState.isReaderModeActive {
+            let nsErr = error as NSError
+            if !ReaderHTMLUtilities.shouldIgnoreBackgroundNavigationError(domain: nsErr.domain, code: nsErr.code) {
+                navigationState.lastBackgroundLoadError = error.localizedDescription
+            }
+        } else {
+            navigationState.isLoading = false
+        }
+        #else
         navigationState.isLoading = false
+        #endif
         navigationState.canGoBack = webView.canGoBack
         navigationState.canGoForward = webView.canGoForward
     }
     
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        #if os(macOS)
+        if navigationState.isReaderModeActive {
+            let nsErr = error as NSError
+            if !ReaderHTMLUtilities.shouldIgnoreBackgroundNavigationError(domain: nsErr.domain, code: nsErr.code) {
+                navigationState.lastBackgroundLoadError = error.localizedDescription
+            }
+        } else {
+            navigationState.isLoading = false
+        }
+        #else
         navigationState.isLoading = false
+        #endif
         navigationState.canGoBack = webView.canGoBack
         navigationState.canGoForward = webView.canGoForward
     }
@@ -1300,11 +1517,16 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         #endif
         if navigationAction.targetFrame == nil {
             if let url = navigationAction.request.url {
-                // If "Open Links in Safari Reader" is enabled and the target URL is external (or a known redirector),
-                // open it directly in Safari Reader without spawning an empty tab or window first.
-                if appItem.openLinksInSafariReaderMode && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
+                // If "Open Links in Reader" is enabled and the target URL is external (or a known redirector),
+                // open it directly in Reader without spawning an empty tab or window first.
+                #if os(macOS)
+                let shouldOpenNewTabInReader = appItem.openLinksInSafariReaderMode && !navigationState.isReaderModeActive
+                #else
+                let shouldOpenNewTabInReader = appItem.openLinksInSafariReaderMode
+                #endif
+                if shouldOpenNewTabInReader && !isInternalNavigation(to: url, currentWebViewURL: webView.url) {
                     #if DEBUG
-                    print("[IsolatedWebView] createWebViewWith: external/redirect URL with Safari Reader enabled, opening directly in Safari: \(url)")
+                    print("[IsolatedWebView] createWebViewWith: external/redirect URL with Reader enabled, opening in Reader: \(url)")
                     #endif
                     openInSafariReader(url: url)
                     return nil

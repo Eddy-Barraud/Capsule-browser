@@ -50,7 +50,11 @@ struct AddWebAppSheet: View {
                     if ublockMasterEnabled {
                         Toggle("uBlock Origin protection", isOn: $isUBlockEnabled)
                     }
+                    #if os(macOS)
+                    Toggle("Open links in Reader mode", isOn: $openLinksInSafariReaderMode)
+                    #else
                     Toggle("Open links in Safari Reader mode", isOn: $openLinksInSafariReaderMode)
+                    #endif
                     Toggle("Delete cookies on close", isOn: $deleteCookiesOnClose)
                 }
                 

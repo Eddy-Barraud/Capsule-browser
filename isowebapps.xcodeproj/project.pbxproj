@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		3622915C304DB754003F8C9A /* Open in a capsule.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 36229152304DB754003F8C9A /* Open in a capsule.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		36B9798630B1CAC400E6FDBF /* HTMLToMarkdown in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = 36B9798530B1CAC400E6FDBF /* HTMLToMarkdown */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -87,6 +88,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				36B9798630B1CAC400E6FDBF /* HTMLToMarkdown in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -155,6 +157,7 @@
 			);
 			name = "Capsule Browser";
 			packageProductDependencies = (
+				36B9798530B1CAC400E6FDBF /* HTMLToMarkdown */,
 			);
 			productName = isowebapps;
 			productReference = 3624B888303B5D2A00943D2A /* Capsule Browser.app */;
@@ -187,6 +190,9 @@
 			);
 			mainGroup = 3624B87F303B5D2A00943D2A;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				36B9798430B1CAC400E6FDBF /* XCRemoteSwiftPackageReference "html-to-markdown-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3624B889303B5D2A00943D2A /* Products */;
 			projectDirPath = "";
@@ -584,6 +590,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		36B9798430B1CAC400E6FDBF /* XCRemoteSwiftPackageReference "html-to-markdown-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jaredhowland/html-to-markdown-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		36B9798530B1CAC400E6FDBF /* HTMLToMarkdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 36B9798430B1CAC400E6FDBF /* XCRemoteSwiftPackageReference "html-to-markdown-swift" */;
+			productName = HTMLToMarkdown;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3624B880303B5D2A00943D2A /* Project object */;
 }

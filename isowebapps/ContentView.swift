@@ -1253,6 +1253,14 @@ struct WebAppTileSettingsMenu: View {
     let onClearData: () -> Void
     let onDelete: () -> Void
     
+    private var readerLinksToggleTitle: String {
+        #if os(macOS)
+        return "Open links in Reader"
+        #else
+        return "Open links in Safari Reader"
+        #endif
+    }
+    
     var body: some View {
         Menu {
             if ublockMasterEnabled {
@@ -1266,7 +1274,7 @@ struct WebAppTileSettingsMenu: View {
                         )
                     }
             }
-            Toggle("Open links in Safari Reader", isOn: $app.openLinksInSafariReaderMode)
+            Toggle(readerLinksToggleTitle, isOn: $app.openLinksInSafariReaderMode)
                 .onChange(of: app.openLinksInSafariReaderMode) { _, _ in
                     try? app.modelContext?.save()
                 }

@@ -34,6 +34,14 @@ class WebViewNavigationState: ObservableObject {
     var onOpenSafariReader: ((URL) -> Void)?
     var onCaptureFirstPagePDFText: (() async throws -> (title: String, url: String, text: String))?
     var onOpenNewWindowOrTab: ((URL) -> Void)?
+    #if os(macOS)
+    @Published var isReaderModeActive: Bool = false
+    var webViewCommitGeneration: Int = 0
+    var webViewFinishGeneration: Int = 0
+    var lastBackgroundLoadError: String? = nil
+    var onCaptureLiveHTML: (() async throws -> ReaderHTMLCapture)?
+    var onSetReaderMediaSuspended: ((Bool) -> Void)?
+    #endif
     
     func clearCallbacks() {
         onGoBack = nil
@@ -46,6 +54,10 @@ class WebViewNavigationState: ObservableObject {
         onOpenSafariReader = nil
         onCaptureFirstPagePDFText = nil
         onOpenNewWindowOrTab = nil
+        #if os(macOS)
+        onCaptureLiveHTML = nil
+        onSetReaderMediaSuspended = nil
+        #endif
     }
 }
 
@@ -53,6 +65,7 @@ struct WebAppContainerView: View {
     let appItem: WebAppItem
     var initialURLString: String? = nil
     var isSecondaryWindow: Bool = false
+    var startInReaderMode: Bool = false
     var onActiveDomainChange: ((String) -> Void)? = nil
     let onDismiss: () -> Void
     
@@ -60,12 +73,40 @@ struct WebAppContainerView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var hostingWindowBox = WeakWindowBox()
     private var hostingWindow: NSWindow? { hostingWindowBox.window }
+    @State private var isReaderModeActive: Bool
+    @State private var hasMountedWebView: Bool
+    @State private var deferredWebViewInitialURL: String? = nil
+    @State private var readerState: ReaderViewState = .idle
+    @State private var readerTask: Task<Void, Never>? = nil
+    @State private var readerHistory = ReaderHistoryStack()
+    @State private var readerCache: [URL: ReaderDocument] = [:]
+    @State private var webViewURLBeforeReader: String? = nil
     #endif
     
     @Environment(\.modelContext) private var modelContext
     @StateObject private var navigationState = WebViewNavigationState()
     @ObservedObject private var downloadManager = CapsuleDownloadManager.shared
     @State private var isShowingDownloadsPopover = false
+    
+    init(
+        appItem: WebAppItem,
+        initialURLString: String? = nil,
+        isSecondaryWindow: Bool = false,
+        startInReaderMode: Bool = false,
+        onActiveDomainChange: ((String) -> Void)? = nil,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.appItem = appItem
+        self.initialURLString = initialURLString
+        self.isSecondaryWindow = isSecondaryWindow
+        self.startInReaderMode = startInReaderMode
+        self.onActiveDomainChange = onActiveDomainChange
+        self.onDismiss = onDismiss
+        #if os(macOS)
+        _isReaderModeActive = State(initialValue: startInReaderMode)
+        _hasMountedWebView = State(initialValue: !startInReaderMode)
+        #endif
+    }
     
     private var activeDomainTitle: String {
         let urlStr = !navigationState.currentURLString.isEmpty && navigationState.currentURLString != "about:blank"
@@ -123,10 +164,11 @@ struct WebAppContainerView: View {
                         isGeneratingSummary: isGeneratingSummary,
                         isSummarizationAvailable: isSummarizationAvailable,
                         isSecondaryWindow: isSecondaryWindow,
+                        isReaderModeActive: isReaderModeActive,
                         onDismiss: handleDismiss,
                         onToggleShield: toggleUBlockProtection,
                         onSummarize: handleSummarizeTap,
-                        onOpenInReader: openCurrentInSafariReader,
+                        onOpenInReader: toggleReaderMode,
                         onAddCapsule: {
                             isShowingAddSheet = true
                         }
@@ -134,27 +176,52 @@ struct WebAppContainerView: View {
                     
                     Divider()
                     
-                    // Web View Content
-                    IsolatedWebViewRepresentable(
-                        appItem: appItem,
-                        initialURLString: initialURLString,
-                        navigationState: navigationState,
-                        modelContext: modelContext,
-                        onOpenNewWindowOrTab: { url in
-                            handleOpenNewWindowOrTab(url: url)
-                        },
-                        onSearchInNewEphemeralCapsule: { url in
-                            handleSearchInNewEphemeralCapsule(url: url)
-                        }
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onTapGesture {
-                        if isURLExpanded {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                isURLExpanded = false
+                    // Web View + In-App Markdown Reader Content
+                    ZStack {
+                        if hasMountedWebView {
+                            IsolatedWebViewRepresentable(
+                                appItem: appItem,
+                                initialURLString: deferredWebViewInitialURL ?? initialURLString,
+                                navigationState: navigationState,
+                                modelContext: modelContext,
+                                onOpenNewWindowOrTab: { url in
+                                    handleOpenNewWindowOrTab(url: url)
+                                },
+                                onSearchInNewEphemeralCapsule: { url in
+                                    handleSearchInNewEphemeralCapsule(url: url)
+                                }
+                            )
+                            .opacity(isReaderModeActive ? 0 : 1)
+                            .allowsHitTesting(!isReaderModeActive)
+                            .accessibilityHidden(isReaderModeActive)
+                            .onTapGesture {
+                                if isURLExpanded {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        isURLExpanded = false
+                                    }
+                                }
                             }
                         }
+                        
+                        if isReaderModeActive {
+                            MarkdownReaderView(
+                                state: readerState,
+                                onOpenLinkInPlace: { url in
+                                    navigateReaderInPlace(url: url)
+                                },
+                                onOpenLinkInNewReader: { url in
+                                    handleOpenInReaderCapsule(url: url)
+                                },
+                                onLoadFullWebpage: {
+                                    exitReaderModeAndLoadFullWebpage()
+                                },
+                                onRetry: {
+                                    reloadActiveReader()
+                                }
+                            )
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     
                     if let bannerItem = downloadManager.activeBannerItem {
                         Divider()
@@ -181,7 +248,13 @@ struct WebAppContainerView: View {
                         isURLExpanded: $isURLExpanded,
                         editableURLString: $editableURLString,
                         onGoHome: navigateToConfiguredHome,
-                        onShare: shareCurrentURL
+                        onShare: shareCurrentURL,
+                        canGoBackOverride: isReaderModeActive ? readerHistory.canGoBack : nil,
+                        canGoForwardOverride: isReaderModeActive ? readerHistory.canGoForward : nil,
+                        onGoBackOverride: isReaderModeActive ? { navigateReaderBack() } : nil,
+                        onGoForwardOverride: isReaderModeActive ? { navigateReaderForward() } : nil,
+                        onReloadOverride: isReaderModeActive ? { reloadActiveReader() } : nil,
+                        onSubmitRawInput: isReaderModeActive ? { rawInput in handleReaderAddressSubmit(rawInput) } : nil
                     )
                 }
                 .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
@@ -190,6 +263,7 @@ struct WebAppContainerView: View {
         .onAppear {
             isSummarizationAvailable = AISummarizer.isAvailable
             navigationState.isUBlockEnabled = appItem.isUBlockEnabled
+            navigationState.isReaderModeActive = isReaderModeActive
             let initialURL = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
             navigationState.currentURLString = initialURL
             editableURLString = initialURL
@@ -203,7 +277,7 @@ struct WebAppContainerView: View {
                 NSWorkspace.shared.open(url)
             }
             navigationState.onOpenSafariReader = { url in
-                NSWorkspace.shared.open(url)
+                handleOpenInReaderCapsule(url: url)
             }
             navigationState.onOpenNewWindowOrTab = { url in
                 handleOpenNewWindowOrTab(url: url)
@@ -212,6 +286,14 @@ struct WebAppContainerView: View {
             if MainWindowTracker.shared.openWindowAction == nil {
                 MainWindowTracker.shared.openWindowAction = { payload in
                     openWindow(id: "capsuleWindow", value: payload)
+                }
+            }
+            if startInReaderMode, case .idle = readerState {
+                if let targetURL = URL(string: initialURL) {
+                    readerHistory.reset(to: targetURL)
+                    loadFastReader(url: targetURL, bypassCache: false)
+                } else {
+                    readerState = .failed(message: ReaderModeError.invalidURL.localizedDescription, url: nil)
                 }
             }
             #endif
@@ -239,6 +321,8 @@ struct WebAppContainerView: View {
                 return
             }
             summaryTask?.cancel()
+            readerTask?.cancel()
+            readerCache.removeAll()
             summaryText = ""
             summaryErrorMessage = nil
             isGeneratingSummary = false
@@ -531,6 +615,331 @@ struct WebAppContainerView: View {
             openWindow(id: "capsuleWindow", value: payload)
         }
     }
+    
+    // MARK: - macOS In-App Reader Mode Helpers
+    
+    private func handleOpenInReaderCapsule(url: URL) {
+        let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
+        let mode = WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
+        let openAsTab = (mode == .tabs)
+        let sourceWin = MainWindowTracker.shared.resolveSourceWindow(
+            preferred: hostingWindow,
+            includeFallbackTarget: openAsTab
+        )
+        if let win = sourceWin {
+            MainWindowTracker.shared.persistWindowSize(from: win)
+        }
+        let payload = CapsuleWindowPayload(
+            appId: nil,
+            urlString: url.absoluteString,
+            name: WebAppNamingHelper.domainName(from: url.absoluteString) ?? "Reader",
+            isSecondaryWindow: true,
+            openAsTab: openAsTab,
+            startInReaderMode: true,
+            sourceWindowNumber: sourceWin?.windowNumber,
+            sourceFrame: sourceWin?.serializedFrame
+        )
+        if openAsTab {
+            if MainWindowTracker.shared.openWindowAction != nil {
+                MainWindowTracker.shared.openNewTab(with: payload, from: sourceWin)
+            } else {
+                if let win = sourceWin {
+                    MainWindowTracker.shared.armPendingTabTarget(win)
+                }
+                openWindow(id: "capsuleWindow", value: payload)
+            }
+        } else {
+            openWindow(id: "capsuleWindow", value: payload)
+        }
+    }
+    
+    private func toggleReaderMode() {
+        if isReaderModeActive {
+            exitReaderModeAndLoadFullWebpage()
+        } else {
+            activateReaderFromLiveWebView()
+        }
+    }
+    
+    private func activateReaderFromLiveWebView() {
+        let activeURLString = navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString
+        let currentURL = URL(string: activeURLString)
+        webViewURLBeforeReader = activeURLString
+        isReaderModeActive = true
+        navigationState.isReaderModeActive = true
+        navigationState.onSetReaderMediaSuspended?(true)
+        if let currentURL {
+            readerHistory.reset(to: currentURL)
+        }
+        
+        readerTask?.cancel()
+        readerState = .loading(currentURL, statusMessage: "Loading Reader View…")
+        navigationState.isLoading = true
+        
+        readerTask = Task { @MainActor in
+            do {
+                guard let captureBlock = navigationState.onCaptureLiveHTML else {
+                    throw ReaderModeError.conversionFailed("Web view capture handler unavailable.")
+                }
+                let capture = try await captureBlock()
+                try Task.checkCancellation()
+                let document = try await ReaderModeService.convertLiveCapture(capture)
+                try Task.checkCancellation()
+                applyLoadedReaderDocument(document, requestedURL: currentURL)
+            } catch is CancellationError {
+                // Ignore cancellation
+            } catch {
+                readerState = .failed(message: error.localizedDescription, url: currentURL)
+                navigationState.isLoading = false
+            }
+        }
+    }
+    
+    private func exitReaderModeAndLoadFullWebpage(overrideURL: URL? = nil) {
+        readerTask?.cancel()
+        readerTask = nil
+        navigationState.isLoading = false
+        isReaderModeActive = false
+        navigationState.isReaderModeActive = false
+        
+        let targetURL = overrideURL
+            ?? readerHistory.currentURL
+            ?? URL(string: navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString)
+        
+        guard let targetURL else { return }
+        
+        if !hasMountedWebView {
+            deferredWebViewInitialURL = targetURL.absoluteString
+            navigationState.currentURLString = targetURL.absoluteString
+            editableURLString = targetURL.absoluteString
+            hasMountedWebView = true
+            return
+        }
+        
+        navigationState.onSetReaderMediaSuspended?(false)
+        
+        if overrideURL != nil || targetURL.absoluteString != webViewURLBeforeReader {
+            navigationState.currentURLString = targetURL.absoluteString
+            editableURLString = targetURL.absoluteString
+            navigationState.onLoadURL?(targetURL)
+        }
+    }
+    
+    private func navigateReaderInPlace(url: URL) {
+        readerHistory.push(url)
+        loadFastReader(url: url, bypassCache: false)
+    }
+    
+    private func navigateReaderBack() {
+        guard let previousURL = readerHistory.goBack() else { return }
+        loadFastReader(url: previousURL, bypassCache: false)
+    }
+    
+    private func navigateReaderForward() {
+        guard let nextURL = readerHistory.goForward() else { return }
+        loadFastReader(url: nextURL, bypassCache: false)
+    }
+    
+    private func reloadActiveReader() {
+        let activeURL = readerHistory.currentURL
+            ?? URL(string: navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString)
+        if hasMountedWebView, let activeURL, activeURL.absoluteString == webViewURLBeforeReader {
+            if !startInReaderMode {
+                activateReaderFromLiveWebView()
+            } else {
+                loadFastReader(url: activeURL, bypassCache: true)
+            }
+            return
+        }
+        if let activeURL {
+            loadFastReader(url: activeURL, bypassCache: true)
+        }
+    }
+    
+    private func handleReaderAddressSubmit(_ rawInput: String) {
+        let trimmed = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let resolved = SearchEngine.resolveInput(trimmed),
+              let url = URL(string: resolved) else { return }
+        if ReaderHTMLUtilities.isLikelyDirectURLInput(trimmed) {
+            navigateReaderInPlace(url: url)
+        } else {
+            exitReaderModeAndLoadFullWebpage(overrideURL: url)
+        }
+    }
+    
+    private func applyLoadedReaderDocument(_ document: ReaderDocument, requestedURL: URL?) {
+        cacheReaderDocument(document, requestedURL: requestedURL)
+        readerHistory.replaceCurrent(with: document.url)
+        navigationState.currentURLString = document.url.absoluteString
+        editableURLString = document.url.absoluteString
+        if document.source == .liveWebView {
+            webViewURLBeforeReader = document.url.absoluteString
+        }
+        if let domain = WebAppNamingHelper.domainName(from: document.url.absoluteString) {
+            onActiveDomainChange?(domain)
+        }
+        readerState = .loaded(document)
+        navigationState.isLoading = false
+    }
+    
+    private func loadFastReader(url: URL, bypassCache: Bool) {
+        readerTask?.cancel()
+        navigationState.currentURLString = url.absoluteString
+        editableURLString = url.absoluteString
+        if let domain = WebAppNamingHelper.domainName(from: url.absoluteString) {
+            onActiveDomainChange?(domain)
+        }
+        
+        if !bypassCache, let cached = readerCache[url] {
+            navigationState.isLoading = false
+            readerState = .loaded(cached)
+            return
+        }
+        
+        readerState = .loading(url, statusMessage: "Loading Reader View…")
+        navigationState.isLoading = true
+        
+        readerTask = Task { @MainActor in
+            do {
+                if ReaderHTMLUtilities.isKnownJSRedirectorURL(url) {
+                    try await loadReaderViaBackgroundWebView(url: url, requestedURL: url)
+                    return
+                }
+                
+                do {
+                    let document = try await ReaderModeService.fetchAndConvert(url: url)
+                    try Task.checkCancellation()
+                    applyLoadedReaderDocument(document, requestedURL: url)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let readerError as ReaderModeError where readerError.shouldFallbackToBackgroundWebView {
+                    try await loadReaderViaBackgroundWebView(url: url, requestedURL: url)
+                }
+            } catch is CancellationError {
+                // Ignore cancellation
+            } catch {
+                readerState = .failed(message: error.localizedDescription, url: url)
+                navigationState.isLoading = false
+            }
+        }
+    }
+    
+    private func loadReaderViaBackgroundWebView(url: URL, requestedURL: URL) async throws {
+        readerState = .loading(url, statusMessage: "Rendering page for Reader View…")
+        navigationState.isLoading = true
+        navigationState.lastBackgroundLoadError = nil
+        
+        let startCommitGen = navigationState.webViewCommitGeneration
+        let startFinishGen = navigationState.webViewFinishGeneration
+        webViewURLBeforeReader = url.absoluteString
+        
+        if !hasMountedWebView {
+            deferredWebViewInitialURL = url.absoluteString
+            hasMountedWebView = true
+        } else {
+            navigationState.onSetReaderMediaSuspended?(true)
+            navigationState.onLoadURL?(url)
+        }
+        
+        // Wait for the hidden WKWebView to mount and attach its capture callback (up to 3s).
+        let captureAttachDeadline = Date().addingTimeInterval(3.0)
+        while navigationState.onCaptureLiveHTML == nil && Date() < captureAttachDeadline {
+            try Task.checkCancellation()
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        
+        guard let captureBlock = navigationState.onCaptureLiveHTML else {
+            throw ReaderModeError.conversionFailed("Background web view is unavailable.")
+        }
+        
+        let totalDeadline = Date().addingTimeInterval(15.0)
+        var trackedCommitGen = startCommitGen
+        var finishObservedAt: Date? = nil
+        var lastBestCapture: ReaderHTMLCapture? = nil
+        
+        while Date() < totalDeadline {
+            try Task.checkCancellation()
+            
+            if let errMsg = navigationState.lastBackgroundLoadError,
+               navigationState.webViewCommitGeneration == startCommitGen {
+                throw ReaderModeError.networkFailed(errMsg)
+            }
+            
+            if navigationState.webViewCommitGeneration > startCommitGen {
+                if navigationState.webViewCommitGeneration != trackedCommitGen {
+                    trackedCommitGen = navigationState.webViewCommitGeneration
+                    finishObservedAt = nil
+                    lastBestCapture = nil
+                }
+                
+                if let capture = try? await captureBlock() {
+                    try Task.checkCancellation()
+                    let readiness = ReaderHTMLUtilities.evaluateBackgroundCaptureReadiness(capture)
+                    
+                    switch readiness {
+                    case .readyImmediately:
+                        if let doc = try? await ReaderModeService.convertLiveCapture(capture) {
+                            try Task.checkCancellation()
+                            if !ReaderHTMLUtilities.looksLikeJavaScriptShell(markdown: doc.markdown, rawHTML: capture.html),
+                               !doc.blocks.isEmpty {
+                                applyLoadedReaderDocument(doc, requestedURL: requestedURL)
+                                return
+                            }
+                        }
+                        
+                    case .usableAfterSettle:
+                        lastBestCapture = capture
+                        
+                    case .notReadyYet:
+                        break
+                    }
+                    
+                    let isJSRedirector = URL(string: capture.urlString).map { ReaderHTMLUtilities.isKnownJSRedirectorURL($0) } ?? false
+                    if !isJSRedirector && navigationState.webViewFinishGeneration > startFinishGen {
+                        if finishObservedAt == nil {
+                            finishObservedAt = Date()
+                        }
+                    } else {
+                        finishObservedAt = nil
+                    }
+                }
+                
+                if let finishedAt = finishObservedAt,
+                   Date().timeIntervalSince(finishedAt) >= 1.75 {
+                    if let best = lastBestCapture,
+                       let doc = try? await ReaderModeService.convertLiveCapture(best),
+                       !doc.blocks.isEmpty {
+                        try Task.checkCancellation()
+                        applyLoadedReaderDocument(doc, requestedURL: requestedURL)
+                        return
+                    }
+                    throw ReaderModeError.emptyContent
+                }
+            }
+            
+            try await Task.sleep(nanoseconds: 250_000_000)
+        }
+        
+        if let best = lastBestCapture,
+           let doc = try? await ReaderModeService.convertLiveCapture(best),
+           !doc.blocks.isEmpty {
+            applyLoadedReaderDocument(doc, requestedURL: requestedURL)
+            return
+        }
+        
+        throw ReaderModeError.javaScriptRequired
+    }
+    
+    private func cacheReaderDocument(_ document: ReaderDocument, requestedURL: URL?) {
+        if readerCache.count >= 8 {
+            readerCache.removeAll()
+        }
+        readerCache[document.url] = document
+        if let requestedURL {
+            readerCache[requestedURL] = document
+        }
+    }
     #endif
     
     private func handleDismiss() {
@@ -548,6 +957,10 @@ struct WebAppContainerView: View {
         print("[CapsuleClose] Dismissing capsule '\(appItem.name)' back to Home Screen (deleteCookiesOnClose: \(appItem.deleteCookiesOnClose))")
         #endif
         summaryTask?.cancel()
+        #if os(macOS)
+        readerTask?.cancel()
+        readerCache.removeAll()
+        #endif
         navigationState.onStopLoading?()
         
         if appItem.deleteCookiesOnClose {
@@ -570,6 +983,16 @@ struct WebAppContainerView: View {
         print("[WebAppContainerView] Navigating to configured home URL: \(appItem.urlString)")
         #endif
         if let homeURL = URL(string: appItem.urlString) {
+            #if os(macOS)
+            if isReaderModeActive {
+                if startInReaderMode {
+                    navigateReaderInPlace(url: homeURL)
+                } else {
+                    exitReaderModeAndLoadFullWebpage(overrideURL: homeURL)
+                }
+                return
+            }
+            #endif
             navigationState.onLoadURL?(homeURL)
         }
     }
@@ -582,16 +1005,13 @@ struct WebAppContainerView: View {
         navigationState.onToggleUBlock?(newState)
     }
     
+    #if os(iOS)
     private func openCurrentInSafariReader() {
         let activeURLString = navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString
         guard let url = URL(string: activeURLString), url.scheme?.hasPrefix("http") == true else { return }
-        
-        #if os(iOS)
         safariURL = IdentifiableURL(url: url, entersReader: true)
-        #else
-        NSWorkspace.shared.open(url)
-        #endif
     }
+    #endif
     
     private func handleSummarizeTap() {
         if isShowingSummary && !isGeneratingSummary && summaryErrorMessage == nil && !summaryText.isEmpty {
@@ -614,6 +1034,26 @@ struct WebAppContainerView: View {
         
         summaryTask = Task { @MainActor in
             do {
+                #if os(macOS)
+                if isReaderModeActive, case .loaded(let doc) = readerState {
+                    let result = try await AISummarizer.shared.summarize(
+                        title: doc.title,
+                        url: doc.url.absoluteString,
+                        firstPageText: doc.plainTextForSummary,
+                        onPartialUpdate: { partial in
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                self.summaryText = partial
+                            }
+                        }
+                    )
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        self.summaryText = result
+                        self.isGeneratingSummary = false
+                    }
+                    return
+                }
+                #endif
+                
                 guard let captureBlock = navigationState.onCaptureFirstPagePDFText else {
                     throw WebPageSummaryError.webViewUnavailable
                 }
@@ -677,6 +1117,7 @@ struct TopControlsBar: View {
     var isGeneratingSummary: Bool = false
     var isSummarizationAvailable: Bool = false
     var isSecondaryWindow: Bool = false
+    var isReaderModeActive: Bool = false
     let onDismiss: () -> Void
     let onToggleShield: () -> Void
     let onSummarize: () -> Void
@@ -799,7 +1240,27 @@ struct TopControlsBar: View {
                 #endif
             }
             
-            // Reader Button (Appears only when "open links in safari reader mode" is OFF)
+            #if os(macOS)
+            // Reader Button (macOS): Always visible; toggles in-app Markdown Reader view ON/OFF
+            Button(action: onOpenInReader) {
+                HStack(spacing: 4) {
+                    Image(systemName: isReaderModeActive ? "doc.plaintext.fill" : "doc.plaintext")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(isReaderModeActive ? .white : .blue)
+                    
+                    Text("Reader")
+                        .font(.system(size: 11, weight: isReaderModeActive ? .semibold : .medium))
+                        .foregroundColor(isReaderModeActive ? .white : .primary)
+                }
+                .padding(.horizontal, 9)
+                .frame(height: 32)
+                .modifier(ReaderToggleButtonStyleModifier(isActive: isReaderModeActive, cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+            .help(isReaderModeActive ? "Switch back to full webpage" : "Open current page in Reader view")
+            #else
+            // Reader Button (iOS): Appears only when "open links in safari reader mode" is OFF
             if !appItem.openLinksInSafariReaderMode {
                 Button(action: onOpenInReader) {
                     HStack(spacing: 4) {
@@ -818,6 +1279,7 @@ struct TopControlsBar: View {
                 .buttonStyle(.plain)
                 .help("Open current web page in Safari Reader view")
             }
+            #endif
             
             // Tiles / Grid Home Button (Top Right)
             Button(action: onDismiss) {
@@ -843,6 +1305,28 @@ struct TopControlsBar: View {
         #endif
     }
 }
+
+#if os(macOS)
+private struct ReaderToggleButtonStyleModifier: ViewModifier {
+    let isActive: Bool
+    var cornerRadius: CGFloat = 10
+    
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isActive {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color.accentColor)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            content
+                .liquidGlassButton(cornerRadius: cornerRadius)
+        }
+    }
+}
+#endif
 
 // MARK: - Downloads UI (Status Banner & Popover List)
 
@@ -1216,33 +1700,59 @@ struct MacOSSolidBottomBar: View {
     @Binding var editableURLString: String
     let onGoHome: () -> Void
     let onShare: () -> Void
+    var canGoBackOverride: Bool? = nil
+    var canGoForwardOverride: Bool? = nil
+    var onGoBackOverride: (() -> Void)? = nil
+    var onGoForwardOverride: (() -> Void)? = nil
+    var onReloadOverride: (() -> Void)? = nil
+    var onSubmitRawInput: ((String) -> Void)? = nil
+    
+    private var resolvedCanGoBack: Bool {
+        canGoBackOverride ?? navigationState.canGoBack
+    }
+    
+    private var resolvedCanGoForward: Bool {
+        canGoForwardOverride ?? navigationState.canGoForward
+    }
     
     var body: some View {
         HStack(spacing: 12) {
             // Navigation Buttons (Back & Forward)
             HStack(spacing: 6) {
                 Button {
-                    navigationState.onGoBack?()
+                    if let onGoBackOverride {
+                        onGoBackOverride()
+                    } else {
+                        navigationState.onGoBack?()
+                    }
                 } label: {
                     Image(systemName: "chevron.backward")
                         .font(.system(size: 13, weight: .semibold))
                 }
-                .disabled(!navigationState.canGoBack)
+                .disabled(!resolvedCanGoBack)
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 
                 Button {
-                    navigationState.onGoForward?()
+                    if let onGoForwardOverride {
+                        onGoForwardOverride()
+                    } else {
+                        navigationState.onGoForward?()
+                    }
                 } label: {
                     Image(systemName: "chevron.forward")
                         .font(.system(size: 13, weight: .semibold))
                 }
-                .disabled(!navigationState.canGoForward)
+                .disabled(!resolvedCanGoForward)
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 
                 Button {
-                    navigationState.onReload?()
+                    if let onReloadOverride {
+                        onReloadOverride()
+                    } else {
+                        navigationState.onReload?()
+                    }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 13))
@@ -1304,6 +1814,10 @@ struct MacOSSolidBottomBar: View {
     }
     
     private func submitURL() {
+        if let onSubmitRawInput {
+            onSubmitRawInput(editableURLString)
+            return
+        }
         guard let resolved = SearchEngine.resolveInput(editableURLString),
               let url = URL(string: resolved) else { return }
         navigationState.onLoadURL?(url)
