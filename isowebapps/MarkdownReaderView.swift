@@ -152,6 +152,7 @@ struct MarkdownReaderView: View {
                         ForEach(document.blocks) { block in
                             MarkdownBlockRow(
                                 block: block,
+                                documentURL: document.url,
                                 fontScale: clampedScale,
                                 fontDesign: bodyFontDesign,
                                 onNavigateLink: handleLinkActivation
@@ -295,6 +296,7 @@ struct MarkdownReaderView: View {
 
 private struct MarkdownBlockRow: View {
     let block: MarkdownBlock
+    let documentURL: URL
     let fontScale: CGFloat
     let fontDesign: Font.Design
     let onNavigateLink: (URL) -> Void
@@ -326,6 +328,7 @@ private struct MarkdownBlockRow: View {
                     ForEach(innerBlocks) { inner in
                         MarkdownBlockRow(
                             block: inner,
+                            documentURL: documentURL,
                             fontScale: fontScale,
                             fontDesign: fontDesign,
                             onNavigateLink: onNavigateLink
@@ -379,6 +382,7 @@ private struct MarkdownBlockRow: View {
                 urlString: urlString,
                 title: title,
                 linkURLString: linkURLString,
+                documentURL: documentURL,
                 fontScale: fontScale,
                 onNavigateLink: onNavigateLink
             )
@@ -451,6 +455,7 @@ private struct MarkdownBlockRow: View {
                         ForEach(item.nestedBlocks) { nested in
                             MarkdownBlockRow(
                                 block: nested,
+                                documentURL: documentURL,
                                 fontScale: fontScale,
                                 fontDesign: fontDesign,
                                 onNavigateLink: onNavigateLink
@@ -597,32 +602,157 @@ private struct MarkdownTableView: View {
     }
 }
 
+@MainActor
+final class ReaderImageCache {
+    static let shared = ReaderImageCache()
+
+    private let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 40
+        cache.totalCostLimit = 48 * 1024 * 1024
+        return cache
+    }()
+
+    private init() {}
+
+    func image(forKey key: String) -> NSImage? {
+        cache.object(forKey: key as NSString)
+    }
+
+    func insert(_ image: NSImage, forKey key: String) {
+        let pixelCost: Int
+        if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            pixelCost = max(1, cgImage.bytesPerRow * cgImage.height)
+        } else {
+            pixelCost = max(1, Int(image.size.width * image.size.height * 4))
+        }
+        cache.setObject(image, forKey: key as NSString, cost: pixelCost)
+    }
+
+    func clear() {
+        cache.removeAllObjects()
+    }
+}
+
+@MainActor
+private enum ReaderImageLoader {
+    static func loadImage(urlString: String, documentURL: URL) async -> NSImage? {
+        let candidates = ReaderHTMLUtilities.candidateImageURLs(from: urlString, relativeTo: documentURL)
+        guard !candidates.isEmpty else { return nil }
+
+        for candidate in candidates {
+            if let cached = ReaderImageCache.shared.image(forKey: candidate.absoluteString) {
+                return cached
+            }
+        }
+
+        let userAgent = IsolatedWebViewRepresentable.defaultUserAgent
+        let refererOrigin: String? = {
+            guard let scheme = documentURL.scheme, let host = documentURL.host else { return nil }
+            return "\(scheme)://\(host)/"
+        }()
+
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 20
+        config.httpShouldSetCookies = false
+        config.httpCookieAcceptPolicy = .never
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+
+        for candidate in candidates {
+            if Task.isCancelled { return nil }
+            if let fetched = await fetchCandidate(
+                url: candidate,
+                session: session,
+                userAgent: userAgent,
+                referer: refererOrigin
+            ) {
+                ReaderImageCache.shared.insert(fetched, forKey: candidate.absoluteString)
+                if let primaryKey = candidates.first?.absoluteString, primaryKey != candidate.absoluteString {
+                    ReaderImageCache.shared.insert(fetched, forKey: primaryKey)
+                }
+                return fetched
+            }
+        }
+        return nil
+    }
+
+    private static func fetchCandidate(
+        url: URL,
+        session: URLSession,
+        userAgent: String,
+        referer: String?
+    ) async -> NSImage? {
+        let refererModes: [String?] = referer != nil ? [referer, nil] : [nil]
+        for (attemptIndex, activeReferer) in refererModes.enumerated() {
+            if Task.isCancelled { return nil }
+            var request = URLRequest(url: url)
+            request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue("image/avif,image/webp,image/apng,image/png,image/jpeg,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
+            if let activeReferer {
+                request.setValue(activeReferer, forHTTPHeaderField: "Referer")
+            }
+
+            do {
+                let (data, response) = try await session.data(for: request)
+                if let httpResponse = response as? HTTPURLResponse {
+                    let status = httpResponse.statusCode
+                    if (status == 400 || status == 403), attemptIndex == 0, refererModes.count > 1 {
+                        // Retry once without Referer for strict anti-hotlink CDNs
+                        continue
+                    }
+                    guard (200..<300).contains(status) else { return nil }
+                }
+                guard !data.isEmpty,
+                      let nsImage = NSImage(data: data),
+                      nsImage.size.width > 1,
+                      nsImage.size.height > 1 else {
+                    return nil
+                }
+                return nsImage
+            } catch is CancellationError {
+                return nil
+            } catch {
+                return nil
+            }
+        }
+        return nil
+    }
+}
+
 private struct MarkdownImageView: View {
     let alt: String
     let urlString: String
     let title: String?
     let linkURLString: String?
+    let documentURL: URL
     let fontScale: CGFloat
     let onNavigateLink: (URL) -> Void
 
-    private var remoteURL: URL? {
-        let lower = urlString.lowercased()
-        guard lower.hasPrefix("https://") || lower.hasPrefix("http://") else { return nil }
-        return URL(string: urlString)
+    @State private var loadedImage: NSImage? = nil
+    @State private var didFail: Bool = false
+
+    private var candidateURLs: [URL] {
+        ReaderHTMLUtilities.candidateImageURLs(from: urlString, relativeTo: documentURL)
     }
 
     private var linkURL: URL? {
         guard let linkURLString else { return nil }
-        let lower = linkURLString.lowercased()
-        guard lower.hasPrefix("https://") || lower.hasPrefix("http://") else { return nil }
-        return URL(string: linkURLString)
+        return ReaderHTMLUtilities.candidateImageURLs(from: linkURLString, relativeTo: documentURL).first
+    }
+
+    private var taskIdentity: String {
+        "\(documentURL.absoluteString)|\(urlString)"
     }
 
     var body: some View {
-        if let url = remoteURL {
+        if !candidateURLs.isEmpty {
             VStack(alignment: .center, spacing: 6) {
-                imageContent(url: url)
-                    .frame(maxWidth: 680, maxHeight: 460)
+                imageContent
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 if let caption = resolvedCaption {
@@ -634,6 +764,15 @@ private struct MarkdownImageView: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 6)
+            .task(id: taskIdentity) {
+                loadedImage = nil
+                didFail = false
+                if let image = await ReaderImageLoader.loadImage(urlString: urlString, documentURL: documentURL) {
+                    loadedImage = image
+                } else if !Task.isCancelled {
+                    didFail = true
+                }
+            }
         }
     }
 
@@ -644,36 +783,42 @@ private struct MarkdownImageView: View {
     }
 
     @ViewBuilder
-    private func imageContent(url: URL) -> some View {
-        let rendered = AsyncImage(url: url) { phase in
-            switch phase {
-            case .empty:
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.secondary.opacity(0.08))
-                    .frame(height: 160)
-                    .overlay(ProgressView().controlSize(.small))
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFit()
-            case .failure:
+    private var imageContent: some View {
+        let rendered: AnyView = {
+            if let nsImage = loadedImage {
+                let maxW = min(680, max(nsImage.size.width, 1))
+                let maxH = min(460, max(nsImage.size.height, 1))
+                return AnyView(
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: maxW, maxHeight: maxH)
+                )
+            } else if didFail {
                 if !alt.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "photo")
-                            .foregroundStyle(.secondary)
-                        Text(alt)
-                            .font(.system(size: 12 * fontScale))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(10)
-                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                } else {
-                    EmptyView()
+                    return AnyView(
+                        HStack(spacing: 6) {
+                            Image(systemName: "photo")
+                                .foregroundStyle(.secondary)
+                            Text(alt)
+                                .font(.system(size: 12 * fontScale))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(10)
+                        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    )
                 }
-            @unknown default:
-                EmptyView()
+                return AnyView(EmptyView())
+            } else {
+                return AnyView(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.secondary.opacity(0.08))
+                        .frame(maxWidth: 680)
+                        .frame(height: 160)
+                        .overlay(ProgressView().controlSize(.small))
+                )
             }
-        }
+        }()
 
         if let destination = linkURL {
             rendered

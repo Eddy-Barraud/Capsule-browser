@@ -259,7 +259,9 @@ nonisolated enum ReaderHTMLUtilities {
                 attrs["data-src"],
                 attrs["data-original"],
                 attrs["data-lazy-src"],
-                attrs["data-actualsrc"]
+                attrs["data-actualsrc"],
+                attrs["data-srcset"].flatMap { bestURLFromSrcset($0) },
+                attrs["srcset"].flatMap { bestURLFromSrcset($0) }
             ]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first(where: { isUsableLazyImageURL($0) })
@@ -275,6 +277,118 @@ nonisolated enum ReaderHTMLUtilities {
 
         output.append(contentsOf: html[lastIndex...])
         return output
+    }
+
+    /// Selects the highest-resolution usable URL from an HTML `srcset` / `data-srcset` attribute,
+    /// handling URLs that legitimately contain commas (such as CDN transformation segments).
+    static func bestURLFromSrcset(_ srcset: String) -> String? {
+        let trimmed = srcset.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Split on commas followed by whitespace or directly preceding a new URL start,
+        // avoiding splitting inside URL path segments like `w_800,f_auto`.
+        let entries: [String]
+        if let splitRegex = try? NSRegularExpression(pattern: #"(?:,\s+|,(?=(?:https?://|//|/)))"#) {
+            let ns = trimmed as NSString
+            let matches = splitRegex.matches(in: trimmed, range: NSRange(location: 0, length: ns.length))
+            var parts: [String] = []
+            var lastLoc = 0
+            for m in matches {
+                let len = m.range.location - lastLoc
+                if len > 0 {
+                    parts.append(ns.substring(with: NSRange(location: lastLoc, length: len)))
+                }
+                lastLoc = m.range.location + m.range.length
+            }
+            if lastLoc < ns.length {
+                parts.append(ns.substring(from: lastLoc))
+            }
+            entries = parts
+        } else {
+            entries = trimmed.components(separatedBy: ",")
+        }
+
+        var bestURL: String?
+        var bestScore: Double = -1
+
+        for rawEntry in entries {
+            let tokens = rawEntry
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .split(whereSeparator: \.isWhitespace)
+            guard let urlToken = tokens.first else { continue }
+            let urlCandidate = String(urlToken)
+            guard isUsableLazyImageURL(urlCandidate) else { continue }
+
+            var score: Double = 0
+            if tokens.count >= 2 {
+                let descriptor = String(tokens[1]).lowercased()
+                if descriptor.hasSuffix("w"), let w = Double(descriptor.dropLast()) {
+                    score = w
+                } else if descriptor.hasSuffix("x"), let x = Double(descriptor.dropLast()) {
+                    score = x * 1000.0
+                }
+            }
+            if bestURL == nil || score > bestScore {
+                bestURL = urlCandidate
+                bestScore = score
+            }
+        }
+        return bestURL
+    }
+
+    /// Produces candidate HTTP(S) URLs for a Markdown image reference, restoring Markdown-escaped
+    /// delimiters like `%28`/`%29`/`%5B`/`%5D` first while keeping the original encoded URL as fallback.
+    static func candidateImageURLs(from rawURLString: String, relativeTo baseURL: URL? = nil) -> [URL] {
+        var cleaned = rawURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return [] }
+
+        cleaned = cleaned
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "\\(", with: "(")
+            .replacingOccurrences(of: "\\)", with: ")")
+            .replacingOccurrences(of: "\\[", with: "[")
+            .replacingOccurrences(of: "\\]", with: "]")
+
+        let lower = cleaned.lowercased()
+        if lower.hasPrefix("data:") || lower.hasPrefix("javascript:") || lower.hasPrefix("blob:") || lower.hasPrefix("about:") || lower.hasPrefix("file:") {
+            return []
+        }
+
+        let restored = cleaned
+            .replacingOccurrences(of: "%28", with: "(", options: [.caseInsensitive])
+            .replacingOccurrences(of: "%29", with: ")", options: [.caseInsensitive])
+            .replacingOccurrences(of: "%5B", with: "[", options: [.caseInsensitive])
+            .replacingOccurrences(of: "%5D", with: "]", options: [.caseInsensitive])
+
+        func resolveHTTPURL(_ candidate: String) -> URL? {
+            let normalizedCandidate: String
+            if candidate.hasPrefix("//") {
+                normalizedCandidate = (baseURL?.scheme ?? "https") + ":" + candidate
+            } else {
+                normalizedCandidate = candidate
+            }
+
+            let url = URL(string: normalizedCandidate, relativeTo: baseURL)?.absoluteURL
+                ?? normalizedCandidate
+                    .addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed)
+                    .flatMap { URL(string: $0, relativeTo: baseURL)?.absoluteURL }
+
+            guard let url,
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https" else {
+                return nil
+            }
+            return url
+        }
+
+        var results: [URL] = []
+        var seen: Set<String> = []
+        for candidate in [restored, cleaned] {
+            if let resolved = resolveHTTPURL(candidate), seen.insert(resolved.absoluteString).inserted {
+                results.append(resolved)
+            }
+        }
+        return results
     }
 
     private static func isUsableLazyImageURL(_ candidate: String) -> Bool {

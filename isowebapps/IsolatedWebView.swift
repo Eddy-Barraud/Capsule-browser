@@ -112,6 +112,9 @@ final class WebKitMemoryManager {
         UBlockOriginExtensionManager.shared.releaseInMemoryCaches()
         URLCache.shared.removeAllCachedResponses()
         IsolatedCookieManager.shared.releaseInMemoryCaches()
+        #if os(macOS)
+        ReaderImageCache.shared.clear()
+        #endif
         
         #if DEBUG
         print("[Memory] Purged idle WebKit caches (teardownAllWebViews: \(teardownAllWebViews), stores: \(storesToPurge.count), remainingLiveWebViews: \(liveWebViewCount))")
@@ -709,13 +712,53 @@ extension IsolatedWebViewRepresentable {
         var plainTextLength = 0;
         if (target) {
             var clone = target.cloneNode(true);
+            var pickFromSrcset = function(srcset) {
+                if (!srcset) return '';
+                var parts = srcset.trim().split(/,\s+|,(?=(?:https?:\/\/|\/\/|\/))/i);
+                var bestURL = '';
+                var bestScore = -1;
+                for (var idx = 0; idx < parts.length; idx++) {
+                    var tokens = parts[idx].trim().split(/\s+/);
+                    var candidate = tokens[0] || '';
+                    if (!candidate) continue;
+                    var lower = candidate.toLowerCase();
+                    if (!(lower.indexOf('https://') === 0 || lower.indexOf('http://') === 0 || lower.indexOf('//') === 0 || lower.indexOf('/') === 0)) {
+                        continue;
+                    }
+                    var score = 0;
+                    if (tokens.length > 1) {
+                        var desc = tokens[1].toLowerCase();
+                        if (desc.slice(-1) === 'w') score = parseFloat(desc) || 0;
+                        else if (desc.slice(-1) === 'x') score = (parseFloat(desc) || 0) * 1000;
+                    }
+                    if (!bestURL || score > bestScore) {
+                        bestURL = candidate;
+                        bestScore = score;
+                    }
+                }
+                return bestURL;
+            };
             var imgs = clone.querySelectorAll('img');
             for (var k = 0; k < imgs.length; k++) {
                 var img = imgs[k];
-                var lazy = img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('data-lazy-src');
                 var src = (img.getAttribute('src') || '').trim().toLowerCase();
-                if (lazy && (!src || src.indexOf('data:image/svg+xml') === 0 || src.indexOf('about:') === 0)) {
-                    img.setAttribute('src', lazy);
+                var needsPromotion = !src || src.indexOf('data:image/svg+xml') === 0 || src.indexOf('data:image/gif;base64,r0lgodlh') === 0 || src.indexOf('about:') === 0;
+                if (needsPromotion) {
+                    var lazy = img.getAttribute('data-src')
+                        || img.getAttribute('data-original')
+                        || img.getAttribute('data-lazy-src')
+                        || img.getAttribute('data-actualsrc')
+                        || pickFromSrcset(img.getAttribute('data-srcset') || img.getAttribute('srcset'));
+                    if (!lazy && img.parentElement && img.parentElement.tagName && img.parentElement.tagName.toLowerCase() === 'picture') {
+                        var sources = img.parentElement.querySelectorAll('source');
+                        for (var sIdx = 0; sIdx < sources.length; sIdx++) {
+                            lazy = pickFromSrcset(sources[sIdx].getAttribute('data-srcset') || sources[sIdx].getAttribute('srcset'));
+                            if (lazy) break;
+                        }
+                    }
+                    if (lazy) {
+                        img.setAttribute('src', lazy);
+                    }
                 }
             }
             var junk = clone.querySelectorAll('script, style, noscript, iframe, nav, footer, aside, form, button, dialog, svg, canvas, template, [hidden], [aria-hidden="true"]');

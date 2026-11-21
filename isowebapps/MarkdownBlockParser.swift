@@ -534,8 +534,18 @@ nonisolated enum MarkdownBlockParser {
                 break
             }
 
-            let nestedBlocks = nestedRawLines.isEmpty ? [] : parseLines(nestedRawLines, nextID: &nextID)
-            let itemText = itemTextLines.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+            var nestedBlocks = nestedRawLines.isEmpty ? [] : parseLines(nestedRawLines, nextID: &nextID)
+            var itemText = itemTextLines.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+            if itemText.contains("![") {
+                let expanded = expandParagraphWithImages(itemText, nextID: &nextID)
+                if let first = expanded.first, case .paragraph(let leadingText) = first.kind {
+                    itemText = leadingText
+                    nestedBlocks = Array(expanded.dropFirst()) + nestedBlocks
+                } else {
+                    itemText = ""
+                    nestedBlocks = expanded + nestedBlocks
+                }
+            }
             items.append(MarkdownListItem(
                 id: nextID,
                 text: itemText,
@@ -606,41 +616,37 @@ nonisolated enum MarkdownBlockParser {
         var cursor = text.startIndex
 
         while cursor < text.endIndex {
-            if let linkedMatch = matchLinkedImage(in: text, from: cursor) {
-                let before = String(text[cursor..<linkedMatch.range.lowerBound])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !before.isEmpty {
-                    output.append(allocateBlock(.paragraph(text: before), nextID: &nextID))
-                }
-                output.append(allocateBlock(
-                    .image(
-                        alt: linkedMatch.alt,
-                        urlString: linkedMatch.imageURL,
-                        title: linkedMatch.title,
-                        linkURLString: linkedMatch.linkURL
-                    ),
-                    nextID: &nextID
-                ))
-                cursor = linkedMatch.range.upperBound
-                continue
+            let linkedMatch = matchLinkedImage(in: text, from: cursor)
+            let standaloneMatch = matchStandaloneImage(in: text, from: cursor)
+
+            let chosenMatch: ParsedImageMatch?
+            switch (linkedMatch, standaloneMatch) {
+            case (let linked?, let standalone?):
+                chosenMatch = standalone.range.lowerBound < linked.range.lowerBound ? standalone : linked
+            case (let linked?, nil):
+                chosenMatch = linked
+            case (nil, let standalone?):
+                chosenMatch = standalone
+            case (nil, nil):
+                chosenMatch = nil
             }
 
-            if let imageMatch = matchStandaloneImage(in: text, from: cursor) {
-                let before = String(text[cursor..<imageMatch.range.lowerBound])
+            if let match = chosenMatch {
+                let before = String(text[cursor..<match.range.lowerBound])
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if !before.isEmpty {
                     output.append(allocateBlock(.paragraph(text: before), nextID: &nextID))
                 }
                 output.append(allocateBlock(
                     .image(
-                        alt: imageMatch.alt,
-                        urlString: imageMatch.imageURL,
-                        title: imageMatch.title,
-                        linkURLString: nil
+                        alt: match.alt,
+                        urlString: match.imageURL,
+                        title: match.title,
+                        linkURLString: match.linkURL
                     ),
                     nextID: &nextID
                 ))
-                cursor = imageMatch.range.upperBound
+                cursor = match.range.upperBound
                 continue
             }
 

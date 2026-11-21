@@ -1402,6 +1402,38 @@ func testReaderHTMLUtilities() {
         ) == .requiresHumanVerification
     )
     
+    // Test 10: Reader image URL restoration (%28/%29 CDN filters), srcset & relative resolution
+    let franceInfoRaw = "https://www.franceinfo.fr/pictures/jDDaRlZCIVatOKyJ2NkdSSQaNJY/0x39:1024x615/432x243/filters:format%28jpg%29/2026/11/21/6b014735f0249092308717.jpg"
+    let franceInfoDecoded = "https://www.franceinfo.fr/pictures/jDDaRlZCIVatOKyJ2NkdSSQaNJY/0x39:1024x615/432x243/filters:format(jpg)/2026/11/21/6b014735f0249092308717.jpg"
+    let candidates = ReaderHTMLUtilities.candidateImageURLs(
+        from: franceInfoRaw,
+        relativeTo: URL(string: "https://www.franceinfo.fr/societe/manifestation.html")!
+    )
+    assert(candidates.count == 2, "Expected decoded primary and raw fallback candidates: \(candidates)")
+    assert(candidates[0].absoluteString == franceInfoDecoded, "First candidate must restore %28/%29 parentheses")
+    assert(candidates[1].absoluteString == franceInfoRaw, "Second candidate must keep raw URL fallback")
+    
+    let relCandidates = ReaderHTMLUtilities.candidateImageURLs(
+        from: "/pictures/a%281%29.jpg?w=400&amp;q=80",
+        relativeTo: URL(string: "https://www.franceinfo.fr/news/post")!
+    )
+    assert(relCandidates.first?.absoluteString == "https://www.franceinfo.fr/pictures/a(1).jpg?w=400&q=80")
+    
+    let protoRel = ReaderHTMLUtilities.candidateImageURLs(
+        from: "//cdn.example.com/hero.webp",
+        relativeTo: URL(string: "https://example.com/article")!
+    )
+    assert(protoRel.first?.absoluteString == "https://cdn.example.com/hero.webp")
+    assert(ReaderHTMLUtilities.candidateImageURLs(from: "data:image/png;base64,AAA").isEmpty)
+    
+    let srcset = "https://res.cloudinary.com/demo/image/upload/w_400,f_auto/sample.jpg 400w, https://res.cloudinary.com/demo/image/upload/w_1200,f_auto/sample.jpg 1200w"
+    assert(
+        ReaderHTMLUtilities.bestURLFromSrcset(srcset) == "https://res.cloudinary.com/demo/image/upload/w_1200,f_auto/sample.jpg",
+        "Must pick widest descriptor while keeping commas inside Cloudinary URL"
+    )
+    let srcsetHTML = "<img srcset=\"/img/small.jpg 320w, /img/large.jpg 1024w\" src=\"data:image/svg+xml;base64,PHN2Zz4=\">"
+    assert(ReaderHTMLUtilities.normalizeLazyImages(in: srcsetHTML).contains("src=\"/img/large.jpg\""))
+    
     print("✓ testReaderHTMLUtilities passed!")
 }
 
@@ -1533,6 +1565,44 @@ func testMarkdownBlockParser() {
         assert(lang == "python" && code == "print(1)")
     } else {
         assertionFailure("Expected unclosed fenced block fallback")
+    }
+    
+    // Franceinfo escaped/encoded image URL parsing
+    let franceInfoMarkdown = "![Des manifestatns défilent à Paris, le 17 novembre 2026. (ARUALLAN / HANS LUCAS / AFP)](https://www.franceinfo.fr/pictures/jDDaRlZCIVatOKyJ2NkdSSQaNJY/0x39:1024x615/432x243/filters:format%28jpg%29/2026/11/21/6b014735f0249092308717.jpg)"
+    let franceInfoBlocks = MarkdownBlockParser.parse(franceInfoMarkdown)
+    assert(franceInfoBlocks.count == 1)
+    if case .image(let alt, let urlStr, _, let linkURL) = franceInfoBlocks[0].kind {
+        assert(alt.contains("ARUALLAN") && urlStr.contains("filters:format%28jpg%29") && linkURL == nil)
+    } else {
+        assertionFailure("Expected image block for Franceinfo markdown")
+    }
+    
+    // Ordering of standalone image before linked image in same paragraph
+    let mixedImagesMD = "First ![standalone](https://example.com/a.jpg) middle [![linked](https://example.com/b.jpg)](https://example.com/post) end."
+    let mixedBlocks = MarkdownBlockParser.parse(mixedImagesMD)
+    assert(mixedBlocks.count == 5, "Expected 5 blocks (text, img1, text, img2, text), got \(mixedBlocks.count)")
+    if case .image(_, let u1, _, let l1) = mixedBlocks[1].kind,
+       case .image(_, let u2, _, let l2) = mixedBlocks[3].kind {
+        assert(u1 == "https://example.com/a.jpg" && l1 == nil)
+        assert(u2 == "https://example.com/b.jpg" && l2 == "https://example.com/post")
+    } else {
+        assertionFailure("Expected preserved image order in paragraph")
+    }
+    
+    // Image inside list item
+    let listWithImageMD = "- Bullet text ![list img](https://example.com/list.jpg)"
+    let listImageBlocks = MarkdownBlockParser.parse(listWithImageMD)
+    assert(listImageBlocks.count == 1)
+    if case .unorderedList(let listItems) = listImageBlocks[0].kind {
+        assert(listItems.count == 1 && listItems[0].text == "Bullet text")
+        assert(listItems[0].nestedBlocks.count == 1)
+        if case .image(_, let nestedURL, _, _) = listItems[0].nestedBlocks[0].kind {
+            assert(nestedURL == "https://example.com/list.jpg")
+        } else {
+            assertionFailure("Expected extracted image inside list item")
+        }
+    } else {
+        assertionFailure("Expected unordered list")
     }
     
     print("✓ testMarkdownBlockParser passed!")
