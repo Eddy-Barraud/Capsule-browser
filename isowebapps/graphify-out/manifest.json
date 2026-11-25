@@ -42,15 +42,15 @@
     "semantic_hash": ""
   },
   "rulesets/main/easylist.json": {
-    "mtime": 1794740982.3895514,
-    "seen": 1794755549.106383,
-    "ast_hash": "",
+    "mtime": 1795617882.1446085,
+    "seen": 1795622045.872772,
+    "ast_hash": "d79f7ccce3b86b454d9873fe6239bd28",
     "semantic_hash": ""
   },
   "rulesets/main/easyprivacy.json": {
-    "mtime": 1794740982.457535,
-    "seen": 1794755549.106383,
-    "ast_hash": "",
+    "mtime": 1795617882.204788,
+    "seen": 1795622045.8727732,
+    "ast_hash": "f8e5c34d494e884a5f3ab443de0b3be1",
     "semantic_hash": ""
   },
   "rulesets/main/fra-0.json": {
@@ -66,9 +66,9 @@
     "semantic_hash": ""
   },
   "rulesets/main/ublock-filters.json": {
-    "mtime": 1794740982.344895,
-    "seen": 1794755549.106385,
-    "ast_hash": "",
+    "mtime": 1795617882.1079817,
+    "seen": 1795622045.8727748,
+    "ast_hash": "a038bb04547a8cef029e09affcc7e873",
     "semantic_hash": ""
   },
   "rulesets/main/urlhaus-full.json": {
