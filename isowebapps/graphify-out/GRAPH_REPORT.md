@@ -1,206 +1,245 @@
 # Graph Report - isowebapps  (2026-11-25)
 
 ## Corpus Check
-- 65 files · ~179,866 words
+- 109 files · ~179,590 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 3 file(s) not represented in the graph (top: .entitlements 2, .plist 1)
 
 ## Summary
-- 945 nodes · 2431 edges · 71 communities (25 shown, 46 thin omitted)
-- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 124 edges (avg confidence: 0.85)
+- 1404 nodes · 2826 edges · 241 communities (32 shown, 209 thin omitted)
+- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 286 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e0b0c030`
+- Built from commit: `8cac4c24`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- CloudSyncManager
-- WebViewNavigationState
-- SearchEngine
-- .createConfiguredWebView
-- MainWindowTracker
-- ReaderModeError
+- URL
+- GeneralSettingsView
+- IsolatedWebViewRepresentable
+- AppDelegate
+- ReaderHTMLUtilities
 - IsolatedCookieManager
 - CapsuleLifecyclePolicy.swift
-- ContentView.swift
 - IsolatedWKWebView
-- WindowPresentationMode
-- NSWindow
-- ContentView
-- ReaderHTMLUtilities
 - CapsuleLifecycleController
 - CapsuleDownloadManager
-- WebKitMemoryManager
 - MarkdownBlockParser
 - WebViewCoordinator
-- UBlockRuleCompiler
-- URL
+- View
 - AISummarizer
-- WebAppItem
-- CodingKeys
-- Equatable
-- .body
-- .domainName
-- URL
-- AddWebAppSheet
-- WebAppContainerView
-- Foundation
-- SerializableCookie
+- UBlockOriginExtensionManager
+- MarkdownImageView
+- HomeGridItem
+- WebKitMemoryManager
+- CapsuleWindowPayload
 - WindowAccessor
-- SwiftData
-- AppDelegate
-- isowebappsApp
+- SwiftUI
+- ICloudSyncConflictAlertModifier
+- MainWindowTracker
+- WebViewNavigationState
+- CloudSyncManager
+- ContentView
+- CapsuleSnapshot
+- MarkdownBlockRow
+- WebAppItem
+- CapsuleDownloadItem
+- State
+- Image
+- PendingDownloadPrompt
+- GroupSettingsSheet
+- .resetICloudData
+- WebAppGroup
+- TopControlsBar
+- CapsuleActionRow
+- .enterSleepIfEligible
+- IOSFolderPickerCoordinator
+- SummaryDropdownView
+- Double
+- CapsuleSleepPolicy
+- HomeSearchBarView
+- AddGroupSheet
+- CapsuleSleepState
+- MacOSSectionCard
 
 ## God Nodes (most connected - your core abstractions)
-1. `CloudSyncManager` - 77 edges
-2. `NSWindow` - 54 edges
-3. `MainWindowTracker` - 52 edges
-4. `WebAppItem` - 51 edges
-5. `WebAppContainerView` - 48 edges
-6. `CapsuleDownloadManager` - 47 edges
-7. `.body` - 39 edges
-8. `CapsuleLifecycleController` - 38 edges
-9. `WindowPresentationMode` - 34 edges
-10. `WebViewNavigationState` - 34 edges
+1. `CloudSyncManager` - 80 edges
+2. `WebAppItem` - 65 edges
+3. `MainWindowTracker` - 54 edges
+4. `WebAppContainerView` - 53 edges
+5. `NSWindow` - 50 edges
+6. `CapsuleDownloadManager` - 49 edges
+7. `CapsuleLifecycleController` - 39 edges
+8. `IsolatedCookieManager` - 38 edges
+9. `WebViewCoordinator` - 35 edges
+10. `ContentView` - 33 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `.allHomeItems` --references--> `WebAppItem`  [INFERRED]
-  ContentView.swift → WebAppItem.swift
-- `.deduplicatedStandaloneApps` --references--> `WebAppItem`  [INFERRED]
-  ContentView.swift → WebAppItem.swift
-- `.matchingApps` --references--> `WebAppItem`  [INFERRED]
-  ContentView.swift → WebAppItem.swift
-- `.otherApps` --references--> `WebAppItem`  [INFERRED]
-  ContentView.swift → WebAppItem.swift
-- `.body` --references--> `WebAppItem`  [INFERRED]
-  ContentView.swift → WebAppItem.swift
+- `.body` --calls--> `Image`  [INFERRED]
+  Views/Capsule/TopControlsBar.swift → Utilities/PlatformAdapters.swift
+- `.body` --calls--> `Image`  [INFERRED]
+  Views/Components/MacOSSectionCard.swift → Utilities/PlatformAdapters.swift
+- `.body` --calls--> `Image`  [INFERRED]
+  Views/Reader/MarkdownBlockViews.swift → Utilities/PlatformAdapters.swift
+- `.imageContent` --calls--> `Image`  [INFERRED]
+  Views/Reader/ReaderImageViews.swift → Utilities/PlatformAdapters.swift
+- `.body` --calls--> `CapsuleWindowPayload`  [INFERRED]
+  App/isowebappsApp.swift → Models/CapsuleWindowPayload.swift
 
 ## Import Cycles
 - None detected.
 
-## Communities (71 total, 46 thin omitted)
+## Communities (241 total, 209 thin omitted)
 
-### Community 0 - "CloudSyncManager"
-Cohesion: 0.07
-Nodes (15): CloudKit, CapsuleSnapshot, CapsuleSyncConflict, CloudSyncManager, .cloudStoreURL, .currentConflict, .localStoreURL, GroupSnapshot (+7 more)
-
-### Community 1 - "WebViewNavigationState"
-Cohesion: 0.07
-Nodes (21): DownloadBannerView, .body, .statusIcon, .subtitleText, IOSSolidBottomBar, .body, MacOSSolidBottomBar, .body (+13 more)
-
-### Community 2 - "SearchEngine"
+### Community 1 - "URL"
 Cohesion: 0.06
-Nodes (27): BlockingMode, basic, complete, .description, .id, optimal, GeneralSettingsView, .currentSnapshot (+19 more)
+Nodes (18): ReaderHistoryStack, .canGoBack, .canGoForward, .currentURL, URL, .rootDomain, WebAppNamingHelper, .initialDomainTitle (+10 more)
 
-### Community 4 - "MainWindowTracker"
-Cohesion: 0.14
-Nodes (4): .body, MainWindowTracker, .currentPresentationMode, .savedWindowSize
+### Community 2 - "GeneralSettingsView"
+Cohesion: 0.05
+Nodes (34): WindowPresentationMode, .iconName, .id, .next, separateWindows, singleWindow, tabs, .title (+26 more)
 
-### Community 5 - "ReaderModeError"
-Cohesion: 0.11
-Nodes (16): HTMLToMarkdown, ReaderDocument, .plainTextForSummary, .shouldShowHeaderTitle, ReaderModeError, conversionFailed, emptyContent, .errorDescription (+8 more)
+### Community 5 - "ReaderHTMLUtilities"
+Cohesion: 0.07
+Nodes (20): HTMLToMarkdown, ReaderHTMLCapture, ReaderHTMLUtilities, ReaderDocument, .shouldShowHeaderTitle, ReaderDocumentSource, fastHTMLFetch, liveWebView (+12 more)
+
+### Community 6 - "IsolatedCookieManager"
+Cohesion: 0.13
+Nodes (4): IsolatedCookieManager, .hasPendingClears, .hasPendingOperations, .hasPendingSaves
 
 ### Community 7 - "CapsuleLifecyclePolicy.swift"
-Cohesion: 0.12
-Nodes (15): CapsuleSleepEvaluation, awake, ignoreNotYetPresented, sleep, CapsuleSleepState, awake, closed, deepSleeping (+7 more)
-
-### Community 8 - "ContentView.swift"
-Cohesion: 0.14
-Nodes (12): IconImageCache, OpenURLSheet, .body, .matchingApps, .otherApps, View, WebAppTileSettingsMenu, .body (+4 more)
-
-### Community 10 - "WindowPresentationMode"
-Cohesion: 0.11
-Nodes (14): WindowPresentationMode, .iconName, .id, .next, separateWindows, singleWindow, tabs, .title (+6 more)
-
-### Community 11 - "NSWindow"
-Cohesion: 0.24
-Nodes (3): .body, NSWindow, .serializedFrame
-
-### Community 12 - "ContentView"
-Cohesion: 0.19
-Nodes (9): ContentView, .allHomeItems, .body, .deduplicatedGroups, .deduplicatedStandaloneApps, .emptyStateView, .homeScreenView, .hostingWindow (+1 more)
+Cohesion: 0.16
+Nodes (10): CoreGraphics, CapsuleSleepEvaluation, awake, ignoreNotYetPresented, sleep, CapsuleWindowClosePolicy, WindowClosePolicyAction, closeAllAppWindows (+2 more)
 
 ### Community 18 - "CapsuleLifecycleController"
-Cohesion: 0.15
-Nodes (4): CapsuleWindowSleepSnapshot, CapsuleLifecycleController, .isClosed, .isDeepSleeping
-
-### Community 23 - "CapsuleDownloadManager"
-Cohesion: 0.07
-Nodes (17): CapsuleDownloadItem, .isActive, .isFinished, State, awaitingPermission, cancelled, completed, downloading (+9 more)
+Cohesion: 0.13
+Nodes (3): CapsuleLifecycleController, .isClosed, .isDeepSleeping
 
 ### Community 25 - "MarkdownBlockParser"
-Cohesion: 0.11
-Nodes (23): CodeFenceOpen, ListKind, ordered, unordered, MarkdownBlock, MarkdownBlockKind, blockquote, codeBlock (+15 more)
-
-### Community 29 - "URL"
 Cohesion: 0.07
-Nodes (29): CapsuleSleepPolicy, Double, MarkdownBlockRow, .body, MarkdownCodeBlockView, .body, MarkdownImageView, .body (+21 more)
+Nodes (29): ParsedImageMatch, ListKind, ordered, unordered, ParsedListMarker, MarkdownBlock, MarkdownBlockKind, blockquote (+21 more)
+
+### Community 29 - "View"
+Cohesion: 0.14
+Nodes (9): MarkdownReaderView, .body, .bodyFontDesign, .clampedScale, ReaderViewState, failed, idle, loaded (+1 more)
 
 ### Community 30 - "AISummarizer"
-Cohesion: 0.15
-Nodes (9): AISummarizer, .isAvailable, WebPageSummaryError, emptyContent, .errorDescription, generationFailed, modelUnavailable, webViewUnavailable (+1 more)
+Cohesion: 0.14
+Nodes (8): AISummarizer, .isAvailable, WebPageSummaryError, emptyContent, .errorDescription, generationFailed, modelUnavailable, webViewUnavailable
 
-### Community 33 - "WebAppItem"
-Cohesion: 0.17
-Nodes (3): AddGroupSheet, .body, WebAppItem
+### Community 36 - "UBlockOriginExtensionManager"
+Cohesion: 0.06
+Nodes (13): LoadedScriptPayload, PreparedRulesetPayload, ScriptLoadSpec, UBlockFilterConfiguration, .activeRulesetIDs, .anyFilterListEnabled, .effectiveAnnoyances, .effectiveCosmeticHiding (+5 more)
 
-### Community 36 - "CodingKeys"
+### Community 38 - "MarkdownImageView"
+Cohesion: 0.09
+Nodes (10): IconImageCache, MarkdownImageView, .body, .candidateURLs, .imageContent, .linkURL, .resolvedCaption, .taskIdentity (+2 more)
+
+### Community 39 - "HomeGridItem"
+Cohesion: 0.10
+Nodes (7): HomeGridItem, app, .displayOrder, group, .id, HomeItemDropDelegate, View
+
+### Community 52 - "WebKitMemoryManager"
+Cohesion: 0.13
+Nodes (3): WebKitMemoryManager, .hasOpenDeleteOnCloseCapsules, .liveWebViewCount
+
+### Community 53 - "CapsuleWindowPayload"
+Cohesion: 0.09
+Nodes (14): CapsuleWindowPayload, CodingKeys, appId, instanceId, isSecondaryWindow, name, openAsTab, sourceFrame (+6 more)
+
+### Community 55 - "SwiftUI"
+Cohesion: 0.08
+Nodes (13): AppKit, CloudKit, Combine, CoreData, Foundation, FoundationModels, ImageIO, SafariServices (+5 more)
+
+### Community 57 - "ICloudSyncConflictAlertModifier"
+Cohesion: 0.12
+Nodes (7): ICloudSyncConflictAlertModifier, .conflictAlertTitle, .isPresentedBinding, View, LiquidGlassButtonModifier, LiquidGlassCardModifier, View
+
+### Community 58 - "MainWindowTracker"
+Cohesion: 0.05
+Nodes (14): isowebappsApp, .body, TerminationBackgroundTaskHolder, .savedWindowSize, MainWindowTracker, .currentPresentationMode, NSWindow, .serializedFrame (+6 more)
+
+### Community 71 - "WebViewNavigationState"
+Cohesion: 0.14
+Nodes (7): IOSSolidBottomBar, .body, MacOSSolidBottomBar, .body, .resolvedCanGoBack, .resolvedCanGoForward, WebViewNavigationState
+
+### Community 72 - "CloudSyncManager"
+Cohesion: 0.11
+Nodes (4): CloudSyncManager, .cloudStoreURL, .currentConflict, .localStoreURL
+
+### Community 73 - "ContentView"
+Cohesion: 0.16
+Nodes (5): ContentView, .body, .hostingWindow, .homeScreenView, .isDragDropEnabled
+
+### Community 74 - "CapsuleSnapshot"
+Cohesion: 0.19
+Nodes (3): CapsuleSnapshot, CapsuleSyncConflict, GroupSnapshot
+
+### Community 75 - "MarkdownBlockRow"
 Cohesion: 0.18
-Nodes (10): CodingKeys, appId, instanceId, isSecondaryWindow, name, openAsTab, sourceFrame, sourceWindowNumber (+2 more)
+Nodes (9): MarkdownBlockRow, .body, MarkdownCodeBlockView, .body, MarkdownInlineText, .body, .renderedText, MarkdownTableView (+1 more)
 
-### Community 38 - "Equatable"
+### Community 76 - "WebAppItem"
+Cohesion: 0.16
+Nodes (5): WebAppItem, WeakWebAppItemBox, OpenURLSheet, .matchingApps, .otherApps
+
+### Community 77 - "CapsuleDownloadItem"
+Cohesion: 0.17
+Nodes (7): .activeBannerItem, .hasActiveDownloads, CapsuleDownloadItem, .isActive, .isFinished, DownloadsListView, .body
+
+### Community 78 - "State"
 Cohesion: 0.14
-Nodes (13): BackgroundCaptureReadiness, notReadyYet, readyImmediately, requiresHumanVerification, usableAfterSettle, ReaderHistoryStack, .canGoBack, .canGoForward (+5 more)
+Nodes (9): State, awaitingPermission, cancelled, completed, downloading, failed, FaviconFetcher, AddWebAppSheet (+1 more)
 
-### Community 39 - ".body"
-Cohesion: 0.26
-Nodes (4): .body, CapsuleWindowPayload, .id, .sourceFrameRect
+### Community 79 - "Image"
+Cohesion: 0.15
+Nodes (12): Image, DownloadBannerView, .body, .statusIcon, .subtitleText, .emptyStateView, .body, WebAppTileSettingsMenu (+4 more)
 
-### Community 40 - ".domainName"
-Cohesion: 0.38
-Nodes (3): .activeDomainTitle, WebAppNamingHelper, .initialDomainTitle
-
-### Community 42 - "URL"
+### Community 81 - "GroupSettingsSheet"
 Cohesion: 0.21
-Nodes (3): URL, .rootDomain, WebViewNavigationState
+Nodes (7): GroupSettingsSheet, .appsInOtherGroups, .availableStandaloneApps, .body, .groupItems, .iOSLayout, .macOSLayout
 
-### Community 49 - "AddWebAppSheet"
-Cohesion: 0.24
-Nodes (3): AddWebAppSheet, .body, FaviconFetcher
+### Community 84 - "WebAppGroup"
+Cohesion: 0.19
+Nodes (4): WebAppGroup, HomeScreenLayoutSnapshot, WebAppGroupTileView, .uniqueSortedItems
 
-### Community 50 - "WebAppContainerView"
-Cohesion: 0.14
-Nodes (4): IdentifiableURL, WebAppContainerView, .hostingWindow, .shouldShowReaderOverlay
+### Community 85 - "TopControlsBar"
+Cohesion: 0.19
+Nodes (6): ReaderToggleButtonStyleModifier, SleepingCapsulePlaceholderView, .body, TopControlsBar, .body, .isYouTube
 
-### Community 52 - "Foundation"
-Cohesion: 0.24
-Nodes (3): Combine, Foundation, WebKit
+### Community 87 - "CapsuleActionRow"
+Cohesion: 0.18
+Nodes (5): CapsuleActionRow, .body, CapsuleIconView, .body, .body
 
-### Community 55 - "SwiftData"
-Cohesion: 0.39
-Nodes (4): AppKit, SwiftData, SwiftUI, UIKit
+### Community 91 - "SummaryDropdownView"
+Cohesion: 0.28
+Nodes (3): SummaryDropdownView, .body, .uiOrNsWindowBackgroundColor
+
+### Community 96 - "CapsuleSleepState"
+Cohesion: 0.40
+Nodes (5): CapsuleSleepState, awake, closed, deepSleeping, softSleeping
 
 ## Knowledge Gaps
-- **135 isolated node(s):** `CoreGraphics`, `singleWindow`, `separateWindows`, `tabs`, `.id` (+130 more)
-  These have ≤1 connection - possible missing edges. (Counts symbols only; 280 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **46 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **143 isolated node(s):** `CoreGraphics`, `singleWindow`, `separateWindows`, `tabs`, `.id` (+138 more)
+  These have ≤1 connection - possible missing edges. (Counts symbols only; 557 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **209 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `URL` connect `URL` to `CloudSyncManager`, `WebViewNavigationState`, `SearchEngine`, `.createConfiguredWebView`, `ReaderModeError`, `Equatable`, `.body`, `IsolatedWKWebView`, `ContentView`, `AddWebAppSheet`, `WebAppContainerView`, `CapsuleDownloadManager`, `WebKitMemoryManager`, `WebViewCoordinator`, `URL`?**
-  _High betweenness centrality (0.198) - this node is a cross-community bridge._
-- **Are the 9 inferred relationships involving `NSWindow` (e.g. with `.openCapsule()` and `.openEphemeralCapsule()`) actually correct?**
-  _`NSWindow` has 9 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `URL` connect `URL` to `GeneralSettingsView`, `IsolatedWebViewRepresentable`, `ReaderHTMLUtilities`, `IsolatedWKWebView`, `CapsuleDownloadManager`, `WebViewCoordinator`, `View`, `UBlockOriginExtensionManager`, `MarkdownImageView`, `SwiftUI`, `WebViewNavigationState`, `CloudSyncManager`, `ContentView`, `MarkdownBlockRow`, `CapsuleDownloadItem`, `State`, `PendingDownloadPrompt`, `.startDownload`, `IOSFolderPickerCoordinator`?**
+  _High betweenness centrality (0.166) - this node is a cross-community bridge._
+- **Are the 13 inferred relationships involving `WebAppItem` (e.g. with `.migrateLegacyDefaultStoreIfNeeded()` and `.isYouTube`) actually correct?**
+  _`WebAppItem` has 13 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `CoreGraphics`, `singleWindow`, `separateWindows` to the rest of the system?**
-  _135 weakly-connected nodes found - possible missing edges._
-- **Should `CloudSyncManager` be split into smaller, more focused modules?**
-  _Cohesion score 0.06629243517775996 - nodes in this community are weakly interconnected._
-- **Why does `CloudSyncManager` connect `CloudSyncManager` to `MainWindowTracker`, `IsolatedCookieManager`, `URL`, `WindowPresentationMode`, `ContentView`?**
-  _High betweenness centrality (0.132) - this node is a cross-community bridge._
-- **Are the 10 inferred relationships involving `WebAppItem` (e.g. with `.body` and `.createGroup()`) actually correct?**
-  _`WebAppItem` has 10 INFERRED edges - model-reasoned connections that need verification._
-- **Should `WebViewNavigationState` be split into smaller, more focused modules?**
-  _Cohesion score 0.06976744186046512 - nodes in this community are weakly interconnected._
+  _143 weakly-connected nodes found - possible missing edges._
+- **Should `.handleCloudKitEvent` be split into smaller, more focused modules?**
+  _Cohesion score 0.11904761904761904 - nodes in this community are weakly interconnected._
+- **Why does `CloudSyncManager` connect `CloudSyncManager` to `.handleCloudKitEvent`, `.buildCoreDataMirrorModel`, `URL`, `AppDelegate`, `ContentView`, `CapsuleSnapshot`, `WebAppItem`, `.resetICloudData`, `SwiftUI`, `.deduplicateStore`, `MainWindowTracker`, `ICloudSyncConflictAlertModifier`?**
+  _High betweenness centrality (0.110) - this node is a cross-community bridge._
+- **Are the 6 inferred relationships involving `WebAppContainerView` (e.g. with `.body` and `ReaderHistoryStack`) actually correct?**
+  _`WebAppContainerView` has 6 INFERRED edges - model-reasoned connections that need verification._
+- **Should `URL` be split into smaller, more focused modules?**
+  _Cohesion score 0.0554954954954955 - nodes in this community are weakly interconnected._

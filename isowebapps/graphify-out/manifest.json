@@ -1,22 +1,4 @@
 {
-  "AISummarizer.swift": {
-    "mtime": 1795273775.084369,
-    "seen": 1795275124.611795,
-    "ast_hash": "319aa3eb71e4e66a1f7a7fedc5edbeb8",
-    "semantic_hash": ""
-  },
-  "AddGroupSheet.swift": {
-    "mtime": 1794306654.6993845,
-    "seen": 1794314424.724848,
-    "ast_hash": "903835facd710f26ba066f2e2ba0f7e7",
-    "semantic_hash": ""
-  },
-  "AddWebAppSheet.swift": {
-    "mtime": 1795267514.9968083,
-    "seen": 1795269106.733122,
-    "ast_hash": "e1c19de1b9492842b1820d1225271de3",
-    "semantic_hash": ""
-  },
   "Assets.xcassets/AccentColor.colorset/Contents.json": {
     "mtime": 1787504042.205059,
     "seen": 1794314424.724851,
@@ -33,132 +15,6 @@
     "mtime": 1787511565.679734,
     "seen": 1794314424.724852,
     "ast_hash": "9deb2ada1cc834bbebf8bbad9c8978a1",
-    "semantic_hash": ""
-  },
-  "CloudSyncManager.swift": {
-    "mtime": 1795610328.1353753,
-    "seen": 1795610592.5778701,
-    "ast_hash": "28bc0ba56ab8811a23a90e0d90bbdb43",
-    "semantic_hash": ""
-  },
-  "ContentView.swift": {
-    "mtime": 1795517157.4651113,
-    "seen": 1795591840.234518,
-    "ast_hash": "fc03981d82e04f267bb47fd8e3b3689d",
-    "semantic_hash": ""
-  },
-  "CookieManager.swift": {
-    "mtime": 1795261599.9732144,
-    "seen": 1795262782.508112,
-    "ast_hash": "e6787b73d135a6af09c52cc8d5742ca3",
-    "semantic_hash": ""
-  },
-  "FaviconFetcher.swift": {
-    "mtime": 1794305679.750059,
-    "seen": 1794314424.724855,
-    "ast_hash": "36e2ab885367daeeadcc8bfa171a5ba0",
-    "semantic_hash": ""
-  },
-  "GeneralSettingsView.swift": {
-    "mtime": 1795610334.3016157,
-    "seen": 1795610592.5778718,
-    "ast_hash": "347e5d30e49440bda42403f2b2825f90",
-    "semantic_hash": ""
-  },
-  "GroupSettingsSheet.swift": {
-    "mtime": 1793978315.307919,
-    "seen": 1794314424.7248561,
-    "ast_hash": "17b989ac3c6a2b913d823a5bd22a48a3",
-    "semantic_hash": ""
-  },
-  "HomeGridItem.swift": {
-    "mtime": 1788704383.1646743,
-    "seen": 1794314424.724857,
-    "ast_hash": "6731ed32a80323980b433acba6a5013d",
-    "semantic_hash": ""
-  },
-  "IsolatedWebView.swift": {
-    "mtime": 1795610318.5012708,
-    "seen": 1795610592.577874,
-    "ast_hash": "886c9cce24afbf417343138144d75e73",
-    "semantic_hash": ""
-  },
-  "LiquidGlassStyles.swift": {
-    "mtime": 1792855442.0918067,
-    "seen": 1794314424.724858,
-    "ast_hash": "5b646d3b17110e2b5e3a7de01ebcfb3d",
-    "semantic_hash": ""
-  },
-  "PlatformAdapters.swift": {
-    "mtime": 1787512916.430775,
-    "seen": 1794314424.7248588,
-    "ast_hash": "1e64418d3b4bf62ed82fd755cd67b9d1",
-    "semantic_hash": ""
-  },
-  "SearchEngine.swift": {
-    "mtime": 1795263530.978046,
-    "seen": 1795263981.979708,
-    "ast_hash": "68e413f9b947d0fd6566fdf778366f57",
-    "semantic_hash": ""
-  },
-  "SerializableCookie.swift": {
-    "mtime": 1794306553.9047844,
-    "seen": 1794314424.72486,
-    "ast_hash": "0b2f6a74dcaa73af090030fecb290a5e",
-    "semantic_hash": ""
-  },
-  "UBlockOriginExtensionManager.swift": {
-    "mtime": 1795261593.732708,
-    "seen": 1795262782.50812,
-    "ast_hash": "df07d0e1bcdd00dee3c4e7cdc79c3043",
-    "semantic_hash": ""
-  },
-  "UBlockRuleCompiler.swift": {
-    "mtime": 1794305608.7296944,
-    "seen": 1794314424.724861,
-    "ast_hash": "bf0fb460ae96ffc8a09e3b17c3541682",
-    "semantic_hash": ""
-  },
-  "WebAppContainerView.swift": {
-    "mtime": 1795517156.6243773,
-    "seen": 1795591840.234529,
-    "ast_hash": "01852768f4e627740aa21fea6f8c67ff",
-    "semantic_hash": ""
-  },
-  "WebAppGroup.swift": {
-    "mtime": 1788700199.5377874,
-    "seen": 1794314424.7248619,
-    "ast_hash": "9e5f8df009e47add822ce4c6fb8f74f0",
-    "semantic_hash": ""
-  },
-  "WebAppGroupTileView.swift": {
-    "mtime": 1792863771.1307888,
-    "seen": 1794314424.724863,
-    "ast_hash": "f54eec301acd3a27b792445676626bdf",
-    "semantic_hash": ""
-  },
-  "WebAppItem.swift": {
-    "mtime": 1794306563.8098512,
-    "seen": 1794314424.724864,
-    "ast_hash": "7f7844602026b40a227371ffeced9b15",
-    "semantic_hash": ""
-  },
-  "WebAppNamingHelper.swift": {
-    "mtime": 1794306536.6961432,
-    "seen": 1794314424.724864,
-    "ast_hash": "bd60e90692ee056dd410ee458e294033",
-    "semantic_hash": ""
-  },
-  "WindowPresentationMode.swift": {
-    "mtime": 1795517309.4995952,
-    "seen": 1795591840.234532,
-    "ast_hash": "75269308eb146d09f9ab1778ebfdcb28",
-    "semantic_hash": ""
-  },
-  "isowebappsApp.swift": {
-    "mtime": 1795261722.853407,
-    "seen": 1795262782.508126,
-    "ast_hash": "404b5326ebb42f7967dc0aabd1bf6ca6",
     "semantic_hash": ""
   },
   "rulesets/main/adguard-mobile.json": {
@@ -467,40 +323,448 @@
     "ast_hash": "ea98e3fa8dd2ef9714725a6b504c5ad6",
     "semantic_hash": ""
   },
-  "CapsuleDownloadManager.swift": {
-    "mtime": 1795517002.2569528,
-    "seen": 1795591840.234515,
-    "ast_hash": "be9e0bfac76f048400063f24496c699e",
+  "App/AppDelegate.swift": {
+    "mtime": 1795614372.4944868,
+    "seen": 1795616119.0640461,
+    "ast_hash": "904af4cffefed2ee34f31c5ba4e2dd12",
     "semantic_hash": ""
   },
-  "MarkdownBlockParser.swift": {
-    "mtime": 1795273042.4660523,
-    "seen": 1795273310.329872,
-    "ast_hash": "dee239d753e1d601f7daddf60e65a892",
+  "App/isowebappsApp.swift": {
+    "mtime": 1795614392.1769147,
+    "seen": 1795616119.064051,
+    "ast_hash": "8f861d8ac6b2a745e4ac61312ac8f12a",
     "semantic_hash": ""
   },
-  "MarkdownReaderView.swift": {
-    "mtime": 1795273051.7615137,
-    "seen": 1795273310.3298728,
-    "ast_hash": "76674e523afc97d627e75b7087e406a5",
-    "semantic_hash": ""
-  },
-  "ReaderHTMLUtilities.swift": {
-    "mtime": 1795273770.7914112,
-    "seen": 1795275124.611815,
-    "ast_hash": "b60b8eced9c1fbd024acd0171c9dec42",
-    "semantic_hash": ""
-  },
-  "ReaderModeService.swift": {
-    "mtime": 1795273769.2456212,
-    "seen": 1795275124.611816,
-    "ast_hash": "c06719791ec843eefde35c0206fcdeac",
-    "semantic_hash": ""
-  },
-  "CapsuleLifecyclePolicy.swift": {
+  "Models/CapsuleLifecyclePolicy.swift": {
     "mtime": 1795610266.5217466,
-    "seen": 1795610592.577869,
+    "seen": 1795616119.06406,
     "ast_hash": "a15d6a6864e3d99096c5b6ffe7f9dbc5",
+    "semantic_hash": ""
+  },
+  "Models/CapsuleWindowPayload.swift": {
+    "mtime": 1795611864.7554538,
+    "seen": 1795616119.064061,
+    "ast_hash": "bf640346ed6eb661c0c4f27c3adf19b8",
+    "semantic_hash": ""
+  },
+  "Models/HomeGridItem.swift": {
+    "mtime": 1795611544.952782,
+    "seen": 1795616119.064061,
+    "ast_hash": "4800b7437d03b036a25d4a3c4ca491f7",
+    "semantic_hash": ""
+  },
+  "Models/SearchEngine.swift": {
+    "mtime": 1795263530.978046,
+    "seen": 1795616119.064063,
+    "ast_hash": "68e413f9b947d0fd6566fdf778366f57",
+    "semantic_hash": ""
+  },
+  "Models/SerializableCookie.swift": {
+    "mtime": 1794306553.9047844,
+    "seen": 1795616119.064065,
+    "ast_hash": "0b2f6a74dcaa73af090030fecb290a5e",
+    "semantic_hash": ""
+  },
+  "Models/WebAppGroup.swift": {
+    "mtime": 1788700199.5377874,
+    "seen": 1795616119.064065,
+    "ast_hash": "9e5f8df009e47add822ce4c6fb8f74f0",
+    "semantic_hash": ""
+  },
+  "Models/WebAppItem.swift": {
+    "mtime": 1794306563.8098512,
+    "seen": 1795616119.064066,
+    "ast_hash": "7f7844602026b40a227371ffeced9b15",
+    "semantic_hash": ""
+  },
+  "Services/AI/AISummarizer.swift": {
+    "mtime": 1795273775.084369,
+    "seen": 1795616119.0640671,
+    "ast_hash": "319aa3eb71e4e66a1f7a7fedc5edbeb8",
+    "semantic_hash": ""
+  },
+  "Services/CloudSync/CloudSyncManager+Deduplication.swift": {
+    "mtime": 1795613540.626307,
+    "seen": 1795616119.0640671,
+    "ast_hash": "a4a933f2f78d370bf812c33f1fbfd705",
+    "semantic_hash": ""
+  },
+  "Services/CloudSync/CloudSyncManager+Events.swift": {
+    "mtime": 1795613539.68908,
+    "seen": 1795616119.064068,
+    "ast_hash": "ac5cc25f9c44e0ef9ae3d50dfa0bffa6",
+    "semantic_hash": ""
+  },
+  "Services/CloudSync/CloudSyncManager+Merge.swift": {
+    "mtime": 1795613538.8681533,
+    "seen": 1795616119.064069,
+    "ast_hash": "4e3c32ea51207f580f73aa23b19bdb6d",
+    "semantic_hash": ""
+  },
+  "Services/CloudSync/CloudSyncManager+SchemaInit.swift": {
+    "mtime": 1795613541.5674462,
+    "seen": 1795616119.064069,
+    "ast_hash": "22742d7a9e0ecfe9525e54c88dd993c9",
+    "semantic_hash": ""
+  },
+  "Services/CloudSync/CloudSyncManager.swift": {
+    "mtime": 1795611809.109959,
+    "seen": 1795616119.06407,
+    "ast_hash": "d2e82857be9d3ec848f59ae67929b43f",
+    "semantic_hash": ""
+  },
+  "Services/CloudSync/CloudSyncModels.swift": {
+    "mtime": 1795613430.2803185,
+    "seen": 1795616119.06407,
+    "ast_hash": "a557c7d6e26f4c779192669445e734ac",
+    "semantic_hash": ""
+  },
+  "Services/ContentBlocker/UBlockOriginExtensionManager+Compilation.swift": {
+    "mtime": 1795613365.3920481,
+    "seen": 1795616119.064071,
+    "ast_hash": "3ba9779b7f45cc0f34469b01a021e892",
+    "semantic_hash": ""
+  },
+  "Services/ContentBlocker/UBlockOriginExtensionManager.swift": {
+    "mtime": 1795613737.6160223,
+    "seen": 1795616119.064072,
+    "ast_hash": "bbda3ff14f1cd9983bbcea071a667822",
+    "semantic_hash": ""
+  },
+  "Services/ContentBlocker/UBlockRuleCompiler.swift": {
+    "mtime": 1795613331.8248641,
+    "seen": 1795616119.064072,
+    "ast_hash": "f640b81d8f3ad8fdb4ecbcc046d37ab9",
+    "semantic_hash": ""
+  },
+  "Services/Cookies/CookieManager.swift": {
+    "mtime": 1795614967.387678,
+    "seen": 1795616119.0640728,
+    "ast_hash": "b064edd52018a114c4977b06455d5a72",
+    "semantic_hash": ""
+  },
+  "Services/Downloads/CapsuleDownloadManager+Prompts.swift": {
+    "mtime": 1795613738.8820019,
+    "seen": 1795616119.0640728,
+    "ast_hash": "8db5af5e71b4a6a5e59615acd63cceaf",
+    "semantic_hash": ""
+  },
+  "Services/Downloads/CapsuleDownloadManager.swift": {
+    "mtime": 1795613713.6387753,
+    "seen": 1795616119.064074,
+    "ast_hash": "5cd2956c10181349c1302d423e1d19a2",
+    "semantic_hash": ""
+  },
+  "Services/Downloads/CapsuleDownloadModels.swift": {
+    "mtime": 1795611637.1260893,
+    "seen": 1795616119.064074,
+    "ast_hash": "497d90b8bc16cd778a9894f02cafedd5",
+    "semantic_hash": ""
+  },
+  "Services/Reader/MarkdownBlockParser+Images.swift": {
+    "mtime": 1795611743.5905035,
+    "seen": 1795616119.064075,
+    "ast_hash": "98cd16cb67ea1a4de616469ad618fc0e",
+    "semantic_hash": ""
+  },
+  "Services/Reader/MarkdownBlockParser+Lists.swift": {
+    "mtime": 1795613739.83026,
+    "seen": 1795616119.064076,
+    "ast_hash": "a820ff35a4b15d19c04373bcb9ddccf1",
+    "semantic_hash": ""
+  },
+  "Services/Reader/MarkdownBlockParser.swift": {
+    "mtime": 1795613655.548596,
+    "seen": 1795616119.064076,
+    "ast_hash": "b4b1501f5d1eb3c9c647782a93de86f1",
+    "semantic_hash": ""
+  },
+  "Services/Reader/ReaderHTMLUtilities+Readiness.swift": {
+    "mtime": 1795613740.727351,
+    "seen": 1795616119.0640771,
+    "ast_hash": "37f1443473d77e1359c6133930d98b5d",
+    "semantic_hash": ""
+  },
+  "Services/Reader/ReaderHTMLUtilities.swift": {
+    "mtime": 1795613628.689864,
+    "seen": 1795616119.064078,
+    "ast_hash": "19a1e3267dcbb8d145fd4a856c3ad9a4",
+    "semantic_hash": ""
+  },
+  "Services/Reader/ReaderModeService.swift": {
+    "mtime": 1795611678.2244067,
+    "seen": 1795616119.064078,
+    "ast_hash": "25f2fd110367bef9b07b5c0b82c3d1fd",
+    "semantic_hash": ""
+  },
+  "Services/WebKit/CapsuleLifecycleController.swift": {
+    "mtime": 1795613259.0013754,
+    "seen": 1795616119.064079,
+    "ast_hash": "4c93a48572b0891e3675c7810f0b0a46",
+    "semantic_hash": ""
+  },
+  "Services/WebKit/IsolatedWKWebView.swift": {
+    "mtime": 1795611942.5531535,
+    "seen": 1795616119.064079,
+    "ast_hash": "9e9bcd5f4662b3cfd130f74ffb4b40e3",
+    "semantic_hash": ""
+  },
+  "Services/WebKit/IsolatedWebViewRepresentable.swift": {
+    "mtime": 1795614371.6112359,
+    "seen": 1795616119.0640798,
+    "ast_hash": "f6d03ceacbf7b509f67dd5fe7d076b04",
+    "semantic_hash": ""
+  },
+  "Services/WebKit/WebKitMemoryManager.swift": {
+    "mtime": 1795614989.2189858,
+    "seen": 1795616119.064081,
+    "ast_hash": "8f85432f371bcc79a3b0174dfcd59fde",
+    "semantic_hash": ""
+  },
+  "Services/WebKit/WebViewCoordinator.swift": {
+    "mtime": 1795614977.1835935,
+    "seen": 1795616119.064082,
+    "ast_hash": "7e1c4c39beaf48b0638cf9133dfca6eb",
+    "semantic_hash": ""
+  },
+  "Services/Windowing/MainWindowTracker+CloseAndSizing.swift": {
+    "mtime": 1795613586.4104385,
+    "seen": 1795616119.064082,
+    "ast_hash": "d834d8a80308fbaf47aac92255a0e4b3",
+    "semantic_hash": ""
+  },
+  "Services/Windowing/MainWindowTracker.swift": {
+    "mtime": 1795613756.8217754,
+    "seen": 1795616119.0640829,
+    "ast_hash": "1c732ac304be97e413022d0dc792082a",
+    "semantic_hash": ""
+  },
+  "Services/Windowing/NSWindowTabbingExtensions.swift": {
+    "mtime": 1795611866.9344902,
+    "seen": 1795616119.0640829,
+    "ast_hash": "8e980f7bc72e4c976913dc04c4c56d0f",
+    "semantic_hash": ""
+  },
+  "Utilities/FaviconFetcher.swift": {
+    "mtime": 1794305679.750059,
+    "seen": 1795616119.064084,
+    "ast_hash": "36e2ab885367daeeadcc8bfa171a5ba0",
+    "semantic_hash": ""
+  },
+  "Utilities/IconImageCache.swift": {
+    "mtime": 1795613380.3720312,
+    "seen": 1795616119.064085,
+    "ast_hash": "374ce0dcb401d2a9d5f7434fe5ac4249",
+    "semantic_hash": ""
+  },
+  "Utilities/PlatformAdapters.swift": {
+    "mtime": 1787512916.430775,
+    "seen": 1795616119.064085,
+    "ast_hash": "1e64418d3b4bf62ed82fd755cd67b9d1",
+    "semantic_hash": ""
+  },
+  "Utilities/WebAppNamingHelper.swift": {
+    "mtime": 1794306536.6961432,
+    "seen": 1795616119.064086,
+    "ast_hash": "bd60e90692ee056dd410ee458e294033",
+    "semantic_hash": ""
+  },
+  "Views/Capsule/CapsuleDownloadViews.swift": {
+    "mtime": 1795611985.770286,
+    "seen": 1795616119.0640872,
+    "ast_hash": "de6781869927d86945a3ced4744af68b",
+    "semantic_hash": ""
+  },
+  "Views/Capsule/CapsuleWindowHostView.swift": {
+    "mtime": 1795611869.7941337,
+    "seen": 1795616119.0640872,
+    "ast_hash": "3447dd2c4593bb2c029d5a98a924158e",
+    "semantic_hash": ""
+  },
+  "Views/Capsule/PlatformShareAndSafariViews.swift": {
+    "mtime": 1795611987.9845932,
+    "seen": 1795616119.064088,
+    "ast_hash": "66b07a5ddc837ffd0f346c8d3a646b7b",
+    "semantic_hash": ""
+  },
+  "Views/Capsule/SolidBottomBars.swift": {
+    "mtime": 1795611984.7109785,
+    "seen": 1795616119.064088,
+    "ast_hash": "65bfe30222b7ba55ceeae8d818f567bc",
+    "semantic_hash": ""
+  },
+  "Views/Capsule/SummaryDropdownView.swift": {
+    "mtime": 1795611986.736696,
+    "seen": 1795616119.064089,
+    "ast_hash": "b0a7f20174a8ffa3ce196996eda0812b",
+    "semantic_hash": ""
+  },
+  "Views/Capsule/TopControlsBar.swift": {
+    "mtime": 1795612213.2754762,
+    "seen": 1795616119.06409,
+    "ast_hash": "d361fb9b9b9821a3b3436ce964a0754f",
+    "semantic_hash": ""
+  },
+  "Views/Capsule/WebAppContainerView+Lifecycle.swift": {
+    "mtime": 1795614992.8349643,
+    "seen": 1795616119.06409,
+    "ast_hash": "5b0a0c52ce88f18258cac53188475222",
+    "semantic_hash": ""
+  },
+  "Views/Capsule/WebAppContainerView+Reader.swift": {
+    "mtime": 1795612027.4223933,
+    "seen": 1795616119.064091,
+    "ast_hash": "d03389753732bf873e712e8aa1c399ff",
+    "semantic_hash": ""
+  },
+  "Views/Capsule/WebAppContainerView.swift": {
+    "mtime": 1795614991.8622339,
+    "seen": 1795616119.064091,
+    "ast_hash": "7e65743594d493f44cb7e4249cc2062b",
+    "semantic_hash": ""
+  },
+  "Views/Capsule/WebViewNavigationState.swift": {
+    "mtime": 1795611982.544189,
+    "seen": 1795616119.064092,
+    "ast_hash": "6b73394110fe862434ecc96453278590",
+    "semantic_hash": ""
+  },
+  "Views/Components/CapsuleActionRow.swift": {
+    "mtime": 1795613426.3954523,
+    "seen": 1795616119.064092,
+    "ast_hash": "723122425e5b76d262287d89c7ab9457",
+    "semantic_hash": ""
+  },
+  "Views/Components/CapsuleIconView.swift": {
+    "mtime": 1795611543.190583,
+    "seen": 1795616119.0640929,
+    "ast_hash": "7bbdbc8bfc502031938b06fb7bb181a8",
+    "semantic_hash": ""
+  },
+  "Views/Components/ICloudSyncConflictAlertModifier.swift": {
+    "mtime": 1795613428.123302,
+    "seen": 1795616119.064094,
+    "ast_hash": "d6052b2d453aecaddcad3cb19a0ece5e",
+    "semantic_hash": ""
+  },
+  "Views/Components/LiquidGlassStyles.swift": {
+    "mtime": 1792855442.0918067,
+    "seen": 1795616119.064094,
+    "ast_hash": "5b646d3b17110e2b5e3a7de01ebcfb3d",
+    "semantic_hash": ""
+  },
+  "Views/Components/MacOSSectionCard.swift": {
+    "mtime": 1795611544.1614265,
+    "seen": 1795616119.064095,
+    "ast_hash": "00b62221b761a0e7eb35df63808eb0d7",
+    "semantic_hash": ""
+  },
+  "Views/Home/ContentView+Actions.swift": {
+    "mtime": 1795614990.7196927,
+    "seen": 1795616119.064095,
+    "ast_hash": "6bdd21b35f1a3a7f6e7405913bbba9c4",
+    "semantic_hash": ""
+  },
+  "Views/Home/ContentView+HomeScreen.swift": {
+    "mtime": 1795614377.7926702,
+    "seen": 1795616119.064096,
+    "ast_hash": "f8dd3f3a7fe9732f57e5fcf141a0a3e8",
+    "semantic_hash": ""
+  },
+  "Views/Home/ContentView.swift": {
+    "mtime": 1795615000.668231,
+    "seen": 1795616119.064096,
+    "ast_hash": "4cdac75ac90662ead0456ce373300c4e",
+    "semantic_hash": ""
+  },
+  "Views/Home/HomeSearchBarView.swift": {
+    "mtime": 1795613495.5182872,
+    "seen": 1795616119.064097,
+    "ast_hash": "c9de655d705925fd0298e4e9bb217ed6",
+    "semantic_hash": ""
+  },
+  "Views/Home/OpenURLSheet.swift": {
+    "mtime": 1795613458.956107,
+    "seen": 1795616119.0640981,
+    "ast_hash": "d5b1c8929519a89d96d0085995f595f2",
+    "semantic_hash": ""
+  },
+  "Views/Home/WebAppGroupTileView.swift": {
+    "mtime": 1795613457.764918,
+    "seen": 1795616119.0640981,
+    "ast_hash": "a2b25a7cc024d9fe7d7ea707537bb0df",
+    "semantic_hash": ""
+  },
+  "Views/Home/WebAppTileView.swift": {
+    "mtime": 1795612075.3769493,
+    "seen": 1795616119.064099,
+    "ast_hash": "734f3264218a7e553749d05dc36fa454",
+    "semantic_hash": ""
+  },
+  "Views/Reader/MarkdownBlockViews.swift": {
+    "mtime": 1795611746.1133049,
+    "seen": 1795616119.064099,
+    "ast_hash": "6fa70b132b820cfc14269a4e4f9997df",
+    "semantic_hash": ""
+  },
+  "Views/Reader/MarkdownReaderView.swift": {
+    "mtime": 1795611748.1701813,
+    "seen": 1795616119.0641,
+    "ast_hash": "61e75875b6ec2f8fd5d3b80cb482739f",
+    "semantic_hash": ""
+  },
+  "Views/Reader/ReaderImageViews.swift": {
+    "mtime": 1795613382.2390695,
+    "seen": 1795616119.0641,
+    "ast_hash": "2fe68ea188bb39092201d3dd45b520c3",
+    "semantic_hash": ""
+  },
+  "Views/Settings/AddGroupSheet.swift": {
+    "mtime": 1795613456.7854173,
+    "seen": 1795616119.0641012,
+    "ast_hash": "fcb49e2f33f67b2edb3d6ac5c4ad4542",
+    "semantic_hash": ""
+  },
+  "Views/Settings/AddWebAppSheet.swift": {
+    "mtime": 1795267514.9968083,
+    "seen": 1795616119.064102,
+    "ast_hash": "e1c19de1b9492842b1820d1225271de3",
+    "semantic_hash": ""
+  },
+  "Views/Settings/GeneralSettingsView+MacOS.swift": {
+    "mtime": 1795612135.5998015,
+    "seen": 1795616119.064102,
+    "ast_hash": "117dc097c3e72be1014e74f8787cc637",
+    "semantic_hash": ""
+  },
+  "Views/Settings/GeneralSettingsView+iOS.swift": {
+    "mtime": 1795612136.8189244,
+    "seen": 1795616119.064103,
+    "ast_hash": "240ad64e5543ddaa9d3de716e90d2542",
+    "semantic_hash": ""
+  },
+  "Views/Settings/GeneralSettingsView.swift": {
+    "mtime": 1795613370.9403396,
+    "seen": 1795616119.0641038,
+    "ast_hash": "42c7cbab836dd0a4cfcf361892cfd867",
+    "semantic_hash": ""
+  },
+  "Views/Settings/GroupSettingsSheet+MacOS.swift": {
+    "mtime": 1795613441.6761904,
+    "seen": 1795616119.0641038,
+    "ast_hash": "476325aba8333752e71614e7146e304e",
+    "semantic_hash": ""
+  },
+  "Views/Settings/GroupSettingsSheet+iOS.swift": {
+    "mtime": 1795613455.5724208,
+    "seen": 1795616119.064105,
+    "ast_hash": "9e91fc3ed6cdff2793eb4c0df0e3c40e",
+    "semantic_hash": ""
+  },
+  "Views/Settings/GroupSettingsSheet.swift": {
+    "mtime": 1795612137.8220408,
+    "seen": 1795616119.064105,
+    "ast_hash": "7ef2cc2eb6352a1f832cf0f2e24a8b2c",
     "semantic_hash": ""
   }
 }
