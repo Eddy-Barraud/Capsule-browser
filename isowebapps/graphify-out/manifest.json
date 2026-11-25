@@ -36,9 +36,9 @@
     "semantic_hash": ""
   },
   "CloudSyncManager.swift": {
-    "mtime": 1794695733.606802,
-    "seen": 1794740728.794564,
-    "ast_hash": "1edadc3522ca3da69d64d491d5a276fb",
+    "mtime": 1795610328.1353753,
+    "seen": 1795610592.5778701,
+    "ast_hash": "28bc0ba56ab8811a23a90e0d90bbdb43",
     "semantic_hash": ""
   },
   "ContentView.swift": {
@@ -60,9 +60,9 @@
     "semantic_hash": ""
   },
   "GeneralSettingsView.swift": {
-    "mtime": 1794695775.7600255,
-    "seen": 1794740728.7945678,
-    "ast_hash": "cb75b46175bdd435e6a154921d4487ea",
+    "mtime": 1795610334.3016157,
+    "seen": 1795610592.5778718,
+    "ast_hash": "347e5d30e49440bda42403f2b2825f90",
     "semantic_hash": ""
   },
   "GroupSettingsSheet.swift": {
@@ -78,9 +78,9 @@
     "semantic_hash": ""
   },
   "IsolatedWebView.swift": {
-    "mtime": 1795517121.6400375,
-    "seen": 1795591840.234522,
-    "ast_hash": "8600b660db864a8f47beda9502242059",
+    "mtime": 1795610318.5012708,
+    "seen": 1795610592.577874,
+    "ast_hash": "886c9cce24afbf417343138144d75e73",
     "semantic_hash": ""
   },
   "LiquidGlassStyles.swift": {
@@ -498,9 +498,9 @@
     "semantic_hash": ""
   },
   "CapsuleLifecyclePolicy.swift": {
-    "mtime": 1795517001.3464112,
-    "seen": 1795591840.234516,
-    "ast_hash": "6e65f7408c2186dd9c169d3d5c6bf7ae",
+    "mtime": 1795610266.5217466,
+    "seen": 1795610592.577869,
+    "ast_hash": "a15d6a6864e3d99096c5b6ffe7f9dbc5",
     "semantic_hash": ""
   }
 }
