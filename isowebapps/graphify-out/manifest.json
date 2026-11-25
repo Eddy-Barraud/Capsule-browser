@@ -42,9 +42,9 @@
     "semantic_hash": ""
   },
   "ContentView.swift": {
-    "mtime": 1795267676.0176094,
-    "seen": 1795269106.73313,
-    "ast_hash": "8d67971f984a61e865f59ec5a31b3d09",
+    "mtime": 1795517157.4651113,
+    "seen": 1795591840.234518,
+    "ast_hash": "fc03981d82e04f267bb47fd8e3b3689d",
     "semantic_hash": ""
   },
   "CookieManager.swift": {
@@ -78,9 +78,9 @@
     "semantic_hash": ""
   },
   "IsolatedWebView.swift": {
-    "mtime": 1795273780.8939476,
-    "seen": 1795275124.611812,
-    "ast_hash": "5b33b1ad75a768ec8024887d39c3beaa",
+    "mtime": 1795517121.6400375,
+    "seen": 1795591840.234522,
+    "ast_hash": "8600b660db864a8f47beda9502242059",
     "semantic_hash": ""
   },
   "LiquidGlassStyles.swift": {
@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "WebAppContainerView.swift": {
-    "mtime": 1795273784.6316128,
-    "seen": 1795275124.611819,
-    "ast_hash": "10dbd87061e5a7eb391e9ece6dd21f6f",
+    "mtime": 1795517156.6243773,
+    "seen": 1795591840.234529,
+    "ast_hash": "01852768f4e627740aa21fea6f8c67ff",
     "semantic_hash": ""
   },
   "WebAppGroup.swift": {
@@ -150,9 +150,9 @@
     "semantic_hash": ""
   },
   "WindowPresentationMode.swift": {
-    "mtime": 1795267503.3146873,
-    "seen": 1795269106.7331479,
-    "ast_hash": "1005bd2d9aa09e4372d7bc0e52df50bd",
+    "mtime": 1795517309.4995952,
+    "seen": 1795591840.234532,
+    "ast_hash": "75269308eb146d09f9ab1778ebfdcb28",
     "semantic_hash": ""
   },
   "isowebappsApp.swift": {
@@ -468,9 +468,9 @@
     "semantic_hash": ""
   },
   "CapsuleDownloadManager.swift": {
-    "mtime": 1795265021.2756927,
-    "seen": 1795265168.333111,
-    "ast_hash": "dc24c966bfecdce44ebf2e1da5004851",
+    "mtime": 1795517002.2569528,
+    "seen": 1795591840.234515,
+    "ast_hash": "be9e0bfac76f048400063f24496c699e",
     "semantic_hash": ""
   },
   "MarkdownBlockParser.swift": {
@@ -495,6 +495,12 @@
     "mtime": 1795273769.2456212,
     "seen": 1795275124.611816,
     "ast_hash": "c06719791ec843eefde35c0206fcdeac",
+    "semantic_hash": ""
+  },
+  "CapsuleLifecyclePolicy.swift": {
+    "mtime": 1795517001.3464112,
+    "seen": 1795591840.234516,
+    "ast_hash": "6e65f7408c2186dd9c169d3d5c6bf7ae",
     "semantic_hash": ""
   }
 }
