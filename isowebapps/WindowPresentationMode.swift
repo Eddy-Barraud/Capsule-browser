@@ -9,64 +9,13 @@
 
 import SwiftUI
 import SwiftData
+import Combine
 
 #if os(macOS)
 import AppKit
 
 final class WeakWindowBox {
     weak var window: NSWindow?
-}
-
-enum WindowPresentationMode: String, CaseIterable, Identifiable, Codable {
-    case singleWindow = "singleWindow"
-    case separateWindows = "separateWindows"
-    case tabs = "tabs"
-    
-    var id: String { rawValue }
-    
-    var next: WindowPresentationMode {
-        switch self {
-        case .singleWindow:
-            return .separateWindows
-        case .separateWindows:
-            return .tabs
-        case .tabs:
-            return .singleWindow
-        }
-    }
-    
-    var iconName: String {
-        switch self {
-        case .singleWindow:
-            return "macwindow"
-        case .separateWindows:
-            return "macwindow.on.rectangle"
-        case .tabs:
-            return "macwindow.stack"
-        }
-    }
-    
-    var title: String {
-        switch self {
-        case .singleWindow:
-            return "Single Window"
-        case .separateWindows:
-            return "Separate Windows"
-        case .tabs:
-            return "Tabs"
-        }
-    }
-    
-    var tooltip: String {
-        switch self {
-        case .singleWindow:
-            return "Mode: Single Window (Click for Separate Windows)"
-        case .separateWindows:
-            return "Mode: Separate Windows (Click for Tabs)"
-        case .tabs:
-            return "Mode: Tabs (Click for Single Window)"
-        }
-    }
 }
 
 struct CapsuleWindowPayload: Codable, Hashable, Identifiable {
@@ -237,7 +186,11 @@ extension NSWindow {
     
     @objc @MainActor func capsule_performClose(_ sender: Any?) {
         if MainWindowTracker.shared.isManagedCapsuleWindow(self) {
-            MainWindowTracker.shared.closeTab(self)
+            if let button = sender as? NSButton, button === self.standardWindowButton(.closeButton) {
+                MainWindowTracker.shared.handleTrafficLightClose(for: self)
+            } else {
+                MainWindowTracker.shared.closeTab(self)
+            }
             return
         }
         capsule_performClose(sender)
@@ -436,6 +389,8 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         }
         registerCapsuleWindow(window)
         registerCapsuleWindow(target)
+        installCloseButtonHookIfNeeded(on: window)
+        installCloseButtonHookIfNeeded(on: target)
         return true
     }
     
@@ -591,10 +546,18 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         window.setFrame(frame, display: true)
     }
     
+    var currentPresentationMode: WindowPresentationMode {
+        let modeRaw = UserDefaults.standard.string(forKey: "windowPresentationMode") ?? "singleWindow"
+        return WindowPresentationMode(rawValue: modeRaw) ?? .singleWindow
+    }
+    
     func installCloseButtonHookIfNeeded(on window: NSWindow) {
-        guard !closeHookedWindows.contains(window) else { return }
+        guard Self.supportsNativeTabbing(window),
+              let closeButton = window.standardWindowButton(.closeButton) else {
+            return
+        }
         closeHookedWindows.add(window)
-        if let closeButton = window.standardWindowButton(.closeButton) {
+        if closeButton.target !== self || closeButton.action != #selector(handleTrafficLightCloseButton(_:)) {
             closeButton.target = self
             closeButton.action = #selector(handleTrafficLightCloseButton(_:))
         }
@@ -604,14 +567,32 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         guard let clickedWindow = sender.window else { return }
         let currentEventType = NSApp.currentEvent?.type
         let isMouseEvent = (currentEventType == .leftMouseUp || currentEventType == .leftMouseDown)
-        let isOptionPressed = NSEvent.modifierFlags.contains(.option)
-        
-        if isMouseEvent && isOptionPressed {
+        let isOptionPressed = isMouseEvent && NSEvent.modifierFlags.contains(.option)
+        handleTrafficLightClose(for: clickedWindow, isOptionClick: isOptionPressed)
+    }
+    
+    func handleTrafficLightClose(for clickedWindow: NSWindow, isOptionClick: Bool = false) {
+        let isInMainTG: Bool = {
+            guard let tg = clickedWindow.tabGroup, let mainTG = mainWindow?.tabGroup else { return false }
+            return tg === mainTG
+        }()
+        let action = CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: clickedWindow === mainWindow,
+            presentationMode: currentPresentationMode,
+            isInMainWindowTabGroup: isInMainTG,
+            tabGroupWindowCount: clickedWindow.tabGroup?.windows.count ?? 1,
+            isOptionClick: isOptionClick
+        )
+        #if DEBUG
+        print("[CapsuleClose] Traffic-light close on '\(clickedWindow.title)' (isMain: \(clickedWindow === mainWindow), mode: \(currentPresentationMode.rawValue), action: \(action))")
+        #endif
+        switch action {
+        case .closeAllAppWindows:
             closeAllTabsAndMainWindow(startingFrom: clickedWindow)
-        } else if let tg = clickedWindow.tabGroup, tg.windows.count > 1 {
+        case .closeWindowTabGroup:
+            closeTabGroupOnly(startingFrom: clickedWindow)
+        case .closeSingleWindow:
             closeTab(clickedWindow)
-        } else {
-            closeAllTabsAndMainWindow(startingFrom: clickedWindow)
         }
     }
     
@@ -619,6 +600,19 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         #if DEBUG
         print("[CapsuleClose] closeTab called for window '\(windowToClose.title)' (isMainWindow: \(windowToClose === mainWindow))")
         #endif
+        if windowToClose === mainWindow {
+            if let dismissAction = mainWindowContentDismissAction {
+                dismissAction()
+                return
+            }
+            closeAllTabsAndMainWindow(startingFrom: windowToClose)
+            return
+        }
+        cleanupAndCloseSecondaryWindow(windowToClose)
+        scheduleIdleMemoryPurgeIfNoVisibleWindows()
+    }
+    
+    private func cleanupAndCloseSecondaryWindow(_ windowToClose: NSWindow) {
         if windowToClose === pendingTabTargetWindow {
             clearPendingTabTarget()
         }
@@ -629,21 +623,20 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         knownCapsuleWindows.remove(windowToClose)
         closeHookedWindows.remove(windowToClose)
         persistWindowSize(from: windowToClose)
-        if windowToClose === mainWindow {
-            if let dismissAction = mainWindowContentDismissAction {
-                dismissAction()
-                return
-            }
-            mainWindow = nil
-            mainWindowContentDismissAction = nil
-            NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: windowToClose)
-            windowToClose.makeFirstResponder(nil)
-            windowToClose.delegate = nil
-            windowToClose.close()
-        } else {
-            windowToClose.makeFirstResponder(nil)
-            windowToClose.delegate = nil
-            windowToClose.close()
+        windowToClose.makeFirstResponder(nil)
+        windowToClose.delegate = nil
+        windowToClose.close()
+    }
+    
+    private func closeTabGroupOnly(startingFrom window: NSWindow) {
+        guard !isClosingAllTabs else { return }
+        isClosingAllTabs = true
+        defer { isClosingAllTabs = false }
+        
+        persistWindowSize(from: window)
+        let windowsInGroup = window.tabGroup?.windows ?? [window]
+        for tabWin in windowsInGroup where tabWin !== mainWindow {
+            cleanupAndCloseSecondaryWindow(tabWin)
         }
         scheduleIdleMemoryPurgeIfNoVisibleWindows()
     }
@@ -672,7 +665,37 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
     
     func closeActiveWindow() {
         guard let active = activeManagedWindow() else { return }
-        closeAllTabsAndMainWindow(startingFrom: active)
+        handleTrafficLightClose(for: active, isOptionClick: false)
+    }
+    
+    private func allManagedWindows(startingFrom window: NSWindow) -> [NSWindow] {
+        var seen = Set<ObjectIdentifier>()
+        var result: [NSWindow] = []
+        
+        func appendIfNeeded(_ candidate: NSWindow?) {
+            guard let w = candidate else { return }
+            let id = ObjectIdentifier(w)
+            if seen.insert(id).inserted {
+                result.append(w)
+            }
+        }
+        
+        appendIfNeeded(window)
+        window.tabGroup?.windows.forEach { appendIfNeeded($0) }
+        appendIfNeeded(mainWindow)
+        mainWindow?.tabGroup?.windows.forEach { appendIfNeeded($0) }
+        for known in knownCapsuleWindows.allObjects {
+            appendIfNeeded(known)
+            known.tabGroup?.windows.forEach { appendIfNeeded($0) }
+        }
+        for configured in configuredWindows.allObjects {
+            appendIfNeeded(configured)
+            configured.tabGroup?.windows.forEach { appendIfNeeded($0) }
+        }
+        for appWin in NSApp.windows where isManagedCapsuleWindow(appWin) {
+            appendIfNeeded(appWin)
+        }
+        return result
     }
     
     func closeAllTabsAndMainWindow(startingFrom window: NSWindow) {
@@ -684,19 +707,16 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         targetWindowForNewTab = nil
         persistWindowSize(from: window)
         
-        let tabsToClose = window.tabGroup?.windows ?? [window]
+        let windowsToClose = allManagedWindows(startingFrom: window)
         #if DEBUG
-        print("[CapsuleClose] Closing all tabs and main window (\(tabsToClose.count) window(s))")
+        print("[CapsuleClose] Closing all app windows and tabs (\(windowsToClose.count) window(s))")
         #endif
-        for tabWin in tabsToClose where tabWin !== window && tabWin !== mainWindow {
-            configuredWindows.remove(tabWin)
-            knownCapsuleWindows.remove(tabWin)
-            closeHookedWindows.remove(tabWin)
-            tabWin.makeFirstResponder(nil)
-            tabWin.delegate = nil
-            tabWin.close()
+        
+        for win in windowsToClose where win !== mainWindow {
+            cleanupAndCloseSecondaryWindow(win)
         }
-        if let main = mainWindow, main !== window {
+        
+        if let main = mainWindow {
             mainWindow = nil
             mainWindowContentDismissAction = nil
             configuredWindows.remove(main)
@@ -707,17 +727,6 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
             main.delegate = nil
             main.close()
         }
-        if window === mainWindow {
-            mainWindow = nil
-            mainWindowContentDismissAction = nil
-            NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: window)
-        }
-        configuredWindows.remove(window)
-        knownCapsuleWindows.remove(window)
-        closeHookedWindows.remove(window)
-        window.makeFirstResponder(nil)
-        window.delegate = nil
-        window.close()
         scheduleIdleMemoryPurgeIfNoVisibleWindows()
     }
     
@@ -800,14 +809,23 @@ final class MainWindowTracker: NSObject, NSWindowDelegate {
         if closingWindow === targetWindowForNewTab {
             targetWindowForNewTab = nil
         }
+        let wasMainWindow = (closingWindow === mainWindow)
         configuredWindows.remove(closingWindow)
         knownCapsuleWindows.remove(closingWindow)
         closeHookedWindows.remove(closingWindow)
         persistWindowSize(from: closingWindow)
-        if closingWindow === mainWindow {
+        if wasMainWindow {
             mainWindow = nil
             mainWindowContentDismissAction = nil
             NotificationCenter.default.post(name: Self.mainWindowDidCloseNotification, object: closingWindow)
+            if !isClosingAllTabs {
+                isClosingAllTabs = true
+                defer { isClosingAllTabs = false }
+                let secondaryWindows = allManagedWindows(startingFrom: closingWindow).filter { $0 !== closingWindow }
+                for sec in secondaryWindows {
+                    cleanupAndCloseSecondaryWindow(sec)
+                }
+            }
         }
         scheduleIdleMemoryPurgeIfNoVisibleWindows()
     }
@@ -864,6 +882,44 @@ struct WindowAccessor: NSViewRepresentable {
     }
 }
 
+@MainActor
+final class CapsuleWindowCloseObserver: ObservableObject {
+    nonisolated(unsafe) private var observer: NSObjectProtocol?
+    private weak var observedWindow: NSWindow?
+    
+    func attach(to window: NSWindow, onClose: @escaping @MainActor () -> Void) {
+        if observedWindow === window, observer != nil {
+            return
+        }
+        removeObserver()
+        observedWindow = window
+        observer = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.removeObserver()
+                onClose()
+            }
+        }
+    }
+    
+    private func removeObserver() {
+        if let obs = observer {
+            NotificationCenter.default.removeObserver(obs)
+            observer = nil
+        }
+        observedWindow = nil
+    }
+    
+    deinit {
+        if let obs = observer {
+            NotificationCenter.default.removeObserver(obs)
+        }
+    }
+}
+
 struct CapsuleWindowHostView: View {
     let payload: CapsuleWindowPayload
     @Environment(\.modelContext) private var modelContext
@@ -873,7 +929,7 @@ struct CapsuleWindowHostView: View {
     @State private var hostingWindowBox = WeakWindowBox()
     @State private var hasConfiguredWindow = false
     @State private var isWindowClosed = false
-    @State private var windowCloseObserver: NSObjectProtocol?
+    @StateObject private var closeObserver = CapsuleWindowCloseObserver()
     
     private var hostingWindow: NSWindow? {
         hostingWindowBox.window
@@ -947,12 +1003,6 @@ struct CapsuleWindowHostView: View {
                         }
                     }
                 }
-                .onDisappear {
-                    if let obs = windowCloseObserver {
-                        NotificationCenter.default.removeObserver(obs)
-                        windowCloseObserver = nil
-                    }
-                }
             }
         }
         .background(
@@ -1018,21 +1068,14 @@ struct CapsuleWindowHostView: View {
                     MainWindowTracker.shared.installCloseButtonHookIfNeeded(on: window)
                     
                     let appName = resolvedAppItem.name
-                    windowCloseObserver = NotificationCenter.default.addObserver(
-                        forName: NSWindow.willCloseNotification,
-                        object: window,
-                        queue: .main
-                    ) { _ in
+                    closeObserver.attach(to: window) { [weak window] in
                         #if DEBUG
                         print("[CapsuleClose] CapsuleWindowHostView closing window/tab for '\(appName)'")
                         #endif
-                        if let obs = windowCloseObserver {
-                            NotificationCenter.default.removeObserver(obs)
-                            windowCloseObserver = nil
-                        }
                         hostingWindowBox.window = nil
                         cachedAppItem = nil
                         isWindowClosed = true
+                        window?.contentView?.layoutSubtreeIfNeeded()
                     }
                     
                     if payload.openAsTab {

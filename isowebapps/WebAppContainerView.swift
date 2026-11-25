@@ -34,6 +34,7 @@ class WebViewNavigationState: ObservableObject {
     var onOpenSafariReader: ((URL) -> Void)?
     var onCaptureLiveHTML: (() async throws -> ReaderHTMLCapture)?
     var onOpenNewWindowOrTab: ((URL) -> Void)?
+    var activeWebViewToken: UUID? = nil
     #if os(macOS)
     @Published var isReaderModeActive: Bool = false
     var webViewCommitGeneration: Int = 0
@@ -43,7 +44,22 @@ class WebViewNavigationState: ObservableObject {
     var onSetReaderMediaSuspended: ((Bool) -> Void)?
     #endif
     
+    func clearWebViewCallbacks(matching token: UUID?) {
+        guard token == nil || activeWebViewToken == token else { return }
+        onGoBack = nil
+        onGoForward = nil
+        onReload = nil
+        onLoadURL = nil
+        onStopLoading = nil
+        onToggleUBlock = nil
+        onCaptureLiveHTML = nil
+        #if os(macOS)
+        onSetReaderMediaSuspended = nil
+        #endif
+    }
+    
     func clearCallbacks() {
+        activeWebViewToken = nil
         onGoBack = nil
         onGoForward = nil
         onReload = nil
@@ -70,6 +86,9 @@ struct WebAppContainerView: View {
     
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
+    @StateObject private var lifecycleController = CapsuleLifecycleController()
+    @State private var hasRegisteredCapsuleInstance = false
+    @State private var hasPerformedFullTeardown = false
     @State private var hostingWindowBox = WeakWindowBox()
     private var hostingWindow: NSWindow? { hostingWindowBox.window }
     @State private var isReaderModeActive: Bool
@@ -203,12 +222,13 @@ struct WebAppContainerView: View {
                     
                     // Web View + In-App Markdown Reader Content
                     ZStack {
-                        if hasMountedWebView {
+                        if hasMountedWebView && !lifecycleController.isDeepSleeping {
                             IsolatedWebViewRepresentable(
                                 appItem: appItem,
                                 initialURLString: deferredWebViewInitialURL ?? initialURLString,
                                 navigationState: navigationState,
                                 modelContext: modelContext,
+                                lifecycleController: lifecycleController,
                                 onOpenNewWindowOrTab: { url in
                                     handleOpenNewWindowOrTab(url: url)
                                 },
@@ -216,6 +236,7 @@ struct WebAppContainerView: View {
                                     handleSearchInNewEphemeralCapsule(url: url)
                                 }
                             )
+                            .id(lifecycleController.webViewGeneration)
                             .opacity(shouldShowReaderOverlay ? 0 : 1)
                             .allowsHitTesting(!shouldShowReaderOverlay)
                             .accessibilityHidden(shouldShowReaderOverlay)
@@ -226,6 +247,14 @@ struct WebAppContainerView: View {
                                     }
                                 }
                             }
+                        } else if hasMountedWebView && lifecycleController.isDeepSleeping && !shouldShowReaderOverlay {
+                            SleepingCapsulePlaceholderView(
+                                capsuleName: activeDomainTitle,
+                                urlString: lifecycleController.savedURLString ?? navigationState.currentURLString,
+                                onWakeNow: {
+                                    lifecycleController.wakeUp(forceImmediate: true)
+                                }
+                            )
                         }
                         
                         if shouldShowReaderOverlay {
@@ -308,6 +337,30 @@ struct WebAppContainerView: View {
                 handleOpenNewWindowOrTab(url: url)
             }
             #if os(macOS)
+            if !hasRegisteredCapsuleInstance && appItem.modelContext != nil {
+                hasRegisteredCapsuleInstance = true
+                WebKitMemoryManager.shared.registerOpenCapsule(appId: appItem.id)
+            }
+            lifecycleController.capsuleName = appItem.name
+            lifecycleController.isEphemeral = (appItem.modelContext == nil)
+            lifecycleController.canDeepSleepProvider = {
+                !isGeneratingSummary && readerTask == nil && !isAwaitingRobotCheckVerification
+            }
+            lifecycleController.onBeforeDeepSleep = {
+                if !isReaderModeActive {
+                    readerCache.removeAll()
+                }
+                if !isShowingSummary {
+                    summaryText = ""
+                    summaryErrorMessage = nil
+                }
+            }
+            lifecycleController.onWindowWillClose = {
+                performFullCapsuleTeardown(isClosingWindow: true)
+            }
+            if let existingWin = hostingWindow {
+                lifecycleController.attachWindow(existingWin)
+            }
             if MainWindowTracker.shared.openWindowAction == nil {
                 MainWindowTracker.shared.openWindowAction = { payload in
                     openWindow(id: "capsuleWindow", value: payload)
@@ -342,16 +395,14 @@ struct WebAppContainerView: View {
         }
         .onDisappear {
             if isSecondaryWindow {
-                // Secondary tabs/windows remain alive in the background; do not stop loading or blank the web view
+                // Secondary tabs/windows remain alive across tab switches; only tear down once the window is closing
+                if lifecycleController.isClosed {
+                    performFullCapsuleTeardown(isClosingWindow: true)
+                }
                 return
             }
-            summaryTask?.cancel()
-            readerTask?.cancel()
-            readerCache.removeAll()
-            summaryText = ""
-            summaryErrorMessage = nil
-            isGeneratingSummary = false
-            navigationState.onStopLoading?()
+            lifecycleController.handleClose()
+            performFullCapsuleTeardown(isClosingWindow: false)
         }
         .sheet(isPresented: $isShowingAddSheet) {
             let activeURLString = navigationState.currentURLString.isEmpty ? appItem.urlString : navigationState.currentURLString
@@ -535,17 +586,23 @@ struct WebAppContainerView: View {
         .navigationTitle(activeDomainTitle)
         #if os(macOS)
         .background(
-            WindowAccessor { window in
-                if hostingWindowBox.window !== window {
-                    hostingWindowBox.window = window
+            WindowAccessor(
+                onWindowSync: { window in
+                    lifecycleController.attachWindow(window)
+                },
+                onWindow: { window in
+                    if hostingWindowBox.window !== window {
+                        hostingWindowBox.window = window
+                    }
+                    lifecycleController.attachWindow(window)
+                    if window.title != activeDomainTitle {
+                        window.title = activeDomainTitle
+                    }
+                    if window.tab.title != activeDomainTitle {
+                        window.tab.title = activeDomainTitle
+                    }
                 }
-                if window.title != activeDomainTitle {
-                    window.title = activeDomainTitle
-                }
-                if window.tab.title != activeDomainTitle {
-                    window.tab.title = activeDomainTitle
-                }
-            }
+            )
         )
         #endif
     }
@@ -1094,17 +1151,18 @@ struct WebAppContainerView: View {
             MainWindowTracker.shared.focusMainWindow()
             return
         }
-        #endif
         
         #if DEBUG
         print("[CapsuleClose] Dismissing capsule '\(appItem.name)' back to Home Screen (deleteCookiesOnClose: \(appItem.deleteCookiesOnClose))")
         #endif
-        summaryTask?.cancel()
-        #if os(macOS)
-        isAwaitingRobotCheckVerification = false
-        readerTask?.cancel()
-        readerCache.removeAll()
+        lifecycleController.handleClose()
+        performFullCapsuleTeardown(isClosingWindow: false)
+        onDismiss()
+        #else
+        #if DEBUG
+        print("[CapsuleClose] Dismissing capsule '\(appItem.name)' back to Home Screen (deleteCookiesOnClose: \(appItem.deleteCookiesOnClose))")
         #endif
+        summaryTask?.cancel()
         navigationState.onStopLoading?()
         
         if appItem.deleteCookiesOnClose {
@@ -1114,7 +1172,41 @@ struct WebAppContainerView: View {
         }
         
         onDismiss()
+        #endif
     }
+    
+    #if os(macOS)
+    private func performFullCapsuleTeardown(isClosingWindow: Bool) {
+        guard !hasPerformedFullTeardown else { return }
+        hasPerformedFullTeardown = true
+        
+        summaryTask?.cancel()
+        summaryTask = nil
+        isAwaitingRobotCheckVerification = false
+        readerTask?.cancel()
+        readerTask = nil
+        readerCache.removeAll()
+        summaryText = ""
+        summaryErrorMessage = nil
+        isGeneratingSummary = false
+        navigationState.onStopLoading?()
+        navigationState.clearCallbacks()
+        
+        var remainingInstances = 0
+        if hasRegisteredCapsuleInstance {
+            hasRegisteredCapsuleInstance = false
+            if appItem.modelContext != nil {
+                remainingInstances = WebKitMemoryManager.shared.unregisterOpenCapsule(appId: appItem.id)
+            }
+        }
+        
+        if remainingInstances == 0 && appItem.deleteCookiesOnClose && appItem.modelContext != nil {
+            Task {
+                await IsolatedCookieManager.shared.clearData(for: appItem, context: modelContext)
+            }
+        }
+    }
+    #endif
     
     private func prefilledTitleForCurrentURL(_ urlString: String) -> String {
         guard let domain = WebAppNamingHelper.domainName(from: urlString) else { return "" }
@@ -1443,6 +1535,43 @@ struct TopControlsBar: View {
 }
 
 #if os(macOS)
+private struct SleepingCapsulePlaceholderView: View {
+    let capsuleName: String
+    let urlString: String
+    let onWakeNow: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "moon.zzz.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(.secondary)
+            
+            Text(capsuleName.isEmpty ? "Sleeping Capsule" : capsuleName)
+                .font(.headline)
+            
+            Text("Sleeping to save memory")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            
+            if !urlString.isEmpty && urlString != "about:blank" {
+                Text(urlString)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 420)
+            }
+            
+            Button("Wake Capsule", action: onWakeNow)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
 private struct ReaderToggleButtonStyleModifier: ViewModifier {
     let isActive: Bool
     var cornerRadius: CGFloat = 10

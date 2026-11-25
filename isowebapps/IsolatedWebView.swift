@@ -24,11 +24,33 @@ final class WebKitMemoryManager {
     private var activeWebViews = NSHashTable<WKWebView>.weakObjects()
     private var tornDownWebViews = NSHashTable<WKWebView>.weakObjects()
     private var activeDataStores = NSHashTable<WKWebsiteDataStore>.weakObjects()
+    private var openCapsuleCounts: [UUID: Int] = [:]
     
     private init() {}
     
     var liveWebViewCount: Int {
         activeWebViews.allObjects.count
+    }
+    
+    func registerOpenCapsule(appId: UUID) {
+        openCapsuleCounts[appId, default: 0] += 1
+    }
+    
+    @discardableResult
+    func unregisterOpenCapsule(appId: UUID) -> Int {
+        guard let current = openCapsuleCounts[appId] else { return 0 }
+        let next = current - 1
+        if next <= 0 {
+            openCapsuleCounts.removeValue(forKey: appId)
+            return 0
+        }
+        openCapsuleCounts[appId] = next
+        return next
+    }
+    
+    func purgeMemoryCache(for dataStore: WKWebsiteDataStore) {
+        activeDataStores.add(dataStore)
+        dataStore.removeData(ofTypes: [WKWebsiteDataTypeMemoryCache], modifiedSince: .distantPast) {}
     }
     
     func register(webView: WKWebView) {
@@ -72,6 +94,13 @@ final class WebKitMemoryManager {
         let dataStore = webView.configuration.websiteDataStore
         activeDataStores.add(dataStore)
         webView.removeFromSuperview()
+        
+        #if os(macOS)
+        let closeSelector = NSSelectorFromString("_close")
+        if webView.responds(to: closeSelector) {
+            webView.perform(closeSelector)
+        }
+        #endif
         
         if purgeMemoryCache {
             dataStore.removeData(ofTypes: [WKWebsiteDataTypeMemoryCache], modifiedSince: .distantPast) {}
@@ -155,20 +184,439 @@ struct IsolatedWebViewRepresentable: UIViewRepresentable {
 }
 #else
 import AppKit
+import Combine
+
+@MainActor
+final class CapsuleLifecycleController: ObservableObject {
+    @Published private(set) var sleepState: CapsuleSleepState = .awake
+    @Published private(set) var webViewGeneration: Int = 0
+    
+    var isDeepSleeping: Bool { sleepState == .deepSleeping }
+    var isClosed: Bool { sleepState == .closed }
+    
+    private(set) var savedInteractionState: Any?
+    private(set) var savedURLString: String?
+    private(set) var preservedNonPersistentDataStore: WKWebsiteDataStore?
+    
+    private weak var window: NSWindow?
+    private weak var webView: IsolatedWKWebView?
+    private weak var coordinator: WebViewCoordinator?
+    
+    var capsuleName: String = ""
+    var isEphemeral: Bool = false
+    var softSleepDelay: TimeInterval = 0.15
+    var deepSleepDelay: TimeInterval = 5.0
+    var audioRecheckInterval: TimeInterval = 10.0
+    var canDeepSleepProvider: (() -> Bool)?
+    var onBeforeDeepSleep: (() -> Void)?
+    var onWindowWillClose: (() -> Void)?
+    
+    nonisolated(unsafe) private var notificationObservers: [NSObjectProtocol] = []
+    nonisolated(unsafe) private var tabGroupObservation: NSKeyValueObservation?
+    nonisolated(unsafe) private var windowTabGroupObservation: NSKeyValueObservation?
+    nonisolated(unsafe) private var sleepWakeWorkItem: DispatchWorkItem?
+    nonisolated(unsafe) private var deepSleepWorkItem: DispatchWorkItem?
+    nonisolated(unsafe) private var audioRecheckWorkItem: DispatchWorkItem?
+    nonisolated(unsafe) private var activityAssertionToken: NSObjectProtocol?
+    private var hasBeenPresented: Bool = false
+    private var lastSleepingTabsEnabled: Bool = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
+    
+    func consumeSavedInteractionState() -> Any? {
+        let state = savedInteractionState
+        savedInteractionState = nil
+        return state
+    }
+    
+    func attachWindow(_ window: NSWindow) {
+        guard !isClosed else { return }
+        if self.window === window {
+            if window.isVisible || window.isKeyWindow || window.isMainWindow || window.tabGroup != nil {
+                hasBeenPresented = true
+            }
+            scheduleSleepWakeEvaluation(delay: 0.05)
+            return
+        }
+        
+        teardownObservers()
+        self.window = window
+        hasBeenPresented = window.isVisible || window.isKeyWindow || window.isMainWindow || window.tabGroup != nil
+        
+        let nc = NotificationCenter.default
+        let windowNotificationNames: [Notification.Name] = [
+            NSWindow.didBecomeKeyNotification,
+            NSWindow.didResignKeyNotification,
+            NSWindow.didBecomeMainNotification,
+            NSWindow.didResignMainNotification,
+            NSWindow.didMiniaturizeNotification,
+            NSWindow.didDeminiaturizeNotification,
+            NSWindow.didChangeOcclusionStateNotification
+        ]
+        for name in windowNotificationNames {
+            let obs = nc.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, !self.isClosed else { return }
+                    if name == NSWindow.didBecomeKeyNotification || name == NSWindow.didBecomeMainNotification {
+                        self.hasBeenPresented = true
+                    }
+                    self.scheduleSleepWakeEvaluation()
+                }
+            }
+            notificationObservers.append(obs)
+        }
+        
+        let closeObs = nc.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleClose()
+            }
+        }
+        notificationObservers.append(closeObs)
+        
+        let appNotificationNames: [Notification.Name] = [
+            NSApplication.didHideNotification,
+            NSApplication.didUnhideNotification,
+            NSApplication.didBecomeActiveNotification
+        ]
+        for name in appNotificationNames {
+            let obs = nc.addObserver(forName: name, object: NSApp, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.scheduleSleepWakeEvaluation()
+                }
+            }
+            notificationObservers.append(obs)
+        }
+        
+        let defaultsObs = nc.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.isClosed else { return }
+                let current = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
+                guard current != self.lastSleepingTabsEnabled else { return }
+                self.lastSleepingTabsEnabled = current
+                if let prefs = self.webView?.configuration.preferences {
+                    prefs.setValue(current, forKey: "hiddenPageDOMTimerThrottlingEnabled")
+                    prefs.setValue(current, forKey: "hiddenPageDOMTimerThrottlingAutoIncreases")
+                }
+                self.scheduleSleepWakeEvaluation(delay: 0.05)
+            }
+        }
+        notificationObservers.append(defaultsObs)
+        
+        windowTabGroupObservation = window.observe(\.tabGroup, options: [.new]) { [weak self] win, _ in
+            Task { @MainActor [weak self, weak win] in
+                guard let self, let win, !self.isClosed else { return }
+                self.setupTabGroupObservation(for: win)
+                self.scheduleSleepWakeEvaluation()
+            }
+        }
+        
+        setupTabGroupObservation(for: window)
+        scheduleSleepWakeEvaluation(delay: 0.05)
+    }
+    
+    func attachWebView(_ webView: IsolatedWKWebView, coordinator: WebViewCoordinator) {
+        guard !isClosed else { return }
+        self.webView = webView
+        self.coordinator = coordinator
+        let sleepingEnabled = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
+        webView.configuration.preferences.setValue(sleepingEnabled, forKey: "hiddenPageDOMTimerThrottlingEnabled")
+        webView.configuration.preferences.setValue(sleepingEnabled, forKey: "hiddenPageDOMTimerThrottlingAutoIncreases")
+        scheduleSleepWakeEvaluation(delay: 0.05)
+    }
+    
+    private func setupTabGroupObservation(for window: NSWindow) {
+        tabGroupObservation?.invalidate()
+        tabGroupObservation = window.tabGroup?.observe(\.selectedWindow, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                self?.scheduleSleepWakeEvaluation()
+            }
+        }
+    }
+    
+    func scheduleSleepWakeEvaluation(delay: TimeInterval? = nil) {
+        sleepWakeWorkItem?.cancel()
+        sleepWakeWorkItem = nil
+        guard !isClosed else { return }
+        let resolvedDelay = delay ?? softSleepDelay
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.sleepWakeWorkItem = nil
+                self?.evaluateSleepWakeStatus()
+            }
+        }
+        sleepWakeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + resolvedDelay, execute: work)
+    }
+    
+    private func isSubstantiallyCoveredByFrontAppWindow(for window: NSWindow) -> Bool {
+        var frontFrames: [CGRect] = []
+        var foundTarget = false
+        for candidate in NSApp.orderedWindows {
+            if candidate === window {
+                foundTarget = true
+                break
+            }
+            guard candidate.isVisible,
+                  !candidate.isMiniaturized,
+                  candidate.level == .normal,
+                  !candidate.isSheet,
+                  candidate.sheetParent == nil,
+                  !(candidate is NSPanel) else {
+                continue
+            }
+            frontFrames.append(candidate.frame)
+        }
+        guard foundTarget, !frontFrames.isEmpty else { return false }
+        return CapsuleSleepPolicy.coverageFraction(of: window.frame, coveredBy: frontFrames) >= CapsuleSleepPolicy.substantialCoverageThreshold
+    }
+    
+    private func currentSnapshot() -> CapsuleWindowSleepSnapshot? {
+        guard let window else { return nil }
+        if window.isVisible || window.isKeyWindow || window.isMainWindow || window.tabGroup != nil {
+            hasBeenPresented = true
+        }
+        let sleepingTabsEnabled = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
+        let tabGroup = window.tabGroup
+        let isInMultiTabGroup = (tabGroup?.windows.count ?? 0) > 1
+        let isSelectedTabInGroup = !isInMultiTabGroup || (tabGroup?.selectedWindow === window)
+        return CapsuleWindowSleepSnapshot(
+            sleepingTabsEnabled: sleepingTabsEnabled,
+            isClosed: isClosed,
+            hasBeenPresented: hasBeenPresented,
+            isMiniaturized: window.isMiniaturized,
+            isVisible: window.isVisible,
+            isOcclusionVisible: window.occlusionState.contains(.visible),
+            isSubstantiallyCoveredByFrontAppWindow: isSubstantiallyCoveredByFrontAppWindow(for: window),
+            isAppHidden: NSApp.isHidden,
+            isKeyWindow: window.isKeyWindow,
+            isInMultiTabGroup: isInMultiTabGroup,
+            isSelectedTabInGroup: isSelectedTabInGroup
+        )
+    }
+    
+    func evaluateSleepWakeStatus() {
+        guard !isClosed, let snapshot = currentSnapshot() else {
+            releaseForegroundActivityToken()
+            return
+        }
+        
+        switch CapsuleSleepPolicy.evaluate(snapshot) {
+        case .ignoreNotYetPresented:
+            releaseForegroundActivityToken()
+        case .awake(let claimForegroundActivity):
+            wakeUp(forceImmediate: false, claimForegroundActivity: claimForegroundActivity)
+        case .sleep:
+            enterSoftSleepAndScheduleDeepSleep()
+        }
+    }
+    
+    func wakeUp(forceImmediate: Bool = false, claimForegroundActivity: Bool? = nil) {
+        guard !isClosed else { return }
+        sleepWakeWorkItem?.cancel()
+        sleepWakeWorkItem = nil
+        deepSleepWorkItem?.cancel()
+        deepSleepWorkItem = nil
+        audioRecheckWorkItem?.cancel()
+        audioRecheckWorkItem = nil
+        
+        let shouldClaim = claimForegroundActivity ?? (window?.isKeyWindow == true && window?.isVisible == true && !(window?.isMiniaturized ?? false) && !NSApp.isHidden)
+        
+        if sleepState == .deepSleeping {
+            #if DEBUG
+            print("[CapsuleLifecycle] Waking up from deep sleep: '\(capsuleName)'")
+            #endif
+            sleepState = .awake
+            webViewGeneration &+= 1
+            window?.contentView?.layoutSubtreeIfNeeded()
+        } else if sleepState == .softSleeping {
+            sleepState = .awake
+            webView?.applyWakeFromSoftSleep()
+        }
+        
+        if shouldClaim || forceImmediate {
+            if window?.isKeyWindow == true {
+                claimForegroundActivityToken()
+            }
+        } else {
+            releaseForegroundActivityToken()
+        }
+    }
+    
+    private func enterSoftSleepAndScheduleDeepSleep() {
+        guard !isClosed else { return }
+        releaseForegroundActivityToken()
+        if sleepState == .deepSleeping {
+            return
+        }
+        
+        if let webView, webView.hasActiveAudioPlayback {
+            sleepState = .softSleeping
+            deepSleepWorkItem?.cancel()
+            deepSleepWorkItem = nil
+            scheduleAudioOrBlockerRecheck()
+            return
+        }
+        
+        if sleepState != .softSleeping {
+            sleepState = .softSleeping
+            webView?.applySoftSleep()
+            if let dataStore = webView?.configuration.websiteDataStore {
+                WebKitMemoryManager.shared.purgeMemoryCache(for: dataStore)
+            }
+        }
+        
+        if deepSleepWorkItem == nil {
+            let work = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.deepSleepWorkItem = nil
+                    self?.enterDeepSleepIfEligible()
+                }
+            }
+            deepSleepWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + deepSleepDelay, execute: work)
+        }
+    }
+    
+    private func scheduleAudioOrBlockerRecheck() {
+        audioRecheckWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.audioRecheckWorkItem = nil
+                self?.evaluateSleepWakeStatus()
+            }
+        }
+        audioRecheckWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + audioRecheckInterval, execute: work)
+    }
+    
+    private func enterDeepSleepIfEligible() {
+        guard !isClosed else { return }
+        guard let snapshot = currentSnapshot(), CapsuleSleepPolicy.evaluate(snapshot) == .sleep else {
+            evaluateSleepWakeStatus()
+            return
+        }
+        
+        let hasAudio = webView?.hasActiveAudioPlayback ?? false
+        let hasDownload = webView.map { CapsuleDownloadManager.shared.hasActiveDownload(for: $0) } ?? false
+        let containerAllowsSleep = canDeepSleepProvider?() ?? true
+        if hasAudio || hasDownload || !containerAllowsSleep {
+            scheduleAudioOrBlockerRecheck()
+            return
+        }
+        
+        guard let webView = self.webView else {
+            sleepState = .deepSleeping
+            return
+        }
+        
+        savedInteractionState = webView.interactionState
+        if let currentURL = webView.url?.absoluteString, !currentURL.isEmpty, currentURL != "about:blank" {
+            savedURLString = currentURL
+        }
+        if isEphemeral {
+            preservedNonPersistentDataStore = webView.configuration.websiteDataStore
+        }
+        
+        let currentCoordinator = self.coordinator
+        currentCoordinator?.flushCookiesNow()
+        onBeforeDeepSleep?()
+        
+        sleepState = .deepSleeping
+        self.webView = nil
+        self.coordinator = nil
+        
+        currentCoordinator?.cleanupForSleep()
+        WebKitMemoryManager.shared.teardownWebView(webView, purgeMemoryCache: true)
+        window?.contentView?.layoutSubtreeIfNeeded()
+        
+        #if DEBUG
+        print("[CapsuleLifecycle] Deep sleep (RAM freed) for '\(capsuleName)'")
+        #endif
+    }
+    
+    func handleClose() {
+        guard sleepState != .closed else { return }
+        sleepState = .closed
+        cancelAllTimers()
+        teardownObservers()
+        releaseForegroundActivityToken()
+        
+        savedInteractionState = nil
+        savedURLString = nil
+        preservedNonPersistentDataStore = nil
+        
+        let closeHandler = onWindowWillClose
+        canDeepSleepProvider = nil
+        onBeforeDeepSleep = nil
+        onWindowWillClose = nil
+        closeHandler?()
+        
+        let currentCoordinator = self.coordinator
+        let currentWebView = self.webView
+        self.coordinator = nil
+        self.webView = nil
+        self.window = nil
+        
+        currentCoordinator?.cleanup()
+        if let currentWebView {
+            WebKitMemoryManager.shared.teardownWebView(currentWebView)
+        }
+        
+        #if DEBUG
+        print("[CapsuleLifecycle] Closed and released all capsule objects for '\(capsuleName)'")
+        #endif
+    }
+    
+    private func cancelAllTimers() {
+        sleepWakeWorkItem?.cancel()
+        sleepWakeWorkItem = nil
+        deepSleepWorkItem?.cancel()
+        deepSleepWorkItem = nil
+        audioRecheckWorkItem?.cancel()
+        audioRecheckWorkItem = nil
+    }
+    
+    private func teardownObservers() {
+        tabGroupObservation?.invalidate()
+        tabGroupObservation = nil
+        windowTabGroupObservation?.invalidate()
+        windowTabGroupObservation = nil
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        notificationObservers.removeAll()
+    }
+    
+    private func claimForegroundActivityToken() {
+        guard activityAssertionToken == nil else { return }
+        activityAssertionToken = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical],
+            reason: "Active Capsule Foreground Web Tab"
+        )
+    }
+    
+    private func releaseForegroundActivityToken() {
+        if let token = activityAssertionToken {
+            ProcessInfo.processInfo.endActivity(token)
+            activityAssertionToken = nil
+        }
+    }
+    
+    deinit {
+        sleepWakeWorkItem?.cancel()
+        deepSleepWorkItem?.cancel()
+        audioRecheckWorkItem?.cancel()
+        tabGroupObservation?.invalidate()
+        windowTabGroupObservation?.invalidate()
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        if let token = activityAssertionToken {
+            ProcessInfo.processInfo.endActivity(token)
+        }
+    }
+}
 
 class IsolatedWKWebView: WKWebView {
     var capsuleName: String = ""
     private(set) var isSleeping: Bool = false
     private(set) var isClosedOrDismantled: Bool = false
-    var onWindowClose: (() -> Void)?
     var onSearchInNewEphemeralCapsule: ((URL) -> Void)?
     private var cachedContextMenuSelection: String?
-    private var activityAssertionToken: NSObjectProtocol?
-    private var notificationObservers: [NSObjectProtocol] = []
-    private var tabGroupObservation: NSKeyValueObservation?
-    private var windowTabGroupObservation: NSKeyValueObservation?
-    private var sleepWakeWorkItem: DispatchWorkItem?
-    private var lastSleepingTabsEnabled: Bool = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
     
     static func isSearchWebMenuItem(_ item: NSMenuItem) -> Bool {
         if item.identifier?.rawValue == "WKMenuItemIdentifierSearchWeb" {
@@ -178,11 +626,6 @@ class IsolatedWKWebView: WKWebView {
             return true
         }
         return false
-    }
-    
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        setupWindowTracking()
     }
     
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
@@ -331,141 +774,15 @@ class IsolatedWKWebView: WKWebView {
         return nil
     }
     
-    // MARK: - Window & Tab Group Lifecycle Tracking
+    // MARK: - Sleep & Wake State Transitions
     
-    private func setupWindowTracking() {
-        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
-        notificationObservers.removeAll()
-        tabGroupObservation?.invalidate()
-        tabGroupObservation = nil
-        windowTabGroupObservation?.invalidate()
-        windowTabGroupObservation = nil
-        
-        guard !isClosedOrDismantled else { return }
-        guard let window = self.window else {
-            releaseForegroundActivityToken()
-            return
-        }
-        
-        let nc = NotificationCenter.default
-        let notifications: [Notification.Name] = [
-            NSWindow.didBecomeKeyNotification,
-            NSWindow.didResignKeyNotification,
-            NSWindow.didBecomeMainNotification,
-            NSWindow.didResignMainNotification,
-            NSWindow.didMiniaturizeNotification,
-            NSWindow.didDeminiaturizeNotification,
-            NSWindow.didChangeOcclusionStateNotification
-        ]
-        
-        for name in notifications {
-            let obs = nc.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                self?.scheduleSleepWakeEvaluation()
-            }
-            notificationObservers.append(obs)
-        }
-        
-        // Immediately tear down the webView when its hosting NSWindow or tab is closed
-        let closeObs = nc.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self = self, !self.isClosedOrDismantled else { return }
-                #if DEBUG
-                print("[CapsuleClose] Window/Tab willClose for capsule '\(self.capsuleName)' (url: \(self.url?.absoluteString ?? "untitled")) — tearing down webView")
-                #endif
-                self.onWindowClose?()
-                self.onWindowClose = nil
-                WebKitMemoryManager.shared.teardownWebView(self)
-            }
-        }
-        notificationObservers.append(closeObs)
-        
-        // Observe preference changes so toggling Sleeping Tabs in settings takes effect immediately
-        let userDefaultsObs = nc.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            guard let self = self, !self.isClosedOrDismantled else { return }
-            let current = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
-            guard current != self.lastSleepingTabsEnabled else { return }
-            self.lastSleepingTabsEnabled = current
-            self.scheduleSleepWakeEvaluation(delay: 0.05)
-        }
-        notificationObservers.append(userDefaultsObs)
-        
-        // Observe tabGroup changes on the window
-        windowTabGroupObservation = window.observe(\.tabGroup, options: [.new]) { [weak self] win, _ in
-            self?.setupTabGroupObservation(for: win)
-            self?.scheduleSleepWakeEvaluation()
-        }
-        
-        setupTabGroupObservation(for: window)
-        scheduleSleepWakeEvaluation()
-    }
-    
-    private func setupTabGroupObservation(for window: NSWindow) {
-        tabGroupObservation?.invalidate()
-        tabGroupObservation = window.tabGroup?.observe(\.selectedWindow, options: [.new]) { [weak self] _, _ in
-            self?.scheduleSleepWakeEvaluation()
-        }
-    }
-    
-    // MARK: - Sleep & Wake Evaluation
-    
-    func scheduleSleepWakeEvaluation(delay: TimeInterval = 0.15) {
-        sleepWakeWorkItem?.cancel()
-        guard !isClosedOrDismantled else { return }
-        let work = DispatchWorkItem { [weak self] in
-            self?.evaluateSleepWakeStatus()
-        }
-        sleepWakeWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
-    }
-    
-    func evaluateSleepWakeStatus() {
-        guard !isClosedOrDismantled, let window = self.window, window.isVisible else {
-            releaseForegroundActivityToken()
-            return
-        }
-        
-        let isSleepingTabsEnabled = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
-        if !isSleepingTabsEnabled {
-            wakeUp()
-            return
-        }
-        
-        if window.isMiniaturized {
-            putToSleep()
-            return
-        }
-        
-        // If part of a multi-tab group, selectedWindow is the authoritative signal for foreground vs background tab
-        if let tabGroup = window.tabGroup, tabGroup.windows.count > 1, let selected = tabGroup.selectedWindow {
-            if selected === window {
-                wakeUp()
-            } else {
-                putToSleep()
-            }
-            return
-        }
-        
-        // Standalone or single-tab window: check if completely occluded
-        if !window.occlusionState.contains(.visible) {
-            putToSleep()
-            return
-        }
-        
-        wakeUp()
-    }
-    
-    // MARK: - State Transitions
-    
-    func putToSleep() {
-        guard !isSleeping else { return }
+    func applySoftSleep() {
+        guard !isClosedOrDismantled, !isSleeping else { return }
         isSleeping = true
         #if DEBUG
-        print("[IsolatedWKWebView] Tab sleeping: \(self.url?.host ?? "untitled")")
+        print("[IsolatedWKWebView] Tab soft sleeping: \(self.url?.host ?? "untitled")")
         #endif
         
-        releaseForegroundActivityToken()
-        
-        // Suspend media playback unless active audio/music is playing
         if !hasActiveAudioPlayback {
             setAllMediaPlaybackSuspended(true)
         }
@@ -480,38 +797,26 @@ class IsolatedWKWebView: WKWebView {
         """, completionHandler: nil)
     }
     
-    func wakeUp() {
-        let wasSleeping = isSleeping
+    func applyWakeFromSoftSleep() {
+        guard !isClosedOrDismantled, isSleeping else { return }
         isSleeping = false
+        #if DEBUG
+        print("[IsolatedWKWebView] Tab waking from soft sleep: \(self.url?.host ?? "untitled")")
+        #endif
         
-        if wasSleeping {
-            #if DEBUG
-            print("[IsolatedWKWebView] Tab waking up: \(self.url?.host ?? "untitled")")
-            #endif
-            
-            // Resume media playback
-            setAllMediaPlaybackSuspended(false)
-            
-            // Dispatch Page Visibility API 'visible' event to resume page loops
-            evaluateJavaScript("""
-            if (document.hidden !== false) {
-                Object.defineProperty(document, 'hidden', { value: false, configurable: true });
-                Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
-                document.dispatchEvent(new Event('visibilitychange'));
-            }
-            """, completionHandler: nil)
-        }
+        setAllMediaPlaybackSuspended(false)
         
-        // If foreground key window, prioritize threads and CPU scheduling
-        if window?.isKeyWindow == true {
-            claimForegroundActivityToken()
-        } else {
-            releaseForegroundActivityToken()
+        evaluateJavaScript("""
+        if (document.hidden !== false) {
+            Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+            Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+            document.dispatchEvent(new Event('visibilitychange'));
         }
+        """, completionHandler: nil)
     }
     
     func reapplySleepingStateIfNeeded() {
-        guard isSleeping else { return }
+        guard !isClosedOrDismantled, isSleeping else { return }
         if !hasActiveAudioPlayback {
             setAllMediaPlaybackSuspended(true)
         }
@@ -524,24 +829,7 @@ class IsolatedWKWebView: WKWebView {
         """, completionHandler: nil)
     }
     
-    // MARK: - Resource & Priority Management
-    
-    private func claimForegroundActivityToken() {
-        guard activityAssertionToken == nil else { return }
-        activityAssertionToken = ProcessInfo.processInfo.beginActivity(
-            options: [.userInitiated, .latencyCritical],
-            reason: "Active Capsule Foreground Web Tab"
-        )
-    }
-    
-    private func releaseForegroundActivityToken() {
-        if let token = activityAssertionToken {
-            ProcessInfo.processInfo.endActivity(token)
-            activityAssertionToken = nil
-        }
-    }
-    
-    private var hasActiveAudioPlayback: Bool {
+    var hasActiveAudioPlayback: Bool {
         let isPlayingAudioSel = NSSelectorFromString("_isPlayingAudio")
         if responds(to: isPlayingAudioSel) {
             typealias Getter = @convention(c) (AnyObject, Selector) -> Bool
@@ -568,18 +856,8 @@ class IsolatedWKWebView: WKWebView {
     
     func cleanup() {
         isClosedOrDismantled = true
-        sleepWakeWorkItem?.cancel()
-        sleepWakeWorkItem = nil
-        onWindowClose = nil
         onSearchInNewEphemeralCapsule = nil
         cachedContextMenuSelection = nil
-        releaseForegroundActivityToken()
-        tabGroupObservation?.invalidate()
-        tabGroupObservation = nil
-        windowTabGroupObservation?.invalidate()
-        windowTabGroupObservation = nil
-        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
-        notificationObservers.removeAll()
     }
     
     deinit {
@@ -595,6 +873,7 @@ struct IsolatedWebViewRepresentable: NSViewRepresentable {
     var initialURLString: String? = nil
     @ObservedObject var navigationState: WebViewNavigationState
     let modelContext: ModelContext
+    var lifecycleController: CapsuleLifecycleController? = nil
     var onOpenNewWindowOrTab: ((URL) -> Void)? = nil
     var onSearchInNewEphemeralCapsule: ((URL) -> Void)? = nil
     
@@ -805,7 +1084,11 @@ extension IsolatedWebViewRepresentable {
         // cookies, localStorage, and IndexedDB across app relaunches.
         let dataStore: WKWebsiteDataStore
         if appItem.modelContext == nil {
+            #if os(macOS)
+            dataStore = lifecycleController?.preservedNonPersistentDataStore ?? WKWebsiteDataStore.nonPersistent()
+            #else
             dataStore = WKWebsiteDataStore.nonPersistent()
+            #endif
         } else {
             let storeId = appItem.group?.id ?? appItem.id
             dataStore = WKWebsiteDataStore(forIdentifier: storeId)
@@ -817,9 +1100,10 @@ extension IsolatedWebViewRepresentable {
         preferences.isElementFullscreenEnabled = true
         #if os(macOS)
         preferences.setValue(true, forKey: "fullScreenEnabled")
-        // Automatic WebKit DOM timer throttling for hidden/occluded background pages
-        preferences.setValue(true, forKey: "hiddenPageDOMTimerThrottlingEnabled")
-        preferences.setValue(true, forKey: "hiddenPageDOMTimerThrottlingAutoIncreases")
+        // Automatic WebKit DOM timer throttling for hidden/occluded background pages when Sleeping Tabs is active
+        let sleepingTabsEnabled = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
+        preferences.setValue(sleepingTabsEnabled, forKey: "hiddenPageDOMTimerThrottlingEnabled")
+        preferences.setValue(sleepingTabsEnabled, forKey: "hiddenPageDOMTimerThrottlingAutoIncreases")
         #endif
         configuration.preferences = preferences
         
@@ -870,8 +1154,19 @@ extension IsolatedWebViewRepresentable {
         #endif
         
         
+        let webViewToken = UUID()
+        navigationState.activeWebViewToken = webViewToken
+        context.coordinator.webViewToken = webViewToken
         context.coordinator.setup(webView: webView)
         WebKitMemoryManager.shared.register(webView: webView)
+        #if os(macOS)
+        lifecycleController?.attachWebView(webView, coordinator: context.coordinator)
+        let restoredInteractionState = lifecycleController?.consumeSavedInteractionState()
+        let lifecycleSavedURL = lifecycleController?.savedURLString
+        #else
+        let restoredInteractionState: Any? = nil
+        let lifecycleSavedURL: String? = nil
+        #endif
         
         // Connect navigation actions
         navigationState.onGoBack = { [weak webView] in
@@ -900,11 +1195,6 @@ extension IsolatedWebViewRepresentable {
             webView?.load(URLRequest(url: url))
         }
         let coordinator = context.coordinator
-        #if os(macOS)
-        webView.onWindowClose = { [weak coordinator] in
-            coordinator?.cleanup()
-        }
-        #endif
         navigationState.onStopLoading = { [weak webView, weak coordinator] in
             #if DEBUG
             print("[CapsuleClose] Stopping webView & tearing down page for '\(coordinator?.appItem.name ?? "Capsule")'")
@@ -996,10 +1286,32 @@ extension IsolatedWebViewRepresentable {
             )
         }
         
-        // 3. Ensure uBlock rules are prepared, restore isolated cookies (including grouped apps if applicable), and load start page
+        // 3. Ensure uBlock rules are prepared, restore isolated cookies (including grouped apps if applicable), and load/restore page
         let groupedItems = appItem.group?.items ?? []
-        let startURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
+        let startURLString = initialURLString ?? lifecycleSavedURL ?? appItem.lastOpenedURLString ?? appItem.urlString
         let needsCookieRestore = IsolatedCookieManager.shared.needsRestore(for: appItem, groupedItems: groupedItems)
+        let startOrRestoreLoad: @MainActor (WKWebView) -> Void = { wv in
+            if let restoredInteractionState {
+                wv.interactionState = restoredInteractionState
+                if wv.backForwardList.currentItem == nil && !wv.isLoading {
+                    let fallbackURLString = initialURLString
+                        ?? lifecycleSavedURL
+                        ?? appItem.lastOpenedURLString
+                        ?? appItem.urlString
+                    if let url = URL(string: fallbackURLString) {
+                        Self.updateUserAgent(for: wv, targetURL: url)
+                        wv.load(URLRequest(url: url))
+                    }
+                }
+                return
+            }
+            if let url = URL(string: startURLString) {
+                #if DEBUG
+                print("[IsolatedWebView] Starting initial load for: \(url) (configured home: \(appItem.urlString))")
+                #endif
+                wv.load(URLRequest(url: url))
+            }
+        }
         if needsUBlockLoad || needsCookieRestore {
             Task { @MainActor [weak webView] in
                 if needsUBlockLoad {
@@ -1013,21 +1325,10 @@ extension IsolatedWebViewRepresentable {
                     await IsolatedCookieManager.shared.restoreCookies(for: appItem, groupedItems: groupedItems, into: dataStore.httpCookieStore)
                 }
                 guard let webView, !WebKitMemoryManager.shared.isTornDown(webView) else { return }
-                let resolvedStartURLString = initialURLString ?? appItem.lastOpenedURLString ?? appItem.urlString
-                if let url = URL(string: resolvedStartURLString) {
-                    #if DEBUG
-                    print("[IsolatedWebView] Starting initial load for: \(url) (configured home: \(appItem.urlString))")
-                    #endif
-                    let request = URLRequest(url: url)
-                    webView.load(request)
-                }
+                startOrRestoreLoad(webView)
             }
-        } else if let url = URL(string: startURLString) {
-            #if DEBUG
-            print("[IsolatedWebView] Starting initial load for: \(url) (configured home: \(appItem.urlString))")
-            #endif
-            let request = URLRequest(url: url)
-            webView.load(request)
+        } else {
+            startOrRestoreLoad(webView)
         }
         
         return webView
@@ -1039,6 +1340,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     let navigationState: WebViewNavigationState
     let modelContext: ModelContext
     weak var webView: WKWebView?
+    var webViewToken: UUID?
     var onOpenNewWindowOrTab: ((URL) -> Void)?
     private var hasCommittedAnyPage: Bool = false
     private var hasFlushedOnCleanup: Bool = false
@@ -1059,6 +1361,9 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
     
     deinit {
+        #if DEBUG
+        print("[Memory] WebViewCoordinator deinit: '\(appItem.name)'")
+        #endif
         cleanup()
     }
     
@@ -1067,7 +1372,7 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         self.observedCookieStore = webView.configuration.websiteDataStore.httpCookieStore
         
         DispatchQueue.main.async { [weak self, weak webView] in
-            guard let self = self, let webView = webView else { return }
+            guard let self = self, !self.hasFlushedOnCleanup, let webView = webView else { return }
             
             // Observe canGoBack KVO asynchronously to prevent layout recursion during view initialization
             self.backForwardObserver = webView.observe(\.canGoBack, options: [.new]) { [weak self] wv, _ in
@@ -1186,14 +1491,22 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         )
     }
     
+    func cleanupForSleep() {
+        cleanupInternal(reason: "deep sleep")
+    }
+    
     func cleanup() {
+        cleanupInternal(reason: "close/dismantle")
+    }
+    
+    private func cleanupInternal(reason: String) {
         guard !hasFlushedOnCleanup else { return }
         hasFlushedOnCleanup = true
         #if DEBUG
-        print("[CapsuleClose] WebViewCoordinator cleanup for '\(appItem.name)'")
+        print("[CapsuleClose] WebViewCoordinator cleanup (\(reason)) for '\(appItem.name)'")
         #endif
         flushCookiesNow()
-        navigationState.clearCallbacks()
+        navigationState.clearWebViewCallbacks(matching: webViewToken)
         backForwardObserver?.invalidate()
         backForwardObserver = nil
         canGoForwardObserver?.invalidate()

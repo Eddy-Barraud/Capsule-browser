@@ -210,6 +210,13 @@ struct ContentView: View {
                 MainWindowTracker.shared.mainWindowContentDismissAction = nil
             }
         }
+        .onChange(of: windowPresentationMode) { _, newMode in
+            if newMode == .tabs {
+                MainWindowTracker.shared.mainWindow?.tabbingMode = .preferred
+            } else {
+                MainWindowTracker.shared.mainWindow?.tabbingMode = .disallowed
+            }
+        }
         #else
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             Task {

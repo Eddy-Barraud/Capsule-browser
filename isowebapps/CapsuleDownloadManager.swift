@@ -65,6 +65,10 @@ public final class CapsuleDownloadManager: NSObject, ObservableObject, WKDownloa
         items.contains { $0.isActive }
     }
     
+    public func hasActiveDownload(for webView: WKWebView) -> Bool {
+        contextsByDownloadID.values.contains { $0.originatingWebView === webView }
+    }
+    
     public var activeBannerItem: CapsuleDownloadItem? {
         guard let id = activeBannerItemID else { return nil }
         return items.first { $0.id == id }

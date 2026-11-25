@@ -1680,6 +1680,487 @@ func testReaderWindowPayloadCodableCompatibility() {
     print("✓ testReaderWindowPayloadCodableCompatibility passed!")
 }
 
+#if os(macOS)
+func testWindowClosePolicyAcrossModes() {
+    print("Running testWindowClosePolicyAcrossModes...")
+    
+    // Separate Windows mode:
+    // 1. Clicking red close button on a secondary capsule window closes ONLY that window
+    assert(
+        CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: false,
+            presentationMode: .separateWindows,
+            isInMainWindowTabGroup: false,
+            tabGroupWindowCount: 1,
+            isOptionClick: false
+        ) == .closeSingleWindow,
+        "Separate Windows secondary close must only close the single capsule window"
+    )
+    // 2. Clicking red close button on main window closes all app windows
+    assert(
+        CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: true,
+            presentationMode: .separateWindows,
+            isInMainWindowTabGroup: false,
+            tabGroupWindowCount: 1,
+            isOptionClick: false
+        ) == .closeAllAppWindows,
+        "Separate Windows main window close must close all app windows"
+    )
+    // 3. Option-clicking red close button on secondary window closes all app windows
+    assert(
+        CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: false,
+            presentationMode: .separateWindows,
+            isInMainWindowTabGroup: false,
+            tabGroupWindowCount: 1,
+            isOptionClick: true
+        ) == .closeAllAppWindows,
+        "Option-clicking close must close all app windows"
+    )
+    // 4. Secondary window merged into a multi-tab group (not main's tab group) closes only that tab group
+    assert(
+        CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: false,
+            presentationMode: .separateWindows,
+            isInMainWindowTabGroup: false,
+            tabGroupWindowCount: 2,
+            isOptionClick: false
+        ) == .closeWindowTabGroup,
+        "Non-main multi-tab group in separate windows mode should close only its tab group"
+    )
+    
+    // Tabs mode:
+    // 5. Clicking red close button on ANY capsule tab or main tab closes the entire app
+    assert(
+        CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: false,
+            presentationMode: .tabs,
+            isInMainWindowTabGroup: true,
+            tabGroupWindowCount: 3,
+            isOptionClick: false
+        ) == .closeAllAppWindows,
+        "Tabs mode traffic-light close on secondary tab must close entire app"
+    )
+    assert(
+        CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: true,
+            presentationMode: .tabs,
+            isInMainWindowTabGroup: true,
+            tabGroupWindowCount: 3,
+            isOptionClick: false
+        ) == .closeAllAppWindows,
+        "Tabs mode traffic-light close on main tab must close entire app"
+    )
+    assert(
+        CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: false,
+            presentationMode: .tabs,
+            isInMainWindowTabGroup: false,
+            tabGroupWindowCount: 1,
+            isOptionClick: false
+        ) == .closeAllAppWindows,
+        "Tabs mode traffic-light close on detached tab must close entire app"
+    )
+    
+    // Single Window mode:
+    assert(
+        CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: true,
+            presentationMode: .singleWindow,
+            isInMainWindowTabGroup: false,
+            tabGroupWindowCount: 1,
+            isOptionClick: false
+        ) == .closeAllAppWindows,
+        "Single window main close must close all app windows"
+    )
+    assert(
+        CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: false,
+            presentationMode: .singleWindow,
+            isInMainWindowTabGroup: false,
+            tabGroupWindowCount: 1,
+            isOptionClick: false
+        ) == .closeSingleWindow,
+        "Detached secondary window in single window mode must close only itself"
+    )
+    
+    print("✓ testWindowClosePolicyAcrossModes passed!")
+}
+
+func testCapsuleSleepPolicyMatrix() {
+    print("Running testCapsuleSleepPolicyMatrix...")
+    
+    // Coverage helper checks
+    let backFrame = CGRect(x: 100, y: 100, width: 1000, height: 700)
+    let cascadedFront = CGRect(x: 122, y: 78, width: 1000, height: 700) // ~94.7% overlap
+    let sideBySideFront = CGRect(x: 1120, y: 100, width: 800, height: 700) // 0% overlap
+    let partialFront = CGRect(x: 600, y: 100, width: 1000, height: 700) // 50% overlap
+    
+    assert(
+        CapsuleSleepPolicy.coverageFraction(of: backFrame, coveredBy: [cascadedFront]) >= CapsuleSleepPolicy.substantialCoverageThreshold,
+        "Cascaded window must exceed substantial coverage threshold"
+    )
+    assert(
+        CapsuleSleepPolicy.coverageFraction(of: backFrame, coveredBy: [sideBySideFront]) == 0,
+        "Side-by-side non-overlapping window must have 0 coverage"
+    )
+    assert(
+        CapsuleSleepPolicy.coverageFraction(of: backFrame, coveredBy: [partialFront]) == 0.5,
+        "50% overlap must return 0.5"
+    )
+    
+    // 1. Tabs mode, sleepingTabsEnabled = true:
+    // Background tab has isVisible == false on macOS -> MUST sleep
+    let bgTab = CapsuleWindowSleepSnapshot(
+        sleepingTabsEnabled: true,
+        isClosed: false,
+        hasBeenPresented: true,
+        isMiniaturized: false,
+        isVisible: false,
+        isOcclusionVisible: false,
+        isSubstantiallyCoveredByFrontAppWindow: false,
+        isAppHidden: false,
+        isKeyWindow: false,
+        isInMultiTabGroup: true,
+        isSelectedTabInGroup: false
+    )
+    assert(CapsuleSleepPolicy.evaluate(bgTab) == .sleep, "Background tab must sleep when sleeping tabs enabled")
+    
+    // Selected active tab -> MUST wake and claim foreground activity when key
+    let fgTab = CapsuleWindowSleepSnapshot(
+        sleepingTabsEnabled: true,
+        isClosed: false,
+        hasBeenPresented: true,
+        isMiniaturized: false,
+        isVisible: true,
+        isOcclusionVisible: true,
+        isSubstantiallyCoveredByFrontAppWindow: false,
+        isAppHidden: false,
+        isKeyWindow: true,
+        isInMultiTabGroup: true,
+        isSelectedTabInGroup: true
+    )
+    assert(CapsuleSleepPolicy.evaluate(fgTab) == .awake(claimForegroundActivity: true), "Selected key tab must wake")
+    
+    // 2. Tabs mode, sleepingTabsEnabled = false:
+    // Background tab MUST stay awake (without claiming foreground priority)
+    let bgTabDisabled = CapsuleWindowSleepSnapshot(
+        sleepingTabsEnabled: false,
+        isClosed: false,
+        hasBeenPresented: true,
+        isMiniaturized: false,
+        isVisible: false,
+        isOcclusionVisible: false,
+        isSubstantiallyCoveredByFrontAppWindow: false,
+        isAppHidden: false,
+        isKeyWindow: false,
+        isInMultiTabGroup: true,
+        isSelectedTabInGroup: false
+    )
+    assert(CapsuleSleepPolicy.evaluate(bgTabDisabled) == .awake(claimForegroundActivity: false), "Background tab must remain awake when sleeping tabs disabled")
+    
+    // 3. Multiple windows mode, sleepingTabsEnabled = true:
+    // Miniaturized window (macOS sets isVisible = false!) -> MUST sleep
+    let miniaturizedWin = CapsuleWindowSleepSnapshot(
+        sleepingTabsEnabled: true,
+        isClosed: false,
+        hasBeenPresented: true,
+        isMiniaturized: true,
+        isVisible: false,
+        isOcclusionVisible: false,
+        isSubstantiallyCoveredByFrontAppWindow: false,
+        isAppHidden: false,
+        isKeyWindow: false,
+        isInMultiTabGroup: false,
+        isSelectedTabInGroup: true
+    )
+    assert(CapsuleSleepPolicy.evaluate(miniaturizedWin) == .sleep, "Miniaturized window with isVisible=false must sleep")
+    
+    // Cascaded background window (>=85% covered by another app window) -> MUST sleep
+    let coveredWin = CapsuleWindowSleepSnapshot(
+        sleepingTabsEnabled: true,
+        isClosed: false,
+        hasBeenPresented: true,
+        isMiniaturized: false,
+        isVisible: true,
+        isOcclusionVisible: true,
+        isSubstantiallyCoveredByFrontAppWindow: true,
+        isAppHidden: false,
+        isKeyWindow: false,
+        isInMultiTabGroup: false,
+        isSelectedTabInGroup: true
+    )
+    assert(CapsuleSleepPolicy.evaluate(coveredWin) == .sleep, "Substantially covered window in multi-window mode must sleep")
+    
+    // Side-by-side non-key visible window -> stays awake without foreground activity
+    let sideBySideWin = CapsuleWindowSleepSnapshot(
+        sleepingTabsEnabled: true,
+        isClosed: false,
+        hasBeenPresented: true,
+        isMiniaturized: false,
+        isVisible: true,
+        isOcclusionVisible: true,
+        isSubstantiallyCoveredByFrontAppWindow: false,
+        isAppHidden: false,
+        isKeyWindow: false,
+        isInMultiTabGroup: false,
+        isSelectedTabInGroup: true
+    )
+    assert(CapsuleSleepPolicy.evaluate(sideBySideWin) == .awake(claimForegroundActivity: false), "Visible side-by-side window must stay awake")
+    
+    // App hidden (Cmd+H) -> MUST sleep
+    let hiddenAppWin = CapsuleWindowSleepSnapshot(
+        sleepingTabsEnabled: true,
+        isClosed: false,
+        hasBeenPresented: true,
+        isMiniaturized: false,
+        isVisible: false,
+        isOcclusionVisible: false,
+        isSubstantiallyCoveredByFrontAppWindow: false,
+        isAppHidden: true,
+        isKeyWindow: false,
+        isInMultiTabGroup: false,
+        isSelectedTabInGroup: true
+    )
+    assert(CapsuleSleepPolicy.evaluate(hiddenAppWin) == .sleep, "Window must sleep when app is hidden")
+    
+    // 4. Multiple windows mode, sleepingTabsEnabled = false:
+    let coveredWinDisabled = CapsuleWindowSleepSnapshot(
+        sleepingTabsEnabled: false,
+        isClosed: false,
+        hasBeenPresented: true,
+        isMiniaturized: false,
+        isVisible: true,
+        isOcclusionVisible: true,
+        isSubstantiallyCoveredByFrontAppWindow: true,
+        isAppHidden: false,
+        isKeyWindow: false,
+        isInMultiTabGroup: false,
+        isSelectedTabInGroup: true
+    )
+    assert(CapsuleSleepPolicy.evaluate(coveredWinDisabled) == .awake(claimForegroundActivity: false), "Covered window must stay awake when sleeping tabs disabled")
+    
+    // 5. Newly created window not yet presented must not sleep prematurely
+    let unpresentedWin = CapsuleWindowSleepSnapshot(
+        sleepingTabsEnabled: true,
+        isClosed: false,
+        hasBeenPresented: false,
+        isMiniaturized: false,
+        isVisible: false,
+        isOcclusionVisible: false,
+        isSubstantiallyCoveredByFrontAppWindow: false,
+        isAppHidden: false,
+        isKeyWindow: false,
+        isInMultiTabGroup: false,
+        isSelectedTabInGroup: true
+    )
+    assert(CapsuleSleepPolicy.evaluate(unpresentedWin) == .ignoreNotYetPresented, "Unpresented window must not sleep prematurely")
+    
+    print("✓ testCapsuleSleepPolicyMatrix passed!")
+}
+
+@MainActor
+func testRealNSWindowCloseAndSleepDeallocation() {
+    print("Running testRealNSWindowCloseAndSleepDeallocation...")
+    _ = NSApplication.shared
+    
+    final class SleepTestWebView: WKWebView {
+        let token = UUID()
+    }
+    final class SleepTestModel: ObservableObject {
+        @Published var isDeepSleeping = false
+        @Published var generation = 0
+        @Published var isClosed = false
+    }
+    struct SleepTestWebRep: NSViewRepresentable {
+        let onCreated: (SleepTestWebView) -> Void
+        func makeNSView(context: Context) -> SleepTestWebView {
+            let wv = SleepTestWebView(frame: .zero)
+            onCreated(wv)
+            return wv
+        }
+        func updateNSView(_ nsView: SleepTestWebView, context: Context) {}
+        static func dismantleNSView(_ nsView: SleepTestWebView, coordinator: ()) {
+            nsView.stopLoading()
+            nsView.pauseAllMediaPlayback(completionHandler: nil)
+            nsView.closeAllMediaPresentations(completionHandler: nil)
+            nsView.setAllMediaPlaybackSuspended(true)
+            nsView.navigationDelegate = nil
+            nsView.uiDelegate = nil
+            let controller = nsView.configuration.userContentController
+            controller.removeAllContentRuleLists()
+            controller.removeAllUserScripts()
+            controller.removeAllScriptMessageHandlers()
+            nsView.removeFromSuperview()
+            let closeSelector = NSSelectorFromString("_close")
+            if nsView.responds(to: closeSelector) {
+                nsView.perform(closeSelector)
+            }
+        }
+    }
+    struct SleepTestHostView: View {
+        @ObservedObject var model: SleepTestModel
+        let onCreated: (SleepTestWebView) -> Void
+        var body: some View {
+            Group {
+                if model.isClosed {
+                    EmptyView()
+                } else if model.isDeepSleeping {
+                    Text("Sleeping")
+                } else {
+                    SleepTestWebRep(onCreated: onCreated)
+                        .id(model.generation)
+                }
+            }
+        }
+    }
+    
+    // Part A: Deep sleep frees WKWebView, wake mounts fresh WKWebView, close frees it
+    let model = SleepTestModel()
+    weak var weakWebView: SleepTestWebView?
+    let capsuleWin = NSWindow(
+        contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
+        styleMask: [.titled, .closable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    capsuleWin.isReleasedWhenClosed = false
+    autoreleasepool {
+        capsuleWin.contentView = NSHostingView(
+            rootView: SleepTestHostView(model: model, onCreated: { weakWebView = $0 })
+        )
+        capsuleWin.contentView?.layoutSubtreeIfNeeded()
+    }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    assert(weakWebView != nil, "WKWebView should exist while capsule is awake")
+    let firstWebViewToken = weakWebView!.token
+    
+    // Transition to deep sleep -> WKWebView must dismantle, _close, and deallocate
+    autoreleasepool {
+        model.isDeepSleeping = true
+        capsuleWin.contentView?.layoutSubtreeIfNeeded()
+    }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    assert(weakWebView == nil, "WKWebView must completely deallocate during deep sleep")
+    
+    // Wake back up -> fresh WKWebView must mount
+    autoreleasepool {
+        model.isDeepSleeping = false
+        model.generation += 1
+        capsuleWin.contentView?.layoutSubtreeIfNeeded()
+    }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    assert(weakWebView != nil, "Fresh WKWebView must mount on wake")
+    assert(weakWebView!.token != firstWebViewToken, "Woken WKWebView must be a new instance")
+    
+    // Close window -> WKWebView must dismantle and deallocate immediately
+    autoreleasepool {
+        model.isClosed = true
+        capsuleWin.contentView?.layoutSubtreeIfNeeded()
+        capsuleWin.close()
+    }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    assert(weakWebView == nil, "WKWebView must deallocate when capsule window closes")
+    
+    // Part B: Real NSWindow / NSWindowTabGroup close semantics verification
+    let mainWin = NSWindow(
+        contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    mainWin.isReleasedWhenClosed = false
+    mainWin.tabbingMode = .disallowed
+    
+    let secWin1 = NSWindow(
+        contentRect: NSRect(x: 140, y: 140, width: 800, height: 600),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    secWin1.isReleasedWhenClosed = false
+    secWin1.tabbingMode = .disallowed
+    
+    let secWin2 = NSWindow(
+        contentRect: NSRect(x: 180, y: 180, width: 800, height: 600),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    secWin2.isReleasedWhenClosed = false
+    secWin2.tabbingMode = .disallowed
+    
+    mainWin.makeKeyAndOrderFront(nil)
+    secWin1.makeKeyAndOrderFront(nil)
+    secWin2.makeKeyAndOrderFront(nil)
+    
+    let sec1Action = CapsuleWindowClosePolicy.trafficLightCloseAction(
+        isMainWindow: false,
+        presentationMode: .separateWindows,
+        isInMainWindowTabGroup: false,
+        tabGroupWindowCount: secWin1.tabGroup?.windows.count ?? 1,
+        isOptionClick: false
+    )
+    assert(sec1Action == .closeSingleWindow)
+    secWin1.close()
+    assert(!secWin1.isVisible && mainWin.isVisible && secWin2.isVisible, "Closing one capsule window in Separate Windows mode must leave main and sibling windows open")
+    
+    let mainAction = CapsuleWindowClosePolicy.trafficLightCloseAction(
+        isMainWindow: true,
+        presentationMode: .separateWindows,
+        isInMainWindowTabGroup: false,
+        tabGroupWindowCount: mainWin.tabGroup?.windows.count ?? 1,
+        isOptionClick: false
+    )
+    assert(mainAction == .closeAllAppWindows)
+    secWin2.close()
+    mainWin.close()
+    assert(!mainWin.isVisible && !secWin2.isVisible, "Closing main window must close all windows")
+    
+    // Tabs mode with real NSWindowTabGroup
+    let tabMain = NSWindow(
+        contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    tabMain.isReleasedWhenClosed = false
+    tabMain.tabbingMode = .preferred
+    tabMain.tabbingIdentifier = "TestTabs"
+    
+    let tabChild = NSWindow(
+        contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    tabChild.isReleasedWhenClosed = false
+    tabChild.tabbingMode = .preferred
+    tabChild.tabbingIdentifier = "TestTabs"
+    
+    tabMain.makeKeyAndOrderFront(nil)
+    tabMain.addTabbedWindow(tabChild, ordered: .above)
+    let inMainTG = (tabChild.tabGroup === tabMain.tabGroup)
+    let tabCount = tabChild.tabGroup?.windows.count ?? 1
+    assert(inMainTG && tabCount == 2, "Tabs must share NSWindowTabGroup")
+    assert(
+        CapsuleWindowClosePolicy.trafficLightCloseAction(
+            isMainWindow: false,
+            presentationMode: .tabs,
+            isInMainWindowTabGroup: inMainTG,
+            tabGroupWindowCount: tabCount,
+            isOptionClick: false
+        ) == .closeAllAppWindows,
+        "Traffic-light close on a capsule tab in Tabs mode must close entire app"
+    )
+    tabChild.close()
+    tabMain.close()
+    
+    print("✓ testRealNSWindowCloseAndSleepDeallocation passed!")
+}
+#endif
+
 // Execute test suite
 testUBlockRuleCompiler()
 testSearchEngineResolution()
@@ -1702,7 +2183,14 @@ MainActor.assumeIsolated {
 testReaderHTMLUtilities()
 testMarkdownBlockParser()
 testReaderWindowPayloadCodableCompatibility()
+#if os(macOS)
+testWindowClosePolicyAcrossModes()
+testCapsuleSleepPolicyMatrix()
+MainActor.assumeIsolated {
+    testRealNSWindowCloseAndSleepDeallocation()
+}
+#endif
 
 print("\n========================================")
-print("ALL 17 LOGIC & SECURITY TEST SUITES PASSED (100%)")
+print("ALL 20 LOGIC & SECURITY TEST SUITES PASSED (100%)")
 print("========================================")
