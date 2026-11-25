@@ -2669,6 +2669,140 @@ func testUBlockASCIIAndRealRulesetWebKitCompilation() {
 }
 
 @MainActor
+func testUBlockScriptletFrameworkAndBundledAssets() {
+    print("Running testUBlockScriptletFrameworkAndBundledAssets...")
+    let fm = FileManager.default
+    let root = URL(fileURLWithPath: fm.currentDirectoryPath)
+    let mainDir = root.appendingPathComponent("isowebapps/rulesets/main")
+    let scriptingDir = root.appendingPathComponent("isowebapps/rulesets/scripting")
+    
+    let expectedRulesets = [
+        "ublock-filters", "ublock-badware", "easylist", "easyprivacy",
+        "urlhaus-full", "annoyances-cookies", "annoyances-overlays",
+        "block-lan", "adguard-mobile", "fra-0"
+    ]
+    for rid in expectedRulesets {
+        assert(fm.fileExists(atPath: mainDir.appendingPathComponent("\(rid).json").path), "Missing DNR ruleset \(rid).json")
+    }
+    
+    let requiredFrameworkScripts = [
+        "scriptlet-main-begin.js",
+        "scriptlet-main-end.js",
+        "scriptlet-isolated-begin.js",
+        "scriptlet-isolated-end.js"
+    ]
+    for name in requiredFrameworkScripts {
+        assert(fm.fileExists(atPath: scriptingDir.appendingPathComponent(name).path), "Missing scriptlet framework file \(name)")
+    }
+    
+    let scriptletRulesets = expectedRulesets.filter { !["easylist", "urlhaus-full", "block-lan"].contains($0) }
+    for rid in scriptletRulesets {
+        assert(fm.fileExists(atPath: scriptingDir.appendingPathComponent("scriptlet-main-\(rid).js").path), "Missing scriptlet-main-\(rid).js")
+        assert(fm.fileExists(atPath: scriptingDir.appendingPathComponent("scriptlet-isolated-\(rid).js").path), "Missing scriptlet-isolated-\(rid).js")
+    }
+    
+    let cosmeticRulesets = expectedRulesets.filter { !["urlhaus-full", "block-lan"].contains($0) }
+    for rid in cosmeticRulesets {
+        assert(fm.fileExists(atPath: scriptingDir.appendingPathComponent("cosmetic-specific-\(rid).js").path), "Missing cosmetic-specific-\(rid).js")
+    }
+    
+    // Execute begin -> ublock-filters -> end in a real non-persistent WKWebView across .page and .defaultClient worlds
+    // Use a domain present in ublock-filters (reddit.com) so host-specific scriptlets and cosmetic rules actually fire.
+    final class UBOLErrorReceiver: NSObject, WKScriptMessageHandler {
+        var errors: [String] = []
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if let msg = message.body as? String {
+                errors.append(msg)
+            }
+        }
+    }
+    
+    let config = WKWebViewConfiguration()
+    config.websiteDataStore = .nonPersistent()
+    let ucc = config.userContentController
+    let errorReceiver = UBOLErrorReceiver()
+    ucc.add(errorReceiver, contentWorld: .page, name: "ubolErr")
+    ucc.add(errorReceiver, contentWorld: .defaultClient, name: "ubolErr")
+    
+    // Register error probes BEFORE any scriptlet/cosmetic scripts so synchronous errors at documentStart are captured.
+    let probeSource = """
+    window.__ubolTestErrors = [];
+    window.addEventListener('error', (e) => {
+        const msg = String(e.message || e.error || 'unknown error');
+        window.__ubolTestErrors.push(msg);
+        try { window.webkit.messageHandlers.ubolErr.postMessage(msg); } catch (_) {}
+    });
+    """
+    ucc.addUserScript(WKUserScript(source: probeSource, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+    ucc.addUserScript(WKUserScript(source: probeSource, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .defaultClient))
+    
+    for name in ["scriptlet-main-begin.js", "scriptlet-main-ublock-filters.js", "scriptlet-main-end.js"] {
+        let code = try! String(contentsOf: scriptingDir.appendingPathComponent(name), encoding: .utf8)
+        ucc.addUserScript(WKUserScript(source: code, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+    }
+    for name in ["scriptlet-isolated-begin.js", "scriptlet-isolated-ublock-filters.js", "scriptlet-isolated-end.js", "cosmetic-specific-ublock-filters.js"] {
+        let code = try! String(contentsOf: scriptingDir.appendingPathComponent(name), encoding: .utf8)
+        ucc.addUserScript(WKUserScript(source: code, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .defaultClient))
+    }
+    
+    let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), configuration: config)
+    let html = "<!doctype html><html><head></head><body><div class='ad' data-before-content='advertisement'>ad</div><div id='ok'>ok</div></body></html>"
+    webView.loadHTMLString(html, baseURL: URL(string: "https://www.reddit.com/")!)
+    
+    var evalDone = false
+    var jsErrors: [String] = []
+    var pageSecretStillPresent = true
+    var isolatedSecretStillPresent = true
+    var adHidden = false
+    
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+        webView.evaluateJavaScript("""
+            (() => {
+                const errs = window.__ubolTestErrors || [];
+                const secretKey = Object.getOwnPropertyNames(window).find(k => /^[0-9a-f]{8}-[0-9a-f]{4}-/.test(k));
+                const ad = document.querySelector('div[data-before-content="advertisement"]');
+                const hidden = ad ? (getComputedStyle(ad).display === 'none') : false;
+                return { errs, hasSecret: Boolean(secretKey), hidden };
+            })()
+        """, in: nil, in: .page) { result in
+            if case .success(let val) = result, let dict = val as? [String: Any] {
+                jsErrors.append(contentsOf: dict["errs"] as? [String] ?? [])
+                pageSecretStillPresent = dict["hasSecret"] as? Bool ?? true
+                adHidden = dict["hidden"] as? Bool ?? false
+            } else if case .failure(let err) = result {
+                assertionFailure("WKWebView .page evaluation failed: \(err)")
+            }
+            webView.evaluateJavaScript("""
+                (() => {
+                    const secretKey = Object.getOwnPropertyNames(self).find(k => /^[0-9a-f]{8}-[0-9a-f]{4}-/.test(k));
+                    return Boolean(secretKey);
+                })()
+            """, in: nil, in: .defaultClient) { isoResult in
+                if case .success(let val) = isoResult, let hasIsoSecret = val as? Bool {
+                    isolatedSecretStillPresent = hasIsoSecret
+                } else if case .failure(let err) = isoResult {
+                    assertionFailure("WKWebView .defaultClient evaluation failed: \(err)")
+                }
+                evalDone = true
+            }
+        }
+    }
+    
+    let deadline = Date().addingTimeInterval(10.0)
+    while !evalDone && Date() < deadline {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+    }
+    ucc.removeAllScriptMessageHandlers()
+    jsErrors.append(contentsOf: errorReceiver.errors)
+    assert(evalDone, "WKWebView scriptlet execution test timed out")
+    assert(jsErrors.isEmpty, "Unexpected JS errors from scriptlets/cosmetics in WKWebView: \(jsErrors)")
+    assert(!pageSecretStillPresent, "scriptlet-main-end.js must clean up self[$SECRET_ID$] in .page world")
+    assert(!isolatedSecretStillPresent, "scriptlet-isolated-end.js must clean up self[$SECRET_ID$] in .defaultClient world")
+    assert(adHidden, "cosmetic-specific-ublock-filters.js must hide matching reddit.com ad selector")
+    print("✓ testUBlockScriptletFrameworkAndBundledAssets passed!")
+}
+
+@MainActor
 func testReaderImageDownsamplingBounds() {
     print("Running testReaderImageDownsamplingBounds...")
     let width = 2048
@@ -2948,6 +3082,7 @@ MainActor.assumeIsolated {
     try! testLateWebViewAttachWhileSoftSleeping()
     try! testTerminationDeleteCookiesOnClose()
     testUBlockASCIIAndRealRulesetWebKitCompilation()
+    testUBlockScriptletFrameworkAndBundledAssets()
     testReaderImageDownsamplingBounds()
     try! testGroupedCapsuleSubdomainMatchingAndCookieClear()
     try! testInFlightClearTrackingAndPendingOperations()
@@ -2956,5 +3091,5 @@ testUBlockConcurrentBatchEquivalence()
 #endif
 
 print("\n========================================")
-print("ALL 30 LOGIC, CONCURRENCY & LIFECYCLE TEST SUITES PASSED (100%)")
+print("ALL 31 LOGIC, CONCURRENCY & LIFECYCLE TEST SUITES PASSED (100%)")
 print("========================================")

@@ -42,7 +42,7 @@ TARGET_RULESET_IDS = [
 ]
 
 # Regex to match embargoed TLDs: Iran (.ir), Cuba (.cu), Syria (.sy), North Korea (.kp)
-EMBARGO_REGEX = re.compile(r'(\.ir|\.cu|\.sy|\.kp)([:/\'"\s,\?&]|$)', re.IGNORECASE)
+EMBARGO_REGEX = re.compile(r'(\.ir|\.cu|\.sy|\.kp)([:/\'"\s,\?&^|*><()[\]{}$\\]|$)', re.IGNORECASE)
 
 
 def run_command(cmd, cwd=None):
@@ -58,14 +58,15 @@ def run_command(cmd, cwd=None):
 
 
 def update_git_submodule():
-    """Updates git repository and submodules."""
-    print("\n[Step 1/5] Updating repository revision...")
+    """Updates git submodule 'shared/uBOL-home' to latest remote revision."""
+    print("\n[Step 1/5] Updating git submodule 'shared/uBOL-home'...")
     try:
-        run_command(["git", "pull"], cwd=REPO_ROOT)
-        print("Repository updated successfully.")
+        run_command(["git", "submodule", "update", "--init", "--remote", "shared/uBOL-home"], cwd=REPO_ROOT)
+        run_command(["git", "-C", str(SUBMODULE_DIR), "submodule", "update", "--init", "--recursive"], cwd=REPO_ROOT)
+        print("Submodule updated successfully.")
     except Exception as e:
-        print(f"Warning updating repository: {e}")
-        print("Continuing with existing files...")
+        print(f"Warning updating submodule: {e}")
+        print("Continuing with existing submodule files...")
 
 
 def is_embargoed(text: str) -> bool:
@@ -77,22 +78,36 @@ def sanitize_rule_condition(condition: dict) -> tuple[dict | None, int]:
     """
     Sanitizes condition dictionaries in Declarative Net Request rules.
     Returns (sanitized_condition, count_of_domains_removed).
-    If urlFilter itself points directly to an embargoed domain, returns (None, 1).
+    If urlFilter or regexFilter targets an embargoed domain directly, or if
+    requestDomains/initiatorDomains becomes empty after filtering, returns (None, count).
     """
     domains_removed = 0
 
-    # 1. Check if urlFilter targets an embargoed domain directly
-    url_filter = condition.get("urlFilter")
-    if isinstance(url_filter, str) and is_embargoed(url_filter):
-        return None, 1
+    # 1. Check if urlFilter or regexFilter targets an embargoed domain directly
+    for filter_key in ("urlFilter", "regexFilter"):
+        filter_val = condition.get(filter_key)
+        if isinstance(filter_val, str) and is_embargoed(filter_val):
+            return None, 1
 
     # 2. Filter domain lists in-place
-    domain_keys = ["requestDomains", "initiatorDomains", "excludedRequestDomains", "excludedInitiatorDomains"]
-    for key in domain_keys:
+    required_domain_keys = ("requestDomains", "initiatorDomains")
+    excluded_domain_keys = ("excludedRequestDomains", "excludedInitiatorDomains")
+
+    for key in required_domain_keys:
         if key in condition and isinstance(condition[key], list):
             original_len = len(condition[key])
             condition[key] = [d for d in condition[key] if not is_embargoed(d)]
             domains_removed += (original_len - len(condition[key]))
+            if original_len > 0 and len(condition[key]) == 0:
+                return None, domains_removed
+
+    for key in excluded_domain_keys:
+        if key in condition and isinstance(condition[key], list):
+            original_len = len(condition[key])
+            condition[key] = [d for d in condition[key] if not is_embargoed(d)]
+            domains_removed += (original_len - len(condition[key]))
+            if original_len > 0 and len(condition[key]) == 0:
+                del condition[key]
 
     return condition, domains_removed
 
@@ -110,9 +125,11 @@ def copy_and_sanitize_rulesets():
     total_rules_out = 0
     total_domains_dropped = 0
     total_rules_dropped = 0
+    expected_files = set()
 
     for rid in TARGET_RULESET_IDS:
         filename = f"{rid}.json"
+        expected_files.add(filename)
         src_file = SOURCE_RULESETS_DIR / filename
         dst_file = DEST_RULESETS_DIR / filename
 
@@ -157,20 +174,60 @@ def copy_and_sanitize_rulesets():
             f"({file_rules_dropped} dropped, {file_domains_dropped} domains filtered)"
         )
 
+    for existing in DEST_RULESETS_DIR.glob("*.json"):
+        if existing.name not in expected_files:
+            existing.unlink()
+            print(f"  - Removed stale ruleset: {existing.name}")
+
     print(
         f"DNR summary: {total_rules_in} rules in, {total_rules_dropped} dropped, {total_domains_dropped} domains removed."
     )
 
 
-def copy_and_sanitize_scriptlets():
+def extract_const_json_var(code: str, var_name: str):
+    """Parses `const <var_name> = /* N */ <json>;` structurally via JSONDecoder.raw_decode."""
+    pattern = re.compile(rf"(const {re.escape(var_name)} = /\* )\d+( \*/ )")
+    m = pattern.search(code)
+    if not m:
+        return None
+    decoder = json.JSONDecoder()
+    value, end_idx = decoder.raw_decode(code, m.end())
+    semi_idx = end_idx
+    while semi_idx < len(code) and code[semi_idx].isspace():
+        semi_idx += 1
+    if semi_idx >= len(code) or code[semi_idx] != ";":
+        raise ValueError(f"Expected ';' after JSON payload for {var_name}")
+    return m.start(), m.group(1), m.group(2), value, semi_idx + 1
+
+
+def replace_const_json_var(code: str, var_name: str, new_count: int, new_value) -> str:
+    """Replaces `const <var_name> = /* N */ <json>;` using structural JSON parsing."""
+    parsed = extract_const_json_var(code, var_name)
+    if parsed is None:
+        raise ValueError(f"Missing expected variable '{var_name}' during scriptlet sanitization")
+    start, prefix_a, prefix_b, _, end_with_semi = parsed
+    serialized = json.dumps(new_value, separators=(",", ":"))
+    return f"{code[:start]}{prefix_a}{new_count}{prefix_b}{serialized};{code[end_with_semi:]}"
+
+
+def copy_and_sanitize_scriptlets() -> set[str]:
     """Extracts, sanitizes, and writes MAIN and ISOLATED scriptlet files to `rulesets/scripting/`."""
     print(f"\n[Step 3/5] Sanitizing and extracting scriptlets to {DEST_SCRIPTING_DIR}...")
     DEST_SCRIPTING_DIR.mkdir(parents=True, exist_ok=True)
+    generated_files: set[str] = set()
 
     for world in ["main", "isolated"]:
         src_dir = SOURCE_SCRIPTING_DIR / "scriptlet" / world
         if not src_dir.exists():
             continue
+
+        for boundary in ("begin", "end"):
+            boundary_src = src_dir / f"scriptlet-{boundary}.js"
+            if boundary_src.exists():
+                boundary_dst = DEST_SCRIPTING_DIR / f"scriptlet-{world}-{boundary}.js"
+                generated_files.add(boundary_dst.name)
+                boundary_dst.write_text(boundary_src.read_text(encoding="utf-8"), encoding="utf-8")
+                print(f"  - {boundary_dst.name:36} : (framework {boundary})")
 
         for rid in TARGET_RULESET_IDS:
             src_file = src_dir / f"{rid}.js"
@@ -180,46 +237,113 @@ def copy_and_sanitize_scriptlets():
             with open(src_file, "r", encoding="utf-8") as f:
                 code = f.read()
 
-            m_hns = re.search(r"(const \$scriptletHostnames\$ = /\* \d+ \*/ )(\[.*?\]);", code, re.DOTALL)
-            m_refs = re.search(r"(const \$scriptletArglistRefs\$ = /\* \d+ \*/ )(\".*?\");", code, re.DOTALL)
-
             dropped_hns = 0
-            if m_hns and m_refs:
-                hns = json.loads(m_hns.group(2))
-                refs = json.loads(m_refs.group(2)).split(";")
-                if len(hns) == len(refs):
-                    new_hns = []
-                    new_refs = []
-                    for h, r in zip(hns, refs):
-                        if is_embargoed(h):
-                            dropped_hns += 1
-                        else:
-                            new_hns.append(h)
-                            new_refs.append(r)
 
-                    # Replace hostnames array
-                    code = code[:m_hns.start()] + m_hns.group(1) + json.dumps(new_hns, separators=(",", ":")) + ";" + code[m_hns.end():]
-                    # Search refs again at updated offset
-                    m_refs2 = re.search(r"(const \$scriptletArglistRefs\$ = /\* \d+ \*/ )(\".*?\");", code, re.DOTALL)
-                    code = code[:m_refs2.start()] + m_refs2.group(1) + json.dumps(";".join(new_refs)) + ";" + code[m_refs2.end():]
+            # Format A (uBOL 2026.1124+):
+            #   const scriptletHostnames = /* N */ [...];
+            #   const arglistRefs = /* N */ ["...",...];
+            #   const scriptletFromRegexes = /* N */ [{needle,hn,...},"refs", ...]; (stride 2)
+            p_hns_new = extract_const_json_var(code, "scriptletHostnames")
+            p_refs_new = extract_const_json_var(code, "arglistRefs")
+
+            # Format B (legacy uBOL):
+            #   const $scriptletHostnames$ = /* N */ [...];
+            #   const $scriptletArglistRefs$ = /* N */ "r0;r1;...";
+            #   const $scriptletFromRegexes$ = /* N */ [needle,hn,"refs", ...]; (stride 3)
+            p_hns_old = extract_const_json_var(code, "$scriptletHostnames$")
+            p_refs_old = extract_const_json_var(code, "$scriptletArglistRefs$")
+
+            if p_hns_new and p_refs_new:
+                hns = p_hns_new[3]
+                refs = p_refs_new[3]
+                if not isinstance(hns, list) or not isinstance(refs, list) or len(hns) != len(refs):
+                    raise ValueError(f"Mismatched scriptletHostnames/arglistRefs in {src_file}")
+                new_hns = []
+                new_refs = []
+                for h, r in zip(hns, refs):
+                    if isinstance(h, str) and is_embargoed(h):
+                        dropped_hns += 1
+                    else:
+                        new_hns.append(h)
+                        new_refs.append(r)
+
+                if len(new_hns) != len(hns):
+                    code = replace_const_json_var(code, "scriptletHostnames", len(new_hns), new_hns)
+                    code = replace_const_json_var(code, "arglistRefs", len(new_refs), new_refs)
+            elif p_hns_old and p_refs_old:
+                hns = p_hns_old[3]
+                raw_refs = p_refs_old[3]
+                if not isinstance(hns, list) or not isinstance(raw_refs, str):
+                    raise ValueError(f"Invalid legacy $scriptletHostnames$/$scriptletArglistRefs$ in {src_file}")
+                refs = raw_refs.split(";")
+                if len(hns) != len(refs):
+                    raise ValueError(f"Mismatched legacy $scriptletHostnames$/$scriptletArglistRefs$ in {src_file}")
+                new_hns = []
+                new_refs = []
+                for h, r in zip(hns, refs):
+                    if isinstance(h, str) and is_embargoed(h):
+                        dropped_hns += 1
+                    else:
+                        new_hns.append(h)
+                        new_refs.append(r)
+
+                if len(new_hns) != len(hns):
+                    code = replace_const_json_var(code, "$scriptletHostnames$", len(new_hns), new_hns)
+                    code = replace_const_json_var(code, "$scriptletArglistRefs$", len(new_refs), ";".join(new_refs))
+
+            p_regexes_new = extract_const_json_var(code, "scriptletFromRegexes")
+            p_regexes_old = extract_const_json_var(code, "$scriptletFromRegexes$")
+            if p_regexes_new:
+                regexes = p_regexes_new[3]
+                if not isinstance(regexes, list) or len(regexes) % 2 != 0:
+                    raise ValueError(f"Invalid scriptletFromRegexes stride in {src_file}")
+                new_regexes = []
+                for i in range(0, len(regexes), 2):
+                    entry, ref = regexes[i], regexes[i + 1]
+                    needle = entry.get("needle", "") if isinstance(entry, dict) else ""
+                    hn = entry.get("hn", "") if isinstance(entry, dict) else ""
+                    pn = entry.get("pn", "") if isinstance(entry, dict) else ""
+                    if any(isinstance(v, str) and is_embargoed(v) for v in (needle, hn, pn)):
+                        dropped_hns += 1
+                    else:
+                        new_regexes.extend([entry, ref])
+                if len(new_regexes) != len(regexes):
+                    code = replace_const_json_var(code, "scriptletFromRegexes", len(new_regexes) // 2, new_regexes)
+            elif p_regexes_old:
+                regexes = p_regexes_old[3]
+                if not isinstance(regexes, list) or len(regexes) % 3 != 0:
+                    raise ValueError(f"Invalid legacy $scriptletFromRegexes$ stride in {src_file}")
+                new_regexes = []
+                for i in range(0, len(regexes), 3):
+                    needle, pattern, ref = regexes[i], regexes[i + 1], regexes[i + 2]
+                    if (isinstance(needle, str) and is_embargoed(needle)) or (isinstance(pattern, str) and is_embargoed(pattern)):
+                        dropped_hns += 1
+                    else:
+                        new_regexes.extend([needle, pattern, ref])
+                if len(new_regexes) != len(regexes):
+                    code = replace_const_json_var(code, "$scriptletFromRegexes$", len(new_regexes) // 3, new_regexes)
 
             # Output filename with distinct world prefix to avoid flat-bundle collisions
             dst_file = DEST_SCRIPTING_DIR / f"scriptlet-{world}-{rid}.js"
+            generated_files.add(dst_file.name)
             with open(dst_file, "w", encoding="utf-8") as f:
                 f.write(code)
 
             status = f"({dropped_hns} embargoed hostnames dropped)" if dropped_hns else "(clean)"
             print(f"  - {dst_file.name:36} : {status}")
 
+    return generated_files
 
-def compile_and_sanitize_cosmetics():
+
+def compile_and_sanitize_cosmetics() -> set[str]:
     """Compiles specific cosmetic CSS JSON rulesets into self-contained scripts in `rulesets/scripting/`."""
     print(f"\n[Step 4/5] Compiling and sanitizing cosmetic CSS scripts to {DEST_SCRIPTING_DIR}...")
     DEST_SCRIPTING_DIR.mkdir(parents=True, exist_ok=True)
+    generated_files: set[str] = set()
 
     src_dir = SOURCE_SCRIPTING_DIR / "specific"
     if not src_dir.exists():
-        return
+        return generated_files
 
     for rid in TARGET_RULESET_IDS:
         src_file = src_dir / f"{rid}.json"
@@ -228,6 +352,8 @@ def compile_and_sanitize_cosmetics():
 
         with open(src_file, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        data.setdefault("rulesetId", rid)
 
         hns = data.get("hostnames", [])
         refs = data.get("selectorListRefs", [])
@@ -244,6 +370,17 @@ def compile_and_sanitize_cosmetics():
                     new_refs.append(r)
             data["hostnames"] = new_hns
             data["selectorListRefs"] = new_refs
+
+        regexes = data.get("regexes", [])
+        if isinstance(regexes, list) and len(regexes) % 3 == 0:
+            new_regexes = []
+            for i in range(0, len(regexes), 3):
+                prefix, pattern, ref = regexes[i], regexes[i + 1], regexes[i + 2]
+                if (isinstance(prefix, str) and is_embargoed(prefix)) or (isinstance(pattern, str) and is_embargoed(pattern)):
+                    dropped_hns += 1
+                else:
+                    new_regexes.extend([prefix, pattern, ref])
+            data["regexes"] = new_regexes
 
         # Minify JSON payload embedded inside the script
         json_payload = json.dumps(data, separators=(",", ":"))
@@ -419,11 +556,22 @@ def compile_and_sanitize_cosmetics():
 """
 
         dst_file = DEST_SCRIPTING_DIR / f"cosmetic-specific-{rid}.js"
+        generated_files.add(dst_file.name)
         with open(dst_file, "w", encoding="utf-8") as f:
             f.write(script_code)
 
         status = f"({dropped_hns} embargoed hostnames dropped)" if dropped_hns else "(clean)"
         print(f"  - {dst_file.name:36} : {status}")
+
+    return generated_files
+
+
+def clean_stale_scripting_files(expected_files: set[str]):
+    """Removes any stale JS files in DEST_SCRIPTING_DIR no longer generated by Steps 3-4."""
+    for existing in DEST_SCRIPTING_DIR.glob("*.js"):
+        if existing.name not in expected_files:
+            existing.unlink()
+            print(f"  - Removed stale scripting file: {existing.name}")
 
 
 def verify_sanitization():
@@ -432,43 +580,67 @@ def verify_sanitization():
     violations = []
 
     # 1. Check all JSON files
-    for path in DEST_RULESETS_DIR.glob("*.json"):
+    for path in sorted(DEST_RULESETS_DIR.glob("*.json")):
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
             matches = EMBARGO_REGEX.findall(content)
             if matches:
                 violations.append((path.name, matches))
 
-    # 2. Check all JS files
-    jsc_bin = "/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc"
-    has_jsc = os.path.exists(jsc_bin)
-
-    for path in DEST_SCRIPTING_DIR.glob("*.js"):
+    # 2. Check all JS files for embargoed patterns first
+    js_files = sorted(DEST_SCRIPTING_DIR.glob("*.js"))
+    for path in js_files:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
             matches = EMBARGO_REGEX.findall(content)
             if matches:
                 violations.append((path.name, matches))
-
-        # Check JS syntax with JSC if available
-        if has_jsc:
-            res = subprocess.run([
-                jsc_bin,
-                "-e",
-                "const document = { location: { origin: 'https://example.com', hostname: 'example.com' }, adoptedStyleSheets: [] };",
-                str(path)
-            ], capture_output=True, text=True)
-            if res.returncode != 0:
-                print(f"ERROR: Syntax error in {path.name}:\n{res.stderr}", file=sys.stderr)
-                sys.exit(1)
 
     if violations:
         print("ERROR: Embargoed patterns detected after sanitization!", file=sys.stderr)
         for name, m in violations:
             print(f"  {name}: {m[:5]}", file=sys.stderr)
         sys.exit(1)
-    else:
-        print("Verification PASSED: 0 embargoed domains found, all JS scripts verified.")
+
+    # 3. Check JS syntax & execution with JSC if available
+    jsc_bin = "/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc"
+    has_jsc = os.path.exists(jsc_bin)
+    jsc_stub = (
+        "const window = globalThis; const self = globalThis; "
+        "const document = { location: { origin: 'https://example.com', hostname: 'example.com', pathname: '/' }, "
+        "adoptedStyleSheets: [], documentElement: null, addEventListener: () => {}, "
+        "createElement: () => ({ setAttribute: () => {}, style: {} }) };"
+    )
+
+    if has_jsc:
+        for path in js_files:
+            cmd = [jsc_bin, "-e", jsc_stub]
+            if path.name.startswith("scriptlet-main-") and path.name != "scriptlet-main-begin.js":
+                begin_file = DEST_SCRIPTING_DIR / "scriptlet-main-begin.js"
+                end_file = DEST_SCRIPTING_DIR / "scriptlet-main-end.js"
+                if begin_file.exists():
+                    cmd.append(str(begin_file))
+                cmd.append(str(path))
+                if path.name != "scriptlet-main-end.js" and end_file.exists():
+                    cmd.append(str(end_file))
+            elif path.name.startswith("scriptlet-isolated-") and path.name != "scriptlet-isolated-begin.js":
+                begin_file = DEST_SCRIPTING_DIR / "scriptlet-isolated-begin.js"
+                end_file = DEST_SCRIPTING_DIR / "scriptlet-isolated-end.js"
+                if begin_file.exists():
+                    cmd.append(str(begin_file))
+                cmd.append(str(path))
+                if path.name != "scriptlet-isolated-end.js" and end_file.exists():
+                    cmd.append(str(end_file))
+            else:
+                cmd.append(str(path))
+
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                detail = (res.stderr or res.stdout).strip()
+                print(f"ERROR: Syntax/execution error in {path.name}:\n{detail}", file=sys.stderr)
+                sys.exit(1)
+
+    print("Verification PASSED: 0 embargoed domains found, all JS scripts verified.")
 
 
 def print_completion():
@@ -479,8 +651,9 @@ def main():
     try:
         update_git_submodule()
         copy_and_sanitize_rulesets()
-        copy_and_sanitize_scriptlets()
-        compile_and_sanitize_cosmetics()
+        generated_scripts = copy_and_sanitize_scriptlets()
+        generated_scripts |= compile_and_sanitize_cosmetics()
+        clean_stale_scripting_files(generated_scripts)
         verify_sanitization()
         print_completion()
     except Exception as err:

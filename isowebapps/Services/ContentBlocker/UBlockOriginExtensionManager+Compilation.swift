@@ -222,13 +222,34 @@ extension UBlockOriginExtensionManager {
         var orderCounter = 0
         
         if config.effectiveScriptletDefusers {
-            for rid in activeRulesetIDs {
-                if let mainURL = Self.locateScriptFile(named: "scriptlet-main-\(rid).js") {
+            let mainURLs = activeRulesetIDs.compactMap { Self.locateScriptFile(named: "scriptlet-main-\($0).js") }
+            if !mainURLs.isEmpty {
+                if let beginURL = Self.locateScriptFile(named: "scriptlet-main-begin.js") {
+                    scriptSpecs.append(ScriptLoadSpec(order: orderCounter, url: beginURL, injectionTime: .atDocumentStart, world: .page))
+                    orderCounter += 1
+                }
+                for mainURL in mainURLs {
                     scriptSpecs.append(ScriptLoadSpec(order: orderCounter, url: mainURL, injectionTime: .atDocumentStart, world: .page))
                     orderCounter += 1
                 }
-                if let isoURL = Self.locateScriptFile(named: "scriptlet-isolated-\(rid).js") {
+                if let endURL = Self.locateScriptFile(named: "scriptlet-main-end.js") {
+                    scriptSpecs.append(ScriptLoadSpec(order: orderCounter, url: endURL, injectionTime: .atDocumentStart, world: .page))
+                    orderCounter += 1
+                }
+            }
+            
+            let isolatedURLs = activeRulesetIDs.compactMap { Self.locateScriptFile(named: "scriptlet-isolated-\($0).js") }
+            if !isolatedURLs.isEmpty {
+                if let beginURL = Self.locateScriptFile(named: "scriptlet-isolated-begin.js") {
+                    scriptSpecs.append(ScriptLoadSpec(order: orderCounter, url: beginURL, injectionTime: .atDocumentStart, world: .defaultClient))
+                    orderCounter += 1
+                }
+                for isoURL in isolatedURLs {
                     scriptSpecs.append(ScriptLoadSpec(order: orderCounter, url: isoURL, injectionTime: .atDocumentStart, world: .defaultClient))
+                    orderCounter += 1
+                }
+                if let endURL = Self.locateScriptFile(named: "scriptlet-isolated-end.js") {
+                    scriptSpecs.append(ScriptLoadSpec(order: orderCounter, url: endURL, injectionTime: .atDocumentStart, world: .defaultClient))
                     orderCounter += 1
                 }
             }

@@ -89,7 +89,7 @@ nonisolated struct UBlockFilterConfiguration: Sendable, Equatable {
 public final class UBlockOriginExtensionManager: ObservableObject {
     public static let shared = UBlockOriginExtensionManager()
     
-    static let currentCompilerVersion = 2
+    static let currentCompilerVersion = 3
     
     /// Notification broadcast when rules and scripts are recompiled
     public nonisolated static let didUpdateRulesNotification = Notification.Name("UBlockOriginDidUpdateRulesNotification")
