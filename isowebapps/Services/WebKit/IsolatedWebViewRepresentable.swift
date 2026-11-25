@@ -95,19 +95,15 @@ extension IsolatedWebViewRepresentable {
         #endif
     }()
 
-    static func generateRandomYouTubeUserAgent() -> String {
-        let letters = "abcdefghijklmnopqrstuvwxyz"
-        let randomLetters = String((0..<6).compactMap { _ in letters.randomElement() })
-        let major = Int.random(in: 10...99)
-        let minor = Int.random(in: 0...9)
-        return "\(randomLetters) (\(major).\(minor))"
-    }
+    // YouTube uses the genuine native WebKit User-Agent (customUserAgent == nil), like Youtube-Free.
     
     static func updateUserAgent(for webView: WKWebView?, targetURL: URL) {
-        let isYouTube = targetURL.absoluteString.localizedCaseInsensitiveContains("youtube.com")
-        if isYouTube {
-            webView?.customUserAgent = generateRandomYouTubeUserAgent()
-        } else {
+        guard let scheme = targetURL.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
+        if YouTubeFreeSupport.isYouTubeURL(targetURL) {
+            if webView?.customUserAgent != nil {
+                webView?.customUserAgent = nil
+            }
+        } else if webView?.customUserAgent != defaultUserAgent {
             webView?.customUserAgent = defaultUserAgent
         }
     }
@@ -264,8 +260,8 @@ extension IsolatedWebViewRepresentable {
         
         let preferences = WKPreferences()
         preferences.isElementFullscreenEnabled = true
-        #if os(macOS)
         preferences.setValue(true, forKey: "fullScreenEnabled")
+        #if os(macOS)
         let sleepingTabsEnabled = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
         preferences.setValue(sleepingTabsEnabled, forKey: "hiddenPageDOMTimerThrottlingEnabled")
         preferences.setValue(sleepingTabsEnabled, forKey: "hiddenPageDOMTimerThrottlingAutoIncreases")
@@ -290,10 +286,39 @@ extension IsolatedWebViewRepresentable {
         configuration.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
         #endif
         
-        let needsUBlockLoad = appItem.isUBlockEnabled && !UBlockOriginExtensionManager.shared.isLoaded
-        if appItem.isUBlockEnabled && !needsUBlockLoad {
-            UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
+        #if os(macOS)
+        let savedURLForProtection = lifecycleController?.savedURLString
+        #else
+        let savedURLForProtection: String? = nil
+        #endif
+        let rawProtectionStartString = initialURLString ?? savedURLForProtection ?? appItem.lastOpenedURLString ?? appItem.urlString
+        let resolvedStartURL: URL? = URL(string: rawProtectionStartString).map {
+            YouTubeFreeSupport.isYouTubeURL($0) ? YouTubeFreeSupport.normalizedInitialYouTubeURL($0) : $0
         }
+        if YouTubeFreeSupport.isYouTubeURL(resolvedStartURL) {
+            YouTubeFreeSupport.activateIOSPlaybackAudioSessionIfNeeded()
+        }
+        let initialProtectionMode = YouTubeFreeSupport.desiredProtectionMode(
+            isCapsuleProtectionEnabled: appItem.isUBlockEnabled,
+            targetURL: resolvedStartURL,
+            fallbackURLString: appItem.urlString
+        )
+        context.coordinator.activeProtectionMode = initialProtectionMode
+        let needsUBlockLoad = initialProtectionMode == .uBlock && !UBlockOriginExtensionManager.shared.isLoaded
+        let needsYouTubeLoad = initialProtectionMode == .youTubeAdFree && !YouTubeContentBlocker.shared.isLoaded
+        switch initialProtectionMode {
+        case .uBlock:
+            if !needsUBlockLoad {
+                UBlockOriginExtensionManager.shared.applyToConfiguration(configuration)
+            }
+        case .youTubeAdFree:
+            if !needsYouTubeLoad {
+                YouTubeContentBlocker.shared.applyToConfiguration(configuration)
+            }
+        case .none:
+            break
+        }
+        configuration.userContentController.add(WeakScriptMessageHandler(context.coordinator), name: "avkitVideoURL")
         
         #if os(macOS)
         let webView = IsolatedWKWebView(frame: .zero, configuration: configuration)
@@ -340,20 +365,35 @@ extension IsolatedWebViewRepresentable {
         navigationState.onReload = { [weak webView] in
             webView?.reload()
         }
-        navigationState.onLoadURL = { [weak webView] url in
-            Self.updateUserAgent(for: webView, targetURL: url)
-            webView?.load(URLRequest(url: url))
-        }
         let coordinator = context.coordinator
+        navigationState.onLoadURL = { [weak webView, weak coordinator, weak navigationState] url in
+            navigationState?.avkitHLSURL = nil
+            Self.updateUserAgent(for: webView, targetURL: url)
+            guard let webView else { return }
+            let request = URLRequest(url: url)
+            let ready = coordinator?.ensureProtection(for: url, webView: webView, onReady: { [weak webView] in
+                webView?.load(request)
+            }) ?? true
+            if ready {
+                webView.load(request)
+            }
+        }
+        navigationState.onCloseAVKitOverlay = { [weak webView, weak navigationState] in
+            guard let navigationState else { return }
+            navigationState.avkitHLSURL = nil
+            if let last = navigationState.lastVideoPageURL {
+                navigationState.lastVideoPageURL = nil
+                webView?.load(URLRequest(url: last))
+            }
+        }
         navigationState.onStopLoading = { [weak webView, weak coordinator] in
             coordinator?.cleanup()
             if let webView {
                 WebKitMemoryManager.shared.teardownWebView(webView)
             }
         }
-        navigationState.onToggleUBlock = { [weak webView] isEnabled in
-            guard let webView else { return }
-            WebViewCoordinator.applyUBlockSetting(isEnabled: isEnabled, to: webView, reload: true)
+        navigationState.onToggleUBlock = { [weak coordinator] isEnabled in
+            coordinator?.applyContentProtection(isEnabled: isEnabled, targetURL: nil, reload: true)
         }
         #if os(macOS)
         if navigationState.isReaderModeActive {
@@ -444,12 +484,13 @@ extension IsolatedWebViewRepresentable {
                 }
                 return
             }
-            if let url = URL(string: startURLString) {
+            if let rawURL = URL(string: startURLString) {
+                let url = YouTubeFreeSupport.isYouTubeURL(rawURL) ? YouTubeFreeSupport.normalizedInitialYouTubeURL(rawURL) : rawURL
                 Self.updateUserAgent(for: wv, targetURL: url)
                 wv.load(URLRequest(url: url))
             }
         }
-        if needsUBlockLoad || needsCookieRestore || needsPendingClearWait {
+        if needsUBlockLoad || needsYouTubeLoad || needsCookieRestore || needsPendingClearWait {
             Task { @MainActor [weak webView] in
                 if let targetStoreId, IsolatedCookieManager.shared.hasPendingClear(for: targetStoreId) {
                     await IsolatedCookieManager.shared.awaitPendingClear(for: targetStoreId)
@@ -460,6 +501,11 @@ extension IsolatedWebViewRepresentable {
                     if appItem.isUBlockEnabled {
                         UBlockOriginExtensionManager.shared.applyToConfiguration(webView.configuration)
                     }
+                }
+                if needsYouTubeLoad {
+                    await YouTubeContentBlocker.shared.prepare()
+                    guard let webView, !WebKitMemoryManager.shared.isTornDown(webView) else { return }
+                    YouTubeContentBlocker.shared.applyToConfiguration(webView.configuration)
                 }
                 guard let webView, !WebKitMemoryManager.shared.isTornDown(webView) else { return }
                 let latestGroupedItems = appItem.group?.items ?? groupedItems

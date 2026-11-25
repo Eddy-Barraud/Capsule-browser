@@ -134,10 +134,12 @@ class IsolatedWKWebView: WKWebView {
         print("[IsolatedWKWebView] Tab soft sleeping: \(self.url?.host ?? "untitled")")
         #endif
         
-        if !hasActiveAudioPlayback {
-            setAllMediaPlaybackSuspended(true)
+        if !isInHTMLFullscreen && !isDisplayingYouTube {
+            if !hasActiveAudioPlayback {
+                setAllMediaPlaybackSuspended(true)
+            }
+            evaluateJavaScript(Self.visibilityHiddenScript, completionHandler: nil)
         }
-        evaluateJavaScript(Self.visibilityHiddenScript, completionHandler: nil)
     }
     
     func applyWakeFromSoftSleep() {
@@ -153,10 +155,20 @@ class IsolatedWKWebView: WKWebView {
     
     func reapplySleepingStateIfNeeded() {
         guard !isClosedOrDismantled, isSleeping else { return }
-        if !hasActiveAudioPlayback {
-            setAllMediaPlaybackSuspended(true)
+        if !isInHTMLFullscreen && !isDisplayingYouTube {
+            if !hasActiveAudioPlayback {
+                setAllMediaPlaybackSuspended(true)
+            }
+            evaluateJavaScript(Self.visibilityHiddenScript, completionHandler: nil)
         }
-        evaluateJavaScript(Self.visibilityHiddenScript, completionHandler: nil)
+    }
+    
+    var isInHTMLFullscreen: Bool {
+        fullscreenState != .notInFullscreen
+    }
+    
+    var isDisplayingYouTube: Bool {
+        YouTubeFreeSupport.isYouTubeURL(self.url)
     }
     
     var hasActiveAudioPlayback: Bool {

@@ -47,6 +47,7 @@ final class CapsuleLifecycleController: ObservableObject {
     nonisolated(unsafe) private var sleepWorkItem: DispatchWorkItem?
     nonisolated(unsafe) private var audioRecheckWorkItem: DispatchWorkItem?
     nonisolated(unsafe) private var activityAssertionToken: NSObjectProtocol?
+    nonisolated(unsafe) private var webViewFullscreenObservation: NSKeyValueObservation?
     private var hasBeenPresented: Bool = false
     private var lastSleepingTabsEnabled: Bool = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
     
@@ -163,6 +164,12 @@ final class CapsuleLifecycleController: ObservableObject {
         guard !isClosed else { return }
         self.webView = webView
         self.coordinator = coordinator
+        webViewFullscreenObservation?.invalidate()
+        webViewFullscreenObservation = webView.observe(\.fullscreenState, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                self?.scheduleSleepWakeEvaluation(delay: 0.05)
+            }
+        }
         let sleepingEnabled = UserDefaults.standard.object(forKey: "sleepingTabsEnabled") as? Bool ?? true
         webView.configuration.preferences.setValue(sleepingEnabled, forKey: "hiddenPageDOMTimerThrottlingEnabled")
         webView.configuration.preferences.setValue(sleepingEnabled, forKey: "hiddenPageDOMTimerThrottlingAutoIncreases")
@@ -246,6 +253,11 @@ final class CapsuleLifecycleController: ObservableObject {
     func evaluateSleepWakeStatus() {
         guard !isClosed, let snapshot = currentSnapshot() else {
             releaseForegroundActivityToken()
+            return
+        }
+        
+        if webView?.isInHTMLFullscreen == true {
+            wakeUp(forceImmediate: false, claimForegroundActivity: nil)
             return
         }
         
@@ -337,6 +349,10 @@ final class CapsuleLifecycleController: ObservableObject {
             return
         }
         
+        if webView?.isInHTMLFullscreen == true {
+            scheduleAudioOrBlockerRecheck()
+            return
+        }
         let hasAudio = webView?.hasActiveAudioPlayback ?? false
         let hasDownload = webView.map { CapsuleDownloadManager.shared.hasActiveDownload(for: $0) } ?? false
         let containerAllowsSleep = canDeepSleepProvider?() ?? true
@@ -364,6 +380,8 @@ final class CapsuleLifecycleController: ObservableObject {
         
         webView.applySoftSleep()
         sleepState = .deepSleeping
+        webViewFullscreenObservation?.invalidate()
+        webViewFullscreenObservation = nil
         self.webView = nil
         self.coordinator = nil
         
@@ -379,6 +397,8 @@ final class CapsuleLifecycleController: ObservableObject {
     func handleClose() {
         guard sleepState != .closed else { return }
         sleepState = .closed
+        webViewFullscreenObservation?.invalidate()
+        webViewFullscreenObservation = nil
         cancelAllTimers()
         teardownObservers()
         releaseForegroundActivityToken()
@@ -449,6 +469,7 @@ final class CapsuleLifecycleController: ObservableObject {
         audioRecheckWorkItem?.cancel()
         tabGroupObservation?.invalidate()
         windowTabGroupObservation?.invalidate()
+        webViewFullscreenObservation?.invalidate()
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
         if let token = activityAssertionToken {
             ProcessInfo.processInfo.endActivity(token)

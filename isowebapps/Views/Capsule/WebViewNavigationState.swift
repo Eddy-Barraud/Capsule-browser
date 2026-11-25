@@ -25,6 +25,9 @@ final class WebViewNavigationState: ObservableObject {
     var onOpenSafariReader: ((URL) -> Void)?
     var onCaptureLiveHTML: (() async throws -> ReaderHTMLCapture)?
     var onOpenNewWindowOrTab: ((URL) -> Void)?
+    @Published var avkitHLSURL: URL? = nil
+    var lastVideoPageURL: URL? = nil
+    var onCloseAVKitOverlay: (() -> Void)?
     var activeWebViewToken: UUID? = nil
     #if os(macOS)
     @Published var isReaderModeActive: Bool = false
@@ -43,6 +46,7 @@ final class WebViewNavigationState: ObservableObject {
         onLoadURL = nil
         onStopLoading = nil
         onToggleUBlock = nil
+        onCloseAVKitOverlay = nil
         onCaptureLiveHTML = nil
         #if os(macOS)
         onSetReaderMediaSuspended = nil
@@ -58,6 +62,7 @@ final class WebViewNavigationState: ObservableObject {
         onStopLoading = nil
         onToggleUBlock = nil
         onOpenSafariReader = nil
+        onCloseAVKitOverlay = nil
         onCaptureLiveHTML = nil
         onOpenNewWindowOrTab = nil
         #if os(macOS)

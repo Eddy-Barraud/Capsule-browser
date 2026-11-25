@@ -17,7 +17,8 @@ import AppKit
 import UIKit
 #endif
 
-class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+    var activeProtectionMode: ContentProtectionMode = .none
     let appItem: WebAppItem
     let navigationState: WebViewNavigationState
     let modelContext: ModelContext
@@ -114,7 +115,14 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self, let webView = self.webView else { return }
-                    Self.applyUBlockSetting(isEnabled: self.appItem.isUBlockEnabled, to: webView, reload: true)
+                    let desired = YouTubeFreeSupport.desiredProtectionMode(
+                        isCapsuleProtectionEnabled: self.appItem.isUBlockEnabled,
+                        targetURL: webView.url,
+                        fallbackURLString: self.appItem.urlString
+                    )
+                    // Recompiling uBlock lists must never touch (or reload) an active YouTube ad-free session.
+                    if desired == .youTubeAdFree && self.activeProtectionMode == .youTubeAdFree { return }
+                    self.applyContentProtection(isEnabled: self.appItem.isUBlockEnabled, targetURL: nil, reload: true)
                 }
             }
             
@@ -133,7 +141,8 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
                     
                     let isEnabled = overrideEnabled ?? self.appItem.isUBlockEnabled
                     self.navigationState.isUBlockEnabled = isEnabled
-                    Self.applyUBlockSetting(isEnabled: isEnabled, to: webView, reload: true)
+                    _ = webView
+                    self.applyContentProtection(isEnabled: isEnabled, targetURL: nil, reload: true)
                 }
             }
         }
@@ -149,6 +158,96 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
         if reload {
             webView.reloadFromOrigin()
+        }
+    }
+    
+    // MARK: - Content Protection (YouTube Ad-Free vs uBlock)
+    
+    @MainActor
+    func applyProtectionMode(_ mode: ContentProtectionMode, to webView: WKWebView) {
+        let config = webView.configuration
+        switch mode {
+        case .none:
+            UBlockOriginExtensionManager.shared.removeFromConfiguration(config)
+        case .uBlock:
+            UBlockOriginExtensionManager.shared.applyToConfiguration(config)
+        case .youTubeAdFree:
+            YouTubeContentBlocker.shared.applyToConfiguration(config)
+        }
+        activeProtectionMode = mode
+    }
+    
+    /// Returns true when the right protection is already applied (synchronously). Returns false when
+    /// the manager still had to be prepared; `onReady` is invoked once applied so the caller can (re)load.
+    @MainActor
+    func ensureProtection(for url: URL, webView: WKWebView, onReady: @escaping () -> Void) -> Bool {
+        let mode = YouTubeFreeSupport.desiredProtectionMode(
+            isCapsuleProtectionEnabled: navigationState.isUBlockEnabled,
+            targetURL: url,
+            fallbackURLString: appItem.urlString
+        )
+        guard mode != activeProtectionMode else { return true }
+        let needsPrepare: Bool
+        switch mode {
+        case .uBlock: needsPrepare = !UBlockOriginExtensionManager.shared.isLoaded
+        case .youTubeAdFree: needsPrepare = !YouTubeContentBlocker.shared.isLoaded
+        case .none: needsPrepare = false
+        }
+        guard needsPrepare else {
+            applyProtectionMode(mode, to: webView)
+            return true
+        }
+        Task { @MainActor [weak self, weak webView] in
+            switch mode {
+            case .uBlock: await UBlockOriginExtensionManager.shared.prepare()
+            case .youTubeAdFree: await YouTubeContentBlocker.shared.prepare()
+            case .none: break
+            }
+            guard let self, let webView, !WebKitMemoryManager.shared.isTornDown(webView) else { return }
+            self.applyProtectionMode(mode, to: webView)
+            onReady()
+        }
+        return false
+    }
+    
+    @MainActor
+    func applyContentProtection(isEnabled: Bool, targetURL: URL?, reload: Bool) {
+        guard let webView else { return }
+        let mode = YouTubeFreeSupport.desiredProtectionMode(
+            isCapsuleProtectionEnabled: isEnabled,
+            targetURL: targetURL ?? webView.url,
+            fallbackURLString: appItem.urlString
+        )
+        Task { @MainActor [weak self, weak webView] in
+            switch mode {
+            case .uBlock:
+                if !UBlockOriginExtensionManager.shared.isLoaded { await UBlockOriginExtensionManager.shared.prepare() }
+            case .youTubeAdFree:
+                if !YouTubeContentBlocker.shared.isLoaded { await YouTubeContentBlocker.shared.prepare() }
+            case .none:
+                break
+            }
+            guard let self, let webView, !WebKitMemoryManager.shared.isTornDown(webView) else { return }
+            self.applyProtectionMode(mode, to: webView)
+            if reload {
+                webView.reloadFromOrigin()
+            }
+        }
+    }
+    
+    // MARK: - WKScriptMessageHandler
+    
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "avkitVideoURL",
+              let body = message.body as? [String: String],
+              let urlString = body["url"],
+              let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.navigationState.lastVideoPageURL = self.webView?.url
+            self.navigationState.avkitHLSURL = url
         }
     }
     
@@ -243,7 +342,19 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
                 return
             }
             
-            IsolatedWebViewRepresentable.updateUserAgent(for: webView, targetURL: targetURL)
+            if navigationAction.targetFrame?.isMainFrame == true, scheme == "http" || scheme == "https" {
+                IsolatedWebViewRepresentable.updateUserAgent(for: webView, targetURL: targetURL)
+                if YouTubeFreeSupport.isYouTubeURL(targetURL) {
+                    YouTubeFreeSupport.activateIOSPlaybackAudioSessionIfNeeded()
+                }
+                let request = navigationAction.request
+                if !ensureProtection(for: targetURL, webView: webView, onReady: { [weak webView] in
+                    webView?.load(request)
+                }) {
+                    decisionHandler(.cancel)
+                    return
+                }
+            }
         }
         
         if navigationAction.shouldPerformDownload {
@@ -416,6 +527,15 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
+        if !navigationResponse.isForMainFrame,
+           (YouTubeFreeSupport.isYouTubeURL(webView.url) || YouTubeFreeSupport.isYouTubeURL(navigationResponse.response.url)) {
+            let http = navigationResponse.response as? HTTPURLResponse
+            if !CapsuleDownloadManager.isAttachmentContentDisposition(http?.value(forHTTPHeaderField: "Content-Disposition")) {
+                decisionHandler(.allow)
+                return
+            }
+        }
+        
         if let httpResponse = navigationResponse.response as? HTTPURLResponse,
            (httpResponse.statusCode == 204 || httpResponse.statusCode == 205) {
             decisionHandler(.cancel)
@@ -480,7 +600,12 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
             #endif
             
             IsolatedWebViewRepresentable.updateUserAgent(for: webView, targetURL: url)
-            webView.load(navigationAction.request)
+            let request = navigationAction.request
+            if ensureProtection(for: url, webView: webView, onReady: { [weak webView] in
+                webView?.load(request)
+            }) {
+                webView.load(request)
+            }
         }
         return nil
     }

@@ -119,7 +119,8 @@ extension WebAppContainerView {
     }
     
     func navigateToConfiguredHome() {
-        if let homeURL = URL(string: appItem.urlString) {
+        if let rawHomeURL = URL(string: appItem.urlString) {
+            let homeURL = YouTubeFreeSupport.isYouTubeURL(rawHomeURL) ? YouTubeFreeSupport.normalizedInitialYouTubeURL(rawHomeURL) : rawHomeURL
             #if os(macOS)
             if isReaderModeActive {
                 if startInReaderMode {

@@ -18,195 +18,195 @@
     "semantic_hash": ""
   },
   "rulesets/main/adguard-mobile.json": {
-    "mtime": 1794740982.4810002,
-    "seen": 1794755549.10638,
-    "ast_hash": "7e393f4fa3408bfb0873488d8d385df1",
+    "mtime": 1795617882.2229252,
+    "seen": 1795619247.325969,
+    "ast_hash": "829194f15f0679b3ffe2e0a76b8218f1",
     "semantic_hash": ""
   },
   "rulesets/main/annoyances-cookies.json": {
-    "mtime": 1794740982.4739225,
-    "seen": 1794755549.106381,
-    "ast_hash": "23f29495df5bd03883d8c562059e2ac2",
+    "mtime": 1795617882.216939,
+    "seen": 1795619247.32597,
+    "ast_hash": "80720479b463797ee675d1cdf9c358cb",
     "semantic_hash": ""
   },
   "rulesets/main/annoyances-overlays.json": {
-    "mtime": 1794740982.4765985,
-    "seen": 1794755549.106381,
-    "ast_hash": "7325f83ff5433eb6bbb01b00ccf23aeb",
+    "mtime": 1795617882.2192316,
+    "seen": 1795619247.325971,
+    "ast_hash": "a8447f47202e5e172d8ac59884ce64b3",
     "semantic_hash": ""
   },
   "rulesets/main/block-lan.json": {
-    "mtime": 1794740982.477373,
-    "seen": 1794755549.1063821,
+    "mtime": 1795617882.2196562,
+    "seen": 1795619247.325971,
     "ast_hash": "35f2d6521a35fbc32bdf2a3ef137a366",
     "semantic_hash": ""
   },
   "rulesets/main/easylist.json": {
     "mtime": 1794740982.3895514,
     "seen": 1794755549.106383,
-    "ast_hash": "221e79b891a181ceb4f7c367d30ce729",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "rulesets/main/easyprivacy.json": {
     "mtime": 1794740982.457535,
     "seen": 1794755549.106383,
-    "ast_hash": "7be25751a49a73b084afbff6a1c93c5c",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "rulesets/main/fra-0.json": {
-    "mtime": 1794740982.5045192,
-    "seen": 1794755549.1063838,
-    "ast_hash": "1d92e520435602de446d5edb0a5ce360",
+    "mtime": 1795617882.243526,
+    "seen": 1795619247.325972,
+    "ast_hash": "1ee479176f999cad5ab442bfc225de94",
     "semantic_hash": ""
   },
   "rulesets/main/ublock-badware.json": {
-    "mtime": 1794740982.3491848,
-    "seen": 1794755549.106385,
-    "ast_hash": "40a8337029f090f99495b127377bbb12",
+    "mtime": 1795617882.1111937,
+    "seen": 1795619247.325973,
+    "ast_hash": "d901fd75d58a08c1c7893628e351a416",
     "semantic_hash": ""
   },
   "rulesets/main/ublock-filters.json": {
     "mtime": 1794740982.344895,
     "seen": 1794755549.106385,
-    "ast_hash": "76f7150721f62a639c3f036615fa584a",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "rulesets/main/urlhaus-full.json": {
-    "mtime": 1794740982.461322,
-    "seen": 1794755549.106386,
-    "ast_hash": "ed3007d7fb6e8d004f8a33dd3ab028a0",
+    "mtime": 1795617882.2071965,
+    "seen": 1795619247.325973,
+    "ast_hash": "8c468ac56924f2cf564816a41b24d58c",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-adguard-mobile.js": {
-    "mtime": 1794740982.616994,
-    "seen": 1794755549.106387,
-    "ast_hash": "26b0a6f9b4a86830e4c968f8f258c8a6",
+    "mtime": 1795617882.2992172,
+    "seen": 1795619247.325974,
+    "ast_hash": "12d0311550359c69000240f12b3b6d1f",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-annoyances-cookies.js": {
-    "mtime": 1794740982.606516,
-    "seen": 1794755549.1063879,
-    "ast_hash": "58e72effdd2c1588001e0a6c21083bae",
+    "mtime": 1795617882.2904053,
+    "seen": 1795619247.325975,
+    "ast_hash": "f92354849e32f32d1f1c6f75fa1f2bda",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-annoyances-overlays.js": {
-    "mtime": 1794740982.6113455,
-    "seen": 1794755549.1063879,
-    "ast_hash": "a2956872113d01b96d249a030361dd6c",
+    "mtime": 1795617882.2945309,
+    "seen": 1795619247.3259761,
+    "ast_hash": "4f0e4c28414daf415ba0d052f5751e9d",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-easylist.js": {
-    "mtime": 1794740982.5955982,
-    "seen": 1794755549.106389,
-    "ast_hash": "a191e3ceb7fe849c04c77345fc8bb141",
+    "mtime": 1795617882.2815127,
+    "seen": 1795619247.3259761,
+    "ast_hash": "6ae3e425979f0ea3758d6a4ceeff438f",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-easyprivacy.js": {
-    "mtime": 1794740982.5964823,
-    "seen": 1794755549.106389,
+    "mtime": 1795617882.2820406,
+    "seen": 1795619247.325977,
     "ast_hash": "9f13ac488f6fd8a6ca7c567dcfc16d7c",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-fra-0.js": {
-    "mtime": 1794740982.6194952,
-    "seen": 1794755549.10639,
-    "ast_hash": "b1d0968f75e1ed2c8c699eec936dc7a3",
+    "mtime": 1795617882.300964,
+    "seen": 1795619247.325978,
+    "ast_hash": "b4de3d8cd749eeae5be80e62a0706013",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-ublock-badware.js": {
-    "mtime": 1794740982.5887985,
-    "seen": 1794755549.106391,
-    "ast_hash": "0d8104934ff68e61d5add10ab29946b1",
+    "mtime": 1795617882.2757397,
+    "seen": 1795619247.325979,
+    "ast_hash": "56a250780a03aa7685f16b2075a3093a",
     "semantic_hash": ""
   },
   "rulesets/scripting/cosmetic-specific-ublock-filters.js": {
-    "mtime": 1794740982.5880532,
-    "seen": 1794755549.106391,
-    "ast_hash": "7214f3cab4ec4e2e5bcada64e9403f5e",
+    "mtime": 1795617882.2752585,
+    "seen": 1795619247.325979,
+    "ast_hash": "46abcaf5dd71d6dcc0eb4b9b398d9418",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-adguard-mobile.js": {
-    "mtime": 1794740982.5719216,
-    "seen": 1794755549.1063921,
-    "ast_hash": "2160bd65b727c3121c2265e6baad5be3",
+    "mtime": 1795617882.2696419,
+    "seen": 1795619247.32598,
+    "ast_hash": "0fb03428e13bf5ca51465db96dd4fd37",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-annoyances-cookies.js": {
-    "mtime": 1794740982.5691042,
-    "seen": 1794755549.106393,
-    "ast_hash": "1e088321c93070f337fa32e1fedd244a",
+    "mtime": 1795617882.2687435,
+    "seen": 1795619247.32598,
+    "ast_hash": "d8da9834a011282bc638fc11bcb7af0a",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-annoyances-overlays.js": {
-    "mtime": 1794740982.571243,
-    "seen": 1794755549.106394,
-    "ast_hash": "3eaa87072e215479ee3b2336138f529a",
+    "mtime": 1795617882.2692564,
+    "seen": 1795619247.325981,
+    "ast_hash": "cd48d869a49e3d770c2dd68de3a57aed",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-easyprivacy.js": {
-    "mtime": 1794740982.5360043,
-    "seen": 1794755549.106394,
-    "ast_hash": "7d19045ec857fa503690b547899bf51b",
+    "mtime": 1795617882.2648723,
+    "seen": 1795619247.325983,
+    "ast_hash": "f258d5d60942a2258417e946dcd07a83",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-fra-0.js": {
-    "mtime": 1794740982.5723212,
-    "seen": 1794755549.1063948,
-    "ast_hash": "01940bbf0139bc501723544c4a585cbe",
+    "mtime": 1795617882.2699478,
+    "seen": 1795619247.325984,
+    "ast_hash": "107c626bceb3068bb76befcae660f6c4",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-ublock-badware.js": {
-    "mtime": 1794740982.5349855,
-    "seen": 1794755549.106396,
-    "ast_hash": "7e34c424c6b5577151fd7b6000b88018",
+    "mtime": 1795617882.2646413,
+    "seen": 1795619247.325985,
+    "ast_hash": "8986186141f8398088395955ee32d5a5",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-isolated-ublock-filters.js": {
-    "mtime": 1794740982.5339377,
-    "seen": 1794755549.106396,
-    "ast_hash": "ef8ff157e59574b482341cdd72260b7d",
+    "mtime": 1795617882.264241,
+    "seen": 1795619247.325985,
+    "ast_hash": "f68562336525c788789906def182d07d",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-adguard-mobile.js": {
-    "mtime": 1794740982.522394,
-    "seen": 1794755549.106397,
-    "ast_hash": "b5a6d6fbf482f4fc7d4c13b09a101f62",
+    "mtime": 1795617882.2561936,
+    "seen": 1795619247.3259861,
+    "ast_hash": "a7d13a4608fbeb70e8b07df6e90f520c",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-annoyances-cookies.js": {
-    "mtime": 1794740982.519397,
-    "seen": 1794755549.1063979,
-    "ast_hash": "088b7a3fcff04bfa77b70751670fb8aa",
+    "mtime": 1795617882.254165,
+    "seen": 1795619247.325987,
+    "ast_hash": "7fc32ca07b3d34306c6653441455ad0a",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-annoyances-overlays.js": {
-    "mtime": 1794740982.5215547,
-    "seen": 1794755549.106399,
-    "ast_hash": "5af23d226801a059cb9344a24723086f",
+    "mtime": 1795617882.255604,
+    "seen": 1795619247.325987,
+    "ast_hash": "68e2b7cc3507fe042d224b2e67c259ac",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-easyprivacy.js": {
-    "mtime": 1794740982.518539,
-    "seen": 1794755549.106399,
-    "ast_hash": "5493032946626bc1c1c42d0b40532c0e",
+    "mtime": 1795617882.253751,
+    "seen": 1795619247.325989,
+    "ast_hash": "a3b7477087552a1e08a7bde8f5e5ed23",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-fra-0.js": {
-    "mtime": 1794740982.5229516,
-    "seen": 1794755549.1064,
-    "ast_hash": "151e0cb8bbd476ec311de3595f9e6fe3",
+    "mtime": 1795617882.2565296,
+    "seen": 1795619247.32599,
+    "ast_hash": "c5b50c1a1a914932b59d2335be83c6e2",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-ublock-badware.js": {
-    "mtime": 1794740982.5166843,
-    "seen": 1794755549.106401,
-    "ast_hash": "35759ad5553f768d66670810d5a990ea",
+    "mtime": 1795617882.2534451,
+    "seen": 1795619247.325991,
+    "ast_hash": "67505f1f5230d992c94bebd658c9957d",
     "semantic_hash": ""
   },
   "rulesets/scripting/scriptlet-main-ublock-filters.js": {
-    "mtime": 1794740982.5151439,
-    "seen": 1794755549.106401,
-    "ast_hash": "0bf7f99f54e42352e62c3d998140ca16",
+    "mtime": 1795617882.2529998,
+    "seen": 1795619247.325991,
+    "ast_hash": "0091baed6f452c229a552b72b32cc937",
     "semantic_hash": ""
   },
   "Prompts/instructions_en.txt": {
@@ -420,15 +420,15 @@
     "semantic_hash": ""
   },
   "Services/ContentBlocker/UBlockOriginExtensionManager+Compilation.swift": {
-    "mtime": 1795613365.3920481,
-    "seen": 1795616119.064071,
-    "ast_hash": "3ba9779b7f45cc0f34469b01a021e892",
+    "mtime": 1795617133.433336,
+    "seen": 1795619247.3246348,
+    "ast_hash": "ea83a31b5626bff3cf48a4632249e2a4",
     "semantic_hash": ""
   },
   "Services/ContentBlocker/UBlockOriginExtensionManager.swift": {
-    "mtime": 1795613737.6160223,
-    "seen": 1795616119.064072,
-    "ast_hash": "bbda3ff14f1cd9983bbcea071a667822",
+    "mtime": 1795617243.8025308,
+    "seen": 1795619247.324636,
+    "ast_hash": "7a70c4ca36077d1e7c0dc8e59402d3c5",
     "semantic_hash": ""
   },
   "Services/ContentBlocker/UBlockRuleCompiler.swift": {
@@ -498,33 +498,33 @@
     "semantic_hash": ""
   },
   "Services/WebKit/CapsuleLifecycleController.swift": {
-    "mtime": 1795613259.0013754,
-    "seen": 1795616119.064079,
-    "ast_hash": "4c93a48572b0891e3675c7810f0b0a46",
+    "mtime": 1795619469.63894,
+    "seen": 1795622015.723855,
+    "ast_hash": "5f786d46af85baf29a12b373b9333956",
     "semantic_hash": ""
   },
   "Services/WebKit/IsolatedWKWebView.swift": {
-    "mtime": 1795611942.5531535,
-    "seen": 1795616119.064079,
-    "ast_hash": "9e9bcd5f4662b3cfd130f74ffb4b40e3",
+    "mtime": 1795619469.5788732,
+    "seen": 1795622015.723856,
+    "ast_hash": "e1cf1f8889f7a1d6a4b2647c56448add",
     "semantic_hash": ""
   },
   "Services/WebKit/IsolatedWebViewRepresentable.swift": {
-    "mtime": 1795614371.6112359,
-    "seen": 1795616119.0640798,
-    "ast_hash": "f6d03ceacbf7b509f67dd5fe7d076b04",
+    "mtime": 1795619469.5051115,
+    "seen": 1795622015.723857,
+    "ast_hash": "5ec3f6b0705392b80be1280ba5bac392",
     "semantic_hash": ""
   },
   "Services/WebKit/WebKitMemoryManager.swift": {
-    "mtime": 1795614989.2189858,
-    "seen": 1795616119.064081,
-    "ast_hash": "8f85432f371bcc79a3b0174dfcd59fde",
+    "mtime": 1795619469.6740768,
+    "seen": 1795622015.723857,
+    "ast_hash": "cc2dcf9413b0adaa73df185623f7a1bb",
     "semantic_hash": ""
   },
   "Services/WebKit/WebViewCoordinator.swift": {
-    "mtime": 1795614977.1835935,
-    "seen": 1795616119.064082,
-    "ast_hash": "7e1c4c39beaf48b0638cf9133dfca6eb",
+    "mtime": 1795619469.562313,
+    "seen": 1795622015.7238579,
+    "ast_hash": "a7f70d3d6a55567fdae6505fe4574590",
     "semantic_hash": ""
   },
   "Services/Windowing/MainWindowTracker+CloseAndSizing.swift": {
@@ -600,15 +600,15 @@
     "semantic_hash": ""
   },
   "Views/Capsule/TopControlsBar.swift": {
-    "mtime": 1795612213.2754762,
-    "seen": 1795616119.06409,
-    "ast_hash": "d361fb9b9b9821a3b3436ce964a0754f",
+    "mtime": 1795619469.6836479,
+    "seen": 1795622015.7241,
+    "ast_hash": "b5208e4877374d256c994eae62ba69f9",
     "semantic_hash": ""
   },
   "Views/Capsule/WebAppContainerView+Lifecycle.swift": {
-    "mtime": 1795614992.8349643,
-    "seen": 1795616119.06409,
-    "ast_hash": "5b0a0c52ce88f18258cac53188475222",
+    "mtime": 1795619469.6928089,
+    "seen": 1795622015.7241,
+    "ast_hash": "55eaf49f4f103bb8a44c275d8216d111",
     "semantic_hash": ""
   },
   "Views/Capsule/WebAppContainerView+Reader.swift": {
@@ -618,15 +618,15 @@
     "semantic_hash": ""
   },
   "Views/Capsule/WebAppContainerView.swift": {
-    "mtime": 1795614991.8622339,
-    "seen": 1795616119.064091,
-    "ast_hash": "7e65743594d493f44cb7e4249cc2062b",
+    "mtime": 1795619469.7156126,
+    "seen": 1795622015.724121,
+    "ast_hash": "84e7c87044513ff0fc0f0b7dfd60daca",
     "semantic_hash": ""
   },
   "Views/Capsule/WebViewNavigationState.swift": {
-    "mtime": 1795611982.544189,
-    "seen": 1795616119.064092,
-    "ast_hash": "6b73394110fe862434ecc96453278590",
+    "mtime": 1795619469.3912845,
+    "seen": 1795622015.724122,
+    "ast_hash": "537bb7e691b61c5ec8ab1c0cf783787b",
     "semantic_hash": ""
   },
   "Views/Components/CapsuleActionRow.swift": {
@@ -765,6 +765,36 @@
     "mtime": 1795612137.8220408,
     "seen": 1795616119.064105,
     "ast_hash": "7ef2cc2eb6352a1f832cf0f2e24a8b2c",
+    "semantic_hash": ""
+  },
+  "Services/ContentBlocker/YouTubeFreeSupport.swift": {
+    "mtime": 1795618436.8042617,
+    "seen": 1795619247.324662,
+    "ast_hash": "489dcb4e577b1f2c9bac985d25c21f3e",
+    "semantic_hash": ""
+  },
+  "rulesets/scripting/scriptlet-isolated-begin.js": {
+    "mtime": 1795617882.2568765,
+    "seen": 1795619247.3259819,
+    "ast_hash": "cf059150674439d75597a3de0c328c74",
+    "semantic_hash": ""
+  },
+  "rulesets/scripting/scriptlet-isolated-end.js": {
+    "mtime": 1795617882.2571788,
+    "seen": 1795619247.325983,
+    "ast_hash": "24585fe5ac16069dded7c374782b0938",
+    "semantic_hash": ""
+  },
+  "rulesets/scripting/scriptlet-main-begin.js": {
+    "mtime": 1795617882.2456884,
+    "seen": 1795619247.325988,
+    "ast_hash": "506ff19d18c56a1dd745339c94208752",
+    "semantic_hash": ""
+  },
+  "rulesets/scripting/scriptlet-main-end.js": {
+    "mtime": 1795617882.2459397,
+    "seen": 1795619247.325989,
+    "ast_hash": "24585fe5ac16069dded7c374782b0938",
     "semantic_hash": ""
   }
 }

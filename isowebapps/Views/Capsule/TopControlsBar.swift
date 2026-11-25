@@ -28,8 +28,8 @@ struct TopControlsBar: View {
     var onAddCapsule: (() -> Void)? = nil
     
     private var isYouTube: Bool {
-        appItem.urlString.lowercased().contains("youtube.com") ||
-        navigationState.currentURLString.lowercased().contains("youtube.com")
+        YouTubeFreeSupport.isYouTubeURLString(appItem.urlString) ||
+        YouTubeFreeSupport.isYouTubeURLString(navigationState.currentURLString)
     }
     
     var body: some View {

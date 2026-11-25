@@ -236,10 +236,19 @@ struct WebAppContainerView: View {
                             .opacity(shouldShowReaderOverlay ? 0 : 1)
                             .allowsHitTesting(!shouldShowReaderOverlay)
                             .accessibilityHidden(shouldShowReaderOverlay)
-                            .onTapGesture {
+                            .overlay {
                                 if isURLExpanded {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        isURLExpanded = false
+                                    Color.black.opacity(0.001)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                isURLExpanded = false
+                                            }
+                                        }
+                                }
+                                if let hlsURL = navigationState.avkitHLSURL {
+                                    YouTubeAVKitOverlayView(url: hlsURL) {
+                                        navigationState.onCloseAVKitOverlay?()
                                     }
                                 }
                             }
@@ -419,10 +428,19 @@ struct WebAppContainerView: View {
                 modelContext: modelContext
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onTapGesture {
+            .overlay {
                 if isURLExpanded {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        isURLExpanded = false
+                    Color.black.opacity(0.001)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isURLExpanded = false
+                            }
+                        }
+                }
+                if let hlsURL = navigationState.avkitHLSURL {
+                    YouTubeAVKitOverlayView(url: hlsURL) {
+                        navigationState.onCloseAVKitOverlay?()
                     }
                 }
             }

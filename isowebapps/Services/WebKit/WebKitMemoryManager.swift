@@ -161,6 +161,18 @@ final class WebKitMemoryManager {
             activeWebViews.removeAllObjects()
         }
         
+        var protectedStores = Set<ObjectIdentifier>()
+        if !teardownAllWebViews {
+            for wv in activeWebViews.allObjects {
+                var isStreaming = YouTubeFreeSupport.isYouTubeURL(wv.url)
+                #if os(macOS)
+                if (wv as? IsolatedWKWebView)?.hasActiveAudioPlayback == true { isStreaming = true }
+                #endif
+                if isStreaming {
+                    protectedStores.insert(ObjectIdentifier(wv.configuration.websiteDataStore))
+                }
+            }
+        }
         var seenStores = Set<ObjectIdentifier>()
         var storesToPurge: [WKWebsiteDataStore] = []
         for store in activeDataStores.allObjects {
@@ -174,7 +186,7 @@ final class WebKitMemoryManager {
             storesToPurge.append(defaultStore)
         }
         
-        for store in storesToPurge {
+        for store in storesToPurge where !protectedStores.contains(ObjectIdentifier(store)) {
             await store.removeData(ofTypes: [WKWebsiteDataTypeMemoryCache], modifiedSince: .distantPast)
         }
         if teardownAllWebViews {
@@ -182,6 +194,9 @@ final class WebKitMemoryManager {
         }
         
         UBlockOriginExtensionManager.shared.releaseInMemoryCaches()
+        if teardownAllWebViews || activeWebViews.allObjects.isEmpty {
+            YouTubeContentBlocker.shared.releaseInMemoryCache()
+        }
         URLCache.shared.removeAllCachedResponses()
         IsolatedCookieManager.shared.releaseInMemoryCaches()
         IconImageCache.clear()
