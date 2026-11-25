@@ -1,0 +1,90 @@
+import SwiftUI
+import SwiftData
+
+struct AddGroupSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    
+    @Query(sort: \WebAppItem.displayOrder) private var allApps: [WebAppItem]
+    
+    @State private var groupName: String = ""
+    @State private var selectedAppIDs: Set<UUID> = []
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("Group Info")) {
+                    TextField("Group Name", text: $groupName)
+                }
+                
+                Section(header: Text("Select Capsules for Group"), footer: Text("Capsules already in a group are hidden.")) {
+                    let availableApps = allApps.filter { $0.group == nil }
+                    
+                    if availableApps.isEmpty {
+                        Text("No available capsules to group.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(availableApps) { app in
+                            Button {
+                                if selectedAppIDs.contains(app.id) {
+                                    selectedAppIDs.remove(app.id)
+                                } else {
+                                    selectedAppIDs.insert(app.id)
+                                }
+                            } label: {
+                                HStack {
+                                    if app.iconData != nil {
+                                        CapsuleIconView(app: app, size: 30, cornerRadius: 6, fallbackSymbolSize: 16)
+                                    }
+                                    
+                                    Text(app.name)
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    if selectedAppIDs.contains(app.id) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Create Capsule Group")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        createGroup()
+                    }
+                    .disabled(groupName.trimmingCharacters(in: .whitespaces).isEmpty || selectedAppIDs.isEmpty)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 400, minHeight: 400)
+        #endif
+    }
+    
+    private func createGroup() {
+        let newGroup = WebAppGroup(name: groupName.trimmingCharacters(in: .whitespaces))
+        modelContext.insert(newGroup)
+        
+        let appsToGroup = allApps.filter { selectedAppIDs.contains($0.id) }
+        for app in appsToGroup {
+            app.group = newGroup
+        }
+        
+        try? modelContext.save()
+        dismiss()
+    }
+}

@@ -2174,6 +2174,745 @@ func testRealNSWindowCloseAndSleepDeallocation() {
     
     print("✓ testRealNSWindowCloseAndSleepDeallocation passed!")
 }
+
+@MainActor
+func testUBlockFilterConfigurationAndModes() {
+    print("Running testUBlockFilterConfigurationAndModes...")
+    let complete = UBlockFilterConfiguration(
+        masterEnabled: true,
+        blockingModeRaw: "Complete",
+        ublockFilters: true,
+        ublockBadware: true,
+        easylist: true,
+        easyprivacy: true,
+        adguardMobile: false,
+        urlhaus: true,
+        annoyances: true,
+        blockLan: true,
+        frenchFilters: false,
+        cosmeticHiding: true,
+        scriptletDefusers: true
+    )
+    assert(complete.effectiveAnnoyances && complete.effectiveCosmeticHiding && complete.effectiveScriptletDefusers)
+    assert(complete.activeRulesetIDs.contains("annoyances-cookies"))
+    assert(complete.activeRulesetIDs.contains("annoyances-overlays"))
+    assert(!complete.activeRulesetIDs.contains("adguard-mobile"))
+    assert(!complete.activeRulesetIDs.contains("fra-0"))
+    
+    // Basic mode must override annoyances, cosmetic hiding, and scriptlet defusers off
+    let basic = UBlockFilterConfiguration(
+        masterEnabled: true,
+        blockingModeRaw: "Basic",
+        ublockFilters: true,
+        ublockBadware: true,
+        easylist: true,
+        easyprivacy: true,
+        adguardMobile: true,
+        urlhaus: true,
+        annoyances: true,
+        blockLan: true,
+        frenchFilters: true,
+        cosmeticHiding: true,
+        scriptletDefusers: true
+    )
+    assert(!basic.effectiveAnnoyances, "Basic mode must suppress annoyances")
+    assert(!basic.effectiveCosmeticHiding, "Basic mode must suppress cosmetic hiding")
+    assert(!basic.effectiveScriptletDefusers, "Basic mode must suppress scriptlet defusers")
+    assert(!basic.activeRulesetIDs.contains("annoyances-cookies"))
+    assert(!basic.activeRulesetIDs.contains("annoyances-overlays"))
+    assert(basic.activeRulesetIDs.contains("fra-0"))
+    
+    // All disabled
+    let noneEnabled = UBlockFilterConfiguration(
+        masterEnabled: true,
+        blockingModeRaw: "Optimal",
+        ublockFilters: false,
+        ublockBadware: false,
+        easylist: false,
+        easyprivacy: false,
+        adguardMobile: false,
+        urlhaus: false,
+        annoyances: false,
+        blockLan: false,
+        frenchFilters: false,
+        cosmeticHiding: false,
+        scriptletDefusers: false
+    )
+    assert(!noneEnabled.anyFilterListEnabled)
+    assert(noneEnabled.activeRulesetIDs.isEmpty)
+    print("✓ testUBlockFilterConfigurationAndModes passed!")
+}
+
+func testUBlockConcurrentBatchEquivalence() {
+    print("Running testUBlockConcurrentBatchEquivalence...")
+    let compiler = UBlockRuleCompiler.shared
+    let sampleDNR: [[String: Any]] = (0..<24).map { idx in
+        [
+            "id": idx + 1,
+            "priority": (idx % 3) + 1,
+            "action": ["type": idx % 5 == 0 ? "allow" : "block"],
+            "condition": [
+                "urlFilter": "||tracker-\(idx).example.com/pixel^",
+                "initiatorDomains": ["news.example.org"],
+                "excludedInitiatorDomains": ["trusted.example.org"],
+                "resourceTypes": ["script", "image"]
+            ]
+        ]
+    }
+    let serial = compiler.convertDNRToWebKitRuleList(dnrRules: sampleDNR)
+    assert(serial.count == 24)
+    
+    let lock = NSLock()
+    var concurrentResults = Array<[[String: Any]]>(repeating: [], count: 8)
+    DispatchQueue.concurrentPerform(iterations: 8) { slot in
+        let compiled = compiler.convertDNRToWebKitRuleList(dnrRules: sampleDNR)
+        lock.lock()
+        concurrentResults[slot] = compiled
+        lock.unlock()
+    }
+    for slot in 0..<8 {
+        assert(concurrentResults[slot].count == serial.count, "Concurrent slot \(slot) count mismatch")
+        let sData = try! JSONSerialization.data(withJSONObject: serial, options: [.sortedKeys])
+        let cData = try! JSONSerialization.data(withJSONObject: concurrentResults[slot], options: [.sortedKeys])
+        assert(sData == cData, "Concurrent compilation diverged from serial compilation")
+    }
+    print("✓ testUBlockConcurrentBatchEquivalence passed!")
+}
+
+@MainActor
+func testIconImageCacheBoundsAndClear() {
+    print("Running testIconImageCacheBoundsAndClear...")
+    IconImageCache.clear()
+    
+    // Create an oversized 1024x1024 bitmap PNG in memory
+    let width = 1024
+    let height = 1024
+    let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: width,
+        pixelsHigh: height,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    )!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    NSColor.systemBlue.setFill()
+    NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
+    NSGraphicsContext.restoreGraphicsState()
+    let pngData = rep.representation(using: .png, properties: [:])!
+    
+    let testID = UUID()
+    let decoded1 = IconImageCache.image(for: testID, data: pngData)
+    assert(decoded1 != nil, "IconImageCache must decode PNG data")
+    if let img = decoded1 {
+        assert(img.size.width <= 256 && img.size.height <= 256, "IconImageCache must downsample oversized icon to <= 256px (got \(img.size))")
+    }
+    let decoded2 = IconImageCache.image(for: testID, data: pngData)
+    assert(decoded1 === decoded2, "IconImageCache must return cached instance on repeat lookup")
+    assert(IconImageCache.image(for: testID, data: Data()) == nil, "Empty icon data must return nil")
+    
+    IconImageCache.clear()
+    let decodedAfterClear = IconImageCache.image(for: testID, data: pngData)
+    assert(decodedAfterClear != nil && decodedAfterClear !== decoded1, "IconImageCache.clear() must evict cached objects")
+    IconImageCache.clear()
+    print("✓ testIconImageCacheBoundsAndClear passed!")
+}
+
+@MainActor
+func testCapsuleLifecycleControllerSoftAndDeepSleep() throws {
+    print("Running testCapsuleLifecycleControllerSoftAndDeepSleep...")
+    let defaults = UserDefaults.standard
+    let previousSleeping = defaults.object(forKey: "sleepingTabsEnabled")
+    defaults.set(true, forKey: "sleepingTabsEnabled")
+    defer {
+        if let previousSleeping {
+            defaults.set(previousSleeping, forKey: "sleepingTabsEnabled")
+        } else {
+            defaults.removeObject(forKey: "sleepingTabsEnabled")
+        }
+    }
+    
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try ModelContainer(for: WebAppItem.self, WebAppGroup.self, configurations: config)
+    let context = ModelContext(container)
+    let appItem = WebAppItem(name: "Lifecycle Test", urlString: "https://example.com")
+    context.insert(appItem)
+    
+    weak var weakController: CapsuleLifecycleController?
+    weak var weakWebView: IsolatedWKWebView?
+    autoreleasepool {
+        let navState = WebViewNavigationState()
+        let coordinator = WebViewCoordinator(appItem: appItem, navigationState: navState, modelContext: context)
+        let webConfig = WKWebViewConfiguration()
+        webConfig.websiteDataStore = .nonPersistent()
+        var webView: IsolatedWKWebView? = IsolatedWKWebView(frame: NSRect(x: 0, y: 0, width: 640, height: 480), configuration: webConfig)
+        weakWebView = webView
+        webView!.navigationDelegate = coordinator
+        webView!.uiDelegate = coordinator
+        coordinator.webView = webView
+        
+        let window = NSWindow(
+            contentRect: NSRect(x: 120, y: 120, width: 640, height: 480),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        
+        var controller: CapsuleLifecycleController? = CapsuleLifecycleController()
+        weakController = controller
+        controller!.capsuleName = appItem.name
+        controller!.isEphemeral = false
+        controller!.evaluationDebounceDelay = 0.02
+        controller!.sleepDelay = 0.14
+        controller!.audioRecheckInterval = 0.05
+        
+        var isAudioPlaying = false
+        controller!.canDeepSleepProvider = { !isAudioPlaying }
+        
+        var beforeDeepSleepCount = 0
+        controller!.onBeforeDeepSleep = { beforeDeepSleepCount += 1 }
+        var willCloseCount = 0
+        controller!.onWindowWillClose = { willCloseCount += 1 }
+        // Unbundled CLI test binaries have ActivationPolicy.prohibited, so WindowServer
+        // never marks off-display windows as occlusionVisible; normalize occlusion from real visibility/miniaturization.
+        controller!.snapshotTransformForTesting = { s in
+            CapsuleWindowSleepSnapshot(
+                sleepingTabsEnabled: s.sleepingTabsEnabled,
+                isClosed: s.isClosed,
+                hasBeenPresented: s.hasBeenPresented,
+                isMiniaturized: s.isMiniaturized,
+                isVisible: s.isVisible,
+                isOcclusionVisible: s.isVisible && !s.isMiniaturized,
+                isSubstantiallyCoveredByFrontAppWindow: s.isSubstantiallyCoveredByFrontAppWindow,
+                isAppHidden: s.isAppHidden,
+                isKeyWindow: s.isKeyWindow,
+                isInMultiTabGroup: s.isInMultiTabGroup,
+                isSelectedTabInGroup: s.isSelectedTabInGroup
+            )
+        }
+        
+        controller!.attachWindow(window)
+        controller!.attachWebView(webView!, coordinator: coordinator)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.08))
+        assert(controller!.sleepState == .awake, "Newly presented window should be awake, got \(controller!.sleepState)")
+        assert(!webView!.isSleeping)
+        
+        // 1. Hide window -> immediate soft-sleep, wake before deep-sleep timer
+        window.orderOut(nil)
+        controller!.scheduleSleepWakeEvaluation(delay: 0.01)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        assert(controller!.sleepState == .softSleeping, "Hidden capsule must soft-sleep before deep sleep, got \(controller!.sleepState)")
+        assert(webView!.isSleeping, "WebView must enter soft sleep JS/layer throttle")
+        assert(controller!.webViewGeneration == 0)
+        
+        window.makeKeyAndOrderFront(nil)
+        controller!.scheduleSleepWakeEvaluation(delay: 0.01)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        assert(controller!.sleepState == .awake, "Showing window before deep-sleep timer must wake back cleanly, got \(controller!.sleepState)")
+        assert(!webView!.isSleeping)
+        assert(controller!.webViewGeneration == 0, "Soft sleep wake must not recreate WKWebView")
+        
+        // 2. Audio playback prevents deep sleep while staying soft-sleeping
+        isAudioPlaying = true
+        window.orderOut(nil)
+        controller!.scheduleSleepWakeEvaluation(delay: 0.01)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.22))
+        assert(controller!.sleepState == .softSleeping, "Active audio must prevent deep sleep teardown, got \(controller!.sleepState)")
+        assert(controller!.webViewGeneration == 0)
+        assert(beforeDeepSleepCount == 0)
+        
+        // 3. Stopping audio allows audio recheck timer to transition into deep sleep
+        isAudioPlaying = false
+        RunLoop.main.run(until: Date().addingTimeInterval(0.14))
+        assert(controller!.sleepState == .deepSleeping, "Capsule should transition to deepSleeping once audio stops, got \(controller!.sleepState)")
+        assert(controller!.isDeepSleeping)
+        assert(beforeDeepSleepCount == 1)
+        
+        // Release local ref to slept webView and confirm it deallocates during deep sleep
+        let sleptRef = webView
+        _ = sleptRef
+        webView = nil
+        
+        // 4. Waking from deep sleep increments webViewGeneration
+        window.makeKeyAndOrderFront(nil)
+        controller!.scheduleSleepWakeEvaluation(delay: 0.01)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        assert(controller!.sleepState == .awake, "Waking from deep sleep must restore awake state, got \(controller!.sleepState)")
+        assert(controller!.webViewGeneration == 1, "Waking from deep sleep must bump webViewGeneration to recreate WebView")
+        
+        // 5. Closing tears down cleanly and leaves zero retain cycles
+        controller!.handleClose()
+        assert(controller!.isClosed && controller!.sleepState == .closed)
+        assert(willCloseCount == 1)
+        controller = nil
+        window.close()
+    }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.35))
+    assert(weakController == nil, "CapsuleLifecycleController leaked after handleClose()")
+    assert(weakWebView == nil, "IsolatedWKWebView leaked after handleClose() (rc=\(weakWebView.map { CFGetRetainCount($0) } ?? 0))")
+    print("✓ testCapsuleLifecycleControllerSoftAndDeepSleep passed!")
+}
+
+@MainActor
+func testLateWebViewAttachWhileSoftSleeping() throws {
+    print("Running testLateWebViewAttachWhileSoftSleeping...")
+    let defaults = UserDefaults.standard
+    let previousSleeping = defaults.object(forKey: "sleepingTabsEnabled")
+    defaults.set(true, forKey: "sleepingTabsEnabled")
+    defer {
+        if let previousSleeping {
+            defaults.set(previousSleeping, forKey: "sleepingTabsEnabled")
+        } else {
+            defaults.removeObject(forKey: "sleepingTabsEnabled")
+        }
+    }
+    
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try ModelContainer(for: WebAppItem.self, WebAppGroup.self, configurations: config)
+    let context = ModelContext(container)
+    let appItem = WebAppItem(name: "Late Attach", urlString: "https://example.com")
+    context.insert(appItem)
+    
+    let navState = WebViewNavigationState()
+    let coordinator = WebViewCoordinator(appItem: appItem, navigationState: navState, modelContext: context)
+    let webConfig = WKWebViewConfiguration()
+    webConfig.websiteDataStore = .nonPersistent()
+    let webView = IsolatedWKWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), configuration: webConfig)
+    
+    let window = NSWindow(
+        contentRect: NSRect(x: 120, y: 120, width: 400, height: 300),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    window.isReleasedWhenClosed = false
+    window.makeKeyAndOrderFront(nil)
+    
+    let controller = CapsuleLifecycleController()
+    controller.evaluationDebounceDelay = 0.01
+    controller.sleepDelay = 5.0
+    controller.snapshotTransformForTesting = { s in
+        CapsuleWindowSleepSnapshot(
+            sleepingTabsEnabled: s.sleepingTabsEnabled,
+            isClosed: s.isClosed,
+            hasBeenPresented: s.hasBeenPresented,
+            isMiniaturized: s.isMiniaturized,
+            isVisible: s.isVisible,
+            isOcclusionVisible: s.isVisible && !s.isMiniaturized,
+            isSubstantiallyCoveredByFrontAppWindow: s.isSubstantiallyCoveredByFrontAppWindow,
+            isAppHidden: s.isAppHidden,
+            isKeyWindow: s.isKeyWindow,
+            isInMultiTabGroup: s.isInMultiTabGroup,
+            isSelectedTabInGroup: s.isSelectedTabInGroup
+        )
+    }
+    
+    controller.attachWindow(window)
+    window.orderOut(nil)
+    controller.scheduleSleepWakeEvaluation(delay: 0.01)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    assert(controller.sleepState == .softSleeping, "Expected .softSleeping before attachWebView, got \(controller.sleepState)")
+    
+    // Attach WebView AFTER controller is already in .softSleeping
+    controller.attachWebView(webView, coordinator: coordinator)
+    assert(webView.isSleeping, "WebView attached while controller is already softSleeping must immediately enter soft sleep")
+    
+    controller.handleClose()
+    window.close()
+    print("✓ testLateWebViewAttachWhileSoftSleeping passed!")
+}
+
+@MainActor
+func testTerminationDeleteCookiesOnClose() throws {
+    print("Running testTerminationDeleteCookiesOnClose...")
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try ModelContainer(for: WebAppItem.self, WebAppGroup.self, configurations: config)
+    let context = ModelContext(container)
+    
+    let ephemeralSettingItem = WebAppItem(
+        name: "Ephemeral Cookie App",
+        urlString: "https://example.com",
+        lastOpenedURLString: "https://example.com/account",
+        deleteCookiesOnClose: true,
+        isolatedCookiesData: Data("{\"session\":\"secret\"}".utf8)
+    )
+    let persistentItem = WebAppItem(
+        name: "Persistent Cookie App",
+        urlString: "https://example.org",
+        lastOpenedURLString: "https://example.org/home",
+        deleteCookiesOnClose: false,
+        isolatedCookiesData: Data("{\"keep\":\"yes\"}".utf8)
+    )
+    context.insert(ephemeralSettingItem)
+    context.insert(persistentItem)
+    try context.save()
+    
+    let memoryManager = WebKitMemoryManager.shared
+    memoryManager.registerOpenCapsule(appItem: ephemeralSettingItem)
+    memoryManager.registerOpenCapsule(appItem: persistentItem)
+    assert(memoryManager.hasOpenDeleteOnCloseCapsules, "Expected open deleteCookiesOnClose capsule to be tracked")
+    
+    let ephNavState = WebViewNavigationState()
+    ephNavState.currentURLString = "https://example.com/secret-after-nav"
+    let ephWebView = WKWebView(frame: .zero)
+    let ephCoordinator = WebViewCoordinator(appItem: ephemeralSettingItem, navigationState: ephNavState, modelContext: context)
+    ephCoordinator.setup(webView: ephWebView)
+    memoryManager.register(webView: ephWebView)
+    
+    let persistNavState = WebViewNavigationState()
+    persistNavState.currentURLString = "https://example.org/updated-path"
+    let persistWebView = WKWebView(frame: .zero)
+    let persistCoordinator = WebViewCoordinator(appItem: persistentItem, navigationState: persistNavState, modelContext: context)
+    persistCoordinator.setup(webView: persistWebView)
+    memoryManager.register(webView: persistWebView)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    
+    var done = false
+    Task { @MainActor in
+        await memoryManager.prepareForApplicationTermination(modelContainer: container)
+        done = true
+    }
+    let deadline = Date().addingTimeInterval(5.0)
+    while !done && Date() < deadline {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+    }
+    assert(done, "prepareForApplicationTermination timed out")
+    
+    // Simulate NSApplication.willTerminateNotification firing after applicationShouldTerminate replied
+    NotificationCenter.default.post(name: NSApplication.willTerminateNotification, object: NSApp)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    
+    assert(ephemeralSettingItem.isolatedCookiesData == nil, "deleteCookiesOnClose capsule must wipe isolatedCookiesData on termination")
+    assert(ephemeralSettingItem.lastOpenedURLString == nil, "deleteCookiesOnClose capsule must clear lastOpenedURLString on termination and never re-save on willTerminateNotification")
+    assert(persistentItem.isolatedCookiesData != nil, "Regular capsule must preserve isolatedCookiesData on termination")
+    assert(persistentItem.lastOpenedURLString == "https://example.org/updated-path", "Regular capsule must flush latest URL on termination")
+    assert(!memoryManager.hasOpenDeleteOnCloseCapsules, "Termination cleanup must clear tracked open capsule registry")
+    print("✓ testTerminationDeleteCookiesOnClose passed!")
+}
+
+@MainActor
+func testUBlockASCIIAndRealRulesetWebKitCompilation() {
+    print("Running testUBlockASCIIAndRealRulesetWebKitCompilation...")
+    let compiler = UBlockRuleCompiler.shared
+    assert(compiler.convertUrlFilterToWebKitRegex("||café.example.com^") == "", "Non-ASCII urlFilter must be rejected so WebKit batch compilation never fails")
+    
+    let rulesDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("isowebapps/rulesets/main")
+    let files = (try? FileManager.default.contentsOfDirectory(at: rulesDir, includingPropertiesForKeys: nil)
+        .filter { $0.pathExtension == "json" }
+        .sorted { $0.lastPathComponent < $1.lastPathComponent }) ?? []
+    assert(!files.isEmpty, "Expected bundled rulesets in isowebapps/rulesets/main")
+    
+    let storeDir = FileManager.default.temporaryDirectory.appendingPathComponent("ublock_cli_test_\(UUID().uuidString)")
+    try? FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: storeDir) }
+    let store = WKContentRuleListStore(url: storeDir)!
+    
+    var done = false
+    var compiledCount = 0
+    var totalWebKitRules = 0
+    var failureMessages: [String] = []
+    
+    Task { @MainActor in
+        let payloads: [(String, String, Int)] = await Task.detached(priority: .userInitiated) {
+            await withTaskGroup(of: (String, String, Int)?.self) { group in
+                for file in files {
+                    group.addTask {
+                        guard let data = try? Data(contentsOf: file),
+                              let dnr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                            return nil
+                        }
+                        let wk = compiler.convertDNRToWebKitRuleList(dnrRules: dnr)
+                        guard !wk.isEmpty,
+                              let encodedData = try? JSONSerialization.data(withJSONObject: wk),
+                              let encoded = String(data: encodedData, encoding: .utf8) else {
+                            return nil
+                        }
+                        return (file.deletingPathExtension().lastPathComponent, encoded, wk.count)
+                    }
+                }
+                var out: [(String, String, Int)] = []
+                for await item in group {
+                    if let item { out.append(item) }
+                }
+                return out
+            }
+        }.value
+        
+        for (id, encoded, count) in payloads {
+            do {
+                _ = try await store.compileContentRuleList(forIdentifier: id, encodedContentRuleList: encoded)
+                compiledCount += 1
+                totalWebKitRules += count
+            } catch {
+                failureMessages.append("\(id): \(error.localizedDescription)")
+            }
+        }
+        done = true
+    }
+    
+    let deadline = Date().addingTimeInterval(30.0)
+    while !done && Date() < deadline {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+    }
+    assert(done, "Real WebKit ruleset compilation timed out")
+    assert(failureMessages.isEmpty, "WebKit ruleset compilation failed: \(failureMessages.joined(separator: "; "))")
+    assert(compiledCount == files.count, "Expected all \(files.count) rulesets to compile cleanly, compiled \(compiledCount)")
+    assert(totalWebKitRules > 100_000, "Expected >100k WebKit rules across all bundled lists, got \(totalWebKitRules)")
+    print("✓ testUBlockASCIIAndRealRulesetWebKitCompilation passed! (\(compiledCount) lists, \(totalWebKitRules) WebKit rules)")
+}
+
+@MainActor
+func testReaderImageDownsamplingBounds() {
+    print("Running testReaderImageDownsamplingBounds...")
+    let width = 2048
+    let height = 2048
+    let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: width,
+        pixelsHigh: height,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    )!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    NSColor.systemGreen.setFill()
+    NSBezierPath(rect: NSRect(x: 0, y: 0, width: width, height: height)).fill()
+    NSGraphicsContext.restoreGraphicsState()
+    let pngData = rep.representation(using: .png, properties: [:])!
+    
+    let downsampled = IconImageCache.decodeBoundedImage(from: pngData, maxPixelSize: 1600)
+    assert(downsampled != nil, "Bounded image decoder must decode PNG data")
+    if let img = downsampled {
+        assert(img.size.width <= 1600 && img.size.height <= 1600, "Reader image must be bounded to <= 1600px (got \(img.size))")
+        assert(IconImageCache.pixelCost(for: img) <= 1600 * 1600 * 4, "Pixel cost must reflect downsampled dimensions")
+    }
+    print("✓ testReaderImageDownsamplingBounds passed!")
+}
+
+@MainActor
+func testGroupedCapsuleSubdomainMatchingAndCookieClear() throws {
+    print("Running testGroupedCapsuleSubdomainMatchingAndCookieClear...")
+    
+    // 1. Host/domain matching helper assertions
+    assert(IsolatedCookieManager.host("mail.google.com", matchesDomain: "google.com"), "mail.google.com must match registrable domain google.com")
+    assert(IsolatedCookieManager.host("www.reddit.com", matchesDomain: "reddit.com"), "www.reddit.com must match registrable domain reddit.com")
+    assert(IsolatedCookieManager.host("reddit.com", matchesDomain: "www.reddit.com"), "reddit.com must match subdomain record www.reddit.com")
+    assert(IsolatedCookieManager.host("mail.google.com", matchesDomain: ".google.com"), "Subdomain must match leading-dot cookie domain")
+    assert(IsolatedCookieManager.host("MAIL.GOOGLE.COM", matchesDomain: "Google.Com"), "Host matching must be case-insensitive")
+    assert(IsolatedCookieManager.host("google.com", matchesDomain: "google.com"), "Exact domain match must succeed")
+    assert(IsolatedCookieManager.host("sub.mail.google.com", matchesDomain: "google.com"), "Multi-level subdomain must match registrable domain")
+    assert(IsolatedCookieManager.host(fromURLString: "https://mail.google.com/mail/u/0") == "mail.google.com", "host(fromURLString:) must parse standard URLs")
+    assert(IsolatedCookieManager.host(fromURLString: "mail.google.com/inbox") == "mail.google.com", "host(fromURLString:) must parse schemeless URLs without wiping entire group")
+    assert(IsolatedCookieManager.host(fromURLString: "   ") == nil, "host(fromURLString:) must return nil for blank strings")
+    
+    assert(!IsolatedCookieManager.host("evilgoogle.com", matchesDomain: "google.com"), "Lookalike suffix domain must NOT match")
+    assert(!IsolatedCookieManager.host("google.com", matchesDomain: "evilgoogle.com"), "Reverse lookalike suffix domain must NOT match")
+    assert(!IsolatedCookieManager.host("github.com", matchesDomain: "google.com"), "Unrelated host must NOT match")
+    assert(!IsolatedCookieManager.host("", matchesDomain: "google.com"), "Empty host must NOT match")
+    assert(!IsolatedCookieManager.host("google.com", matchesDomain: ""), "Empty domain must NOT match")
+    
+    // 2. Real grouped WKHTTPCookieStore selective clear verification
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try ModelContainer(for: WebAppItem.self, WebAppGroup.self, configurations: config)
+    let context = ModelContext(container)
+    
+    let group = WebAppGroup(name: "Grouped Test")
+    let mailApp = WebAppItem(
+        name: "Gmail",
+        urlString: "https://mail.google.com",
+        lastOpenedURLString: "https://mail.google.com/mail/u/0",
+        isolatedCookiesData: Data("mail".utf8)
+    )
+    let githubApp = WebAppItem(
+        name: "GitHub",
+        urlString: "https://github.com",
+        lastOpenedURLString: "https://github.com/trending",
+        isolatedCookiesData: Data("gh".utf8)
+    )
+    mailApp.group = group
+    githubApp.group = group
+    context.insert(group)
+    context.insert(mailApp)
+    context.insert(githubApp)
+    try context.save()
+    
+    let groupStore = WKWebsiteDataStore(forIdentifier: group.id)
+    let googleRootCookie = HTTPCookie(properties: [
+        .name: "SID",
+        .value: "g_root",
+        .domain: ".google.com",
+        .path: "/",
+        .expires: Date().addingTimeInterval(3600)
+    ])!
+    let mailSubCookie = HTTPCookie(properties: [
+        .name: "MAIL_SID",
+        .value: "g_mail",
+        .domain: "mail.google.com",
+        .path: "/",
+        .expires: Date().addingTimeInterval(3600)
+    ])!
+    let githubCookie = HTTPCookie(properties: [
+        .name: "GH_SESSION",
+        .value: "gh_val",
+        .domain: ".github.com",
+        .path: "/",
+        .expires: Date().addingTimeInterval(3600)
+    ])!
+    
+    var done = false
+    var remainingCookieNames: Set<String> = []
+    Task { @MainActor in
+        await groupStore.httpCookieStore.setCookie(googleRootCookie)
+        await groupStore.httpCookieStore.setCookie(mailSubCookie)
+        await groupStore.httpCookieStore.setCookie(githubCookie)
+        
+        await IsolatedCookieManager.shared.clearData(for: mailApp, context: context)
+        
+        let remaining = await groupStore.httpCookieStore.allCookies()
+        remainingCookieNames = Set(remaining.map(\.name))
+        try? await WKWebsiteDataStore.remove(forIdentifier: group.id)
+        done = true
+    }
+    
+    let deadline = Date().addingTimeInterval(5.0)
+    while !done && Date() < deadline {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+    }
+    assert(done, "Grouped cookie clear timed out")
+    assert(mailApp.isolatedCookiesData == nil, "Cleared grouped app must wipe isolatedCookiesData")
+    assert(mailApp.lastOpenedURLString == nil, "Cleared grouped app must wipe lastOpenedURLString")
+    assert(githubApp.isolatedCookiesData != nil, "Sibling grouped app must keep isolatedCookiesData")
+    assert(githubApp.lastOpenedURLString == "https://github.com/trending", "Sibling grouped app must keep lastOpenedURLString")
+    assert(!remainingCookieNames.contains("SID"), "Registrable domain cookie .google.com must be deleted when clearing mail.google.com")
+    assert(!remainingCookieNames.contains("MAIL_SID"), "Subdomain cookie mail.google.com must be deleted")
+    assert(remainingCookieNames.contains("GH_SESSION"), "Unrelated sibling cookie .github.com must be preserved")
+    print("✓ testGroupedCapsuleSubdomainMatchingAndCookieClear passed!")
+}
+
+@MainActor
+func testInFlightClearTrackingAndPendingOperations() throws {
+    print("Running testInFlightClearTrackingAndPendingOperations...")
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try ModelContainer(for: WebAppItem.self, WebAppGroup.self, configurations: config)
+    let context = ModelContext(container)
+    
+    let item = WebAppItem(
+        name: "Race Test",
+        urlString: "https://example.org",
+        lastOpenedURLString: "https://example.org/private",
+        deleteCookiesOnClose: true,
+        isolatedCookiesData: Data("secret".utf8)
+    )
+    context.insert(item)
+    try context.save()
+    
+    let store = WKWebsiteDataStore(forIdentifier: item.id)
+    let testCookie = HTTPCookie(properties: [
+        .name: "TEMP_SESSION",
+        .value: "secret_token",
+        .domain: "example.org",
+        .path: "/",
+        .expires: Date().addingTimeInterval(3600)
+    ])!
+    
+    var seedDone = false
+    Task { @MainActor in
+        await store.httpCookieStore.setCookie(testCookie)
+        seedDone = true
+    }
+    let seedDeadline = Date().addingTimeInterval(5.0)
+    while !seedDone && Date() < seedDeadline {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+    }
+    assert(seedDone, "Seeding cookie timed out")
+    
+    let cookieManager = IsolatedCookieManager.shared
+    let clearTask = cookieManager.clearDataInBackground(for: item, context: context)
+    assert(clearTask != nil, "clearDataInBackground must return a tracked task for persisted items")
+    assert(item.isolatedCookiesData == nil, "isolatedCookiesData must be cleared synchronously")
+    assert(item.lastOpenedURLString == nil, "lastOpenedURLString must be cleared synchronously")
+    assert(cookieManager.hasPendingClear(for: item.id), "hasPendingClear must be true synchronously after clearDataInBackground")
+    assert(cookieManager.hasPendingClears, "hasPendingClears must be true while clear is in-flight")
+    assert(cookieManager.hasPendingOperations, "hasPendingOperations must be true while clear is in-flight")
+    
+    // Simulate a late dismantle flush while clear is in-flight; it must not re-persist lastOpenedURLString.
+    cookieManager.flushPendingSaveInBackground(
+        for: item,
+        from: store.httpCookieStore,
+        context: context,
+        lastOpenedURL: "https://example.org/private"
+    )
+    
+    var awaitDone = false
+    var cookiesAfterClear: [HTTPCookie] = []
+    Task { @MainActor in
+        await cookieManager.awaitPendingClear(for: item.id)
+        cookiesAfterClear = await store.httpCookieStore.allCookies()
+        awaitDone = true
+    }
+    let clearDeadline = Date().addingTimeInterval(5.0)
+    while !awaitDone && Date() < clearDeadline {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+    }
+    assert(awaitDone, "awaitPendingClear timed out")
+    assert(!cookieManager.hasPendingClear(for: item.id), "hasPendingClear must clear once task finishes")
+    assert(!cookieManager.hasPendingClears, "hasPendingClears must clear once task finishes")
+    assert(!cookieManager.hasPendingOperations, "hasPendingOperations must clear once task finishes")
+    assert(item.lastOpenedURLString == nil, "Late dismantle flush must not restore cleared lastOpenedURLString")
+    assert(cookiesAfterClear.isEmpty, "Standalone cookie store must be empty after awaitPendingClear")
+    
+    // Verify flushAllPendingSaves also awaits in-flight clear tasks (Cmd+Q termination path)
+    let secondTask = cookieManager.clearDataInBackground(for: item, context: context)
+    assert(secondTask != nil)
+    assert(cookieManager.hasPendingOperations, "hasPendingOperations must reflect second in-flight clear")
+    
+    // Verify restoreCookies waits for any in-flight clear before completing
+    var restoreDone = false
+    var restoreSawPendingClear = true
+    Task { @MainActor in
+        await cookieManager.restoreCookies(for: item, into: store.httpCookieStore)
+        restoreSawPendingClear = cookieManager.hasPendingClear(for: item.id)
+        restoreDone = true
+    }
+    
+    var flushDone = false
+    Task { @MainActor in
+        await cookieManager.flushAllPendingSaves()
+        flushDone = true
+    }
+    let flushDeadline = Date().addingTimeInterval(5.0)
+    while !(flushDone && restoreDone) && Date() < flushDeadline {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+    }
+    assert(flushDone && restoreDone, "flushAllPendingSaves or restoreCookies timed out waiting for clear task")
+    assert(!restoreSawPendingClear, "restoreCookies must not finish while clear is still pending")
+    assert(!cookieManager.hasPendingClear(for: item.id), "flushAllPendingSaves must await in-flight clear tasks")
+    assert(!cookieManager.hasPendingOperations, "hasPendingOperations must be false after flushAllPendingSaves")
+    
+    // Verify schedulePersistCookies does not persist URL/cookies for deleteCookiesOnClose items
+    cookieManager.schedulePersistCookies(
+        for: item,
+        from: store.httpCookieStore,
+        context: context,
+        lastOpenedURL: "https://example.org/should-not-persist",
+        delaySeconds: 0.01
+    )
+    assert(!cookieManager.hasPendingSaves, "deleteCookiesOnClose item must not schedule background persistence")
+    assert(item.lastOpenedURLString == nil, "deleteCookiesOnClose item must keep lastOpenedURLString nil")
+    print("✓ testInFlightClearTrackingAndPendingOperations passed!")
+}
 #endif
 
 // Execute test suite
@@ -2203,9 +2942,19 @@ testWindowClosePolicyAcrossModes()
 testCapsuleSleepPolicyMatrix()
 MainActor.assumeIsolated {
     testRealNSWindowCloseAndSleepDeallocation()
+    testUBlockFilterConfigurationAndModes()
+    testIconImageCacheBoundsAndClear()
+    try! testCapsuleLifecycleControllerSoftAndDeepSleep()
+    try! testLateWebViewAttachWhileSoftSleeping()
+    try! testTerminationDeleteCookiesOnClose()
+    testUBlockASCIIAndRealRulesetWebKitCompilation()
+    testReaderImageDownsamplingBounds()
+    try! testGroupedCapsuleSubdomainMatchingAndCookieClear()
+    try! testInFlightClearTrackingAndPendingOperations()
 }
+testUBlockConcurrentBatchEquivalence()
 #endif
 
 print("\n========================================")
-print("ALL 20 LOGIC & SECURITY TEST SUITES PASSED (100%)")
+print("ALL 30 LOGIC, CONCURRENCY & LIFECYCLE TEST SUITES PASSED (100%)")
 print("========================================")
