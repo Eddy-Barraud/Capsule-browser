@@ -126,6 +126,8 @@ struct CapsuleWindowSleepSnapshot: Equatable {
 
 enum CapsuleSleepPolicy {
     static let substantialCoverageThreshold: CGFloat = 0.85
+    /// Default inactivity delay (5 minutes) before a background capsule is put to sleep to free RAM.
+    static let defaultSleepTimeoutSeconds: TimeInterval = 5 * 60
     
     /// Computes the maximum fraction of `windowFrame` covered by any single frame in `frontFrames`.
     static func coverageFraction(of windowFrame: CGRect, coveredBy frontFrames: [CGRect]) -> CGFloat {

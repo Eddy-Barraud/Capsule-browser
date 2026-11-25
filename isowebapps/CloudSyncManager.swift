@@ -110,8 +110,19 @@ public final class CloudSyncManager: ObservableObject {
     private var remoteChangeDebounceTask: Task<Void, Never>?
     private var activeCloudKitEventIDs: Set<UUID> = []
     private var isPerformingInitialMerge: Bool = false
+    private var isManualSyncInFlight: Bool = false
+    private var isVerifyingAccountStatus: Bool = false
+    private var lastAccountVerificationDate: Date?
+    private var lastAppDidBecomeActiveDate: Date?
+    nonisolated(unsafe) private var syncIndicatorShowTask: Task<Void, Never>?
+    nonisolated(unsafe) private var syncIndicatorHideTask: Task<Void, Never>?
     private var hasCompletedInitialCloudImport: Bool = false
     private var lastKnownStoreSignature: Int?
+    
+    private let accountVerificationCooldown: TimeInterval = 30.0
+    private let appActiveRefreshCooldown: TimeInterval = 5.0
+    private let passiveSyncShowDelayNanos: UInt64 = 400_000_000
+    private let passiveSyncHideDelayNanos: UInt64 = 600_000_000
     
     private nonisolated static let pendingCloudStoreResetKey = "pendingCloudStoreFileReset"
     private nonisolated static let didMigrateLegacyDefaultStoreKey = "didMigrateLegacyDefaultStore"
@@ -166,8 +177,9 @@ public final class CloudSyncManager: ObservableObject {
         setupCloudKitEventObserver()
         
         if enabled {
+            self.lastAppDidBecomeActiveDate = Date()
             Task { @MainActor [weak self] in
-                await self?.verifyICloudAccountStatus()
+                await self?.verifyICloudAccountStatus(force: false)
             }
         }
     }
@@ -180,6 +192,8 @@ public final class CloudSyncManager: ObservableObject {
             NotificationCenter.default.removeObserver(eventObserver)
         }
         remoteChangeDebounceTask?.cancel()
+        syncIndicatorShowTask?.cancel()
+        syncIndicatorHideTask?.cancel()
     }
     
     // MARK: - Container Factories
@@ -352,6 +366,12 @@ public final class CloudSyncManager: ObservableObject {
         uploadedSessionCapsules.removeAll()
         clearConflicts()
         activeCloudKitEventIDs.removeAll()
+        isManualSyncInFlight = false
+        syncIndicatorShowTask?.cancel()
+        syncIndicatorShowTask = nil
+        syncIndicatorHideTask?.cancel()
+        syncIndicatorHideTask = nil
+        isSyncingWithCloud = false
         hasCompletedInitialCloudImport = false
         syncStatusError = nil
         switchToContainer(localContainer, cloudEnabled: false)
@@ -368,6 +388,12 @@ public final class CloudSyncManager: ObservableObject {
         uploadedSessionCapsules.removeAll()
         clearConflicts()
         activeCloudKitEventIDs.removeAll()
+        isManualSyncInFlight = false
+        syncIndicatorShowTask?.cancel()
+        syncIndicatorShowTask = nil
+        syncIndicatorHideTask?.cancel()
+        syncIndicatorHideTask = nil
+        isSyncingWithCloud = false
         hasCompletedInitialCloudImport = false
         syncStatusError = nil
         switchToContainer(localContainer, cloudEnabled: false)
@@ -393,11 +419,15 @@ public final class CloudSyncManager: ObservableObject {
         
         guard cloudReady else { return }
         
-        isSyncingWithCloud = true
+        isManualSyncInFlight = true
+        updateIsSyncingFlag(immediate: true)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.updateIsSyncingFlag() }
-            await self.verifyICloudAccountStatus()
+            defer {
+                self.isManualSyncInFlight = false
+                self.updateIsSyncingFlag()
+            }
+            await self.verifyICloudAccountStatus(force: true)
             await self.waitForInitialCloudImport(timeoutSeconds: 8.0)
             guard self.isICloudSyncEnabled else { return }
             self.handleRemoteStoreChange()
@@ -423,15 +453,17 @@ public final class CloudSyncManager: ObservableObject {
         switchToContainer(cloudContainer, cloudEnabled: true)
         
         isPerformingInitialMerge = true
-        isSyncingWithCloud = true
+        isManualSyncInFlight = true
+        updateIsSyncingFlag(immediate: true)
         
         Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 self.isPerformingInitialMerge = false
+                self.isManualSyncInFlight = false
                 self.updateIsSyncingFlag()
             }
-            await self.verifyICloudAccountStatus()
+            await self.verifyICloudAccountStatus(force: true)
             await self.waitForInitialCloudImport(timeoutSeconds: 8.0)
             guard self.isICloudSyncEnabled else { return }
             if !localGroups.isEmpty || !localCapsules.isEmpty {
@@ -469,6 +501,12 @@ public final class CloudSyncManager: ObservableObject {
         uploadedSessionCapsules.removeAll()
         clearConflicts()
         activeCloudKitEventIDs.removeAll()
+        isManualSyncInFlight = false
+        syncIndicatorShowTask?.cancel()
+        syncIndicatorShowTask = nil
+        syncIndicatorHideTask?.cancel()
+        syncIndicatorHideTask = nil
+        isSyncingWithCloud = false
         hasCompletedInitialCloudImport = false
         switchToContainer(localContainer, cloudEnabled: false)
         
@@ -513,8 +551,14 @@ public final class CloudSyncManager: ObservableObject {
     /// Called when the app becomes active to pick up any CloudKit changes imported while backgrounded.
     public func handleAppDidBecomeActive() {
         guard isICloudSyncEnabled else { return }
+        let now = Date()
+        if let lastActive = lastAppDidBecomeActiveDate,
+           now.timeIntervalSince(lastActive) < appActiveRefreshCooldown {
+            return
+        }
+        lastAppDidBecomeActiveDate = now
         Task { @MainActor [weak self] in
-            await self?.verifyICloudAccountStatus()
+            await self?.verifyICloudAccountStatus(force: false)
             self?.scheduleRemoteChangeHandling()
         }
     }
@@ -523,11 +567,15 @@ public final class CloudSyncManager: ObservableObject {
     public func retrySync() {
         guard isICloudSyncEnabled else { return }
         syncStatusError = nil
-        isSyncingWithCloud = true
+        isManualSyncInFlight = true
+        updateIsSyncingFlag(immediate: true)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.updateIsSyncingFlag() }
-            await self.verifyICloudAccountStatus()
+            defer {
+                self.isManualSyncInFlight = false
+                self.updateIsSyncingFlag()
+            }
+            await self.verifyICloudAccountStatus(force: true)
             let context = self.activeContainer.mainContext
             if context.hasChanges {
                 try? context.save()
@@ -714,6 +762,29 @@ public final class CloudSyncManager: ObservableObject {
         }
     }
     
+    public nonisolated static func shouldTrackCloudKitEventTypeForSyncIndicator(
+        _ eventType: NSPersistentCloudKitContainer.EventType?
+    ) -> Bool {
+        switch eventType {
+        case .import, .export:
+            return true
+        case .setup, .none:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+    
+    public nonisolated static func shouldThrottleVerification(
+        lastVerifiedAt: Date?,
+        now: Date,
+        cooldown: TimeInterval,
+        force: Bool
+    ) -> Bool {
+        guard !force, let lastVerifiedAt else { return false }
+        return now.timeIntervalSince(lastVerifiedAt) < cooldown
+    }
+    
     private func handleCloudKitEvent(
         id: UUID,
         eventTypeRaw: Int,
@@ -723,39 +794,109 @@ public final class CloudSyncManager: ObservableObject {
     ) {
         guard isICloudSyncEnabled else { return }
         let eventType = NSPersistentCloudKitContainer.EventType(rawValue: eventTypeRaw)
+        let trackForIndicator = Self.shouldTrackCloudKitEventTypeForSyncIndicator(eventType)
         
         if endDate == nil {
-            activeCloudKitEventIDs.insert(id)
-            updateIsSyncingFlag()
+            if trackForIndicator {
+                activeCloudKitEventIDs.insert(id)
+                updateIsSyncingFlag()
+            }
             return
         }
         
-        activeCloudKitEventIDs.remove(id)
+        if trackForIndicator {
+            activeCloudKitEventIDs.remove(id)
+        }
         if eventType == .import && succeeded {
             hasCompletedInitialCloudImport = true
         }
         
         if succeeded {
             if eventType == .import || eventType == .export {
-                lastSuccessfulSyncDate = endDate
-                syncStatusError = nil
+                if let endDate {
+                    if lastSuccessfulSyncDate == nil || abs(endDate.timeIntervalSince(lastSuccessfulSyncDate!)) >= 1.0 {
+                        lastSuccessfulSyncDate = endDate
+                    }
+                }
+                if syncStatusError != nil {
+                    syncStatusError = nil
+                }
             }
             if eventType == .import {
                 IsolatedCookieManager.shared.invalidateRestoreCache()
                 scheduleRemoteChangeHandling()
             }
         } else if let errorMessage {
-            syncStatusError = errorMessage
+            if syncStatusError != errorMessage {
+                syncStatusError = errorMessage
+            }
             #if DEBUG
             print("[CloudSyncManager] CloudKit event error: \(errorMessage)")
             #endif
         }
         
-        updateIsSyncingFlag()
+        if trackForIndicator {
+            updateIsSyncingFlag()
+        }
     }
     
-    private func updateIsSyncingFlag() {
-        isSyncingWithCloud = isPerformingInitialMerge || !activeCloudKitEventIDs.isEmpty
+    private func updateIsSyncingFlag(immediate: Bool = false) {
+        let userInitiated = isPerformingInitialMerge || isManualSyncInFlight
+        let hasPassiveEvents = !activeCloudKitEventIDs.isEmpty
+        
+        if userInitiated {
+            syncIndicatorShowTask?.cancel()
+            syncIndicatorShowTask = nil
+            syncIndicatorHideTask?.cancel()
+            syncIndicatorHideTask = nil
+            if !isSyncingWithCloud {
+                isSyncingWithCloud = true
+            }
+            return
+        }
+        
+        if hasPassiveEvents {
+            syncIndicatorHideTask?.cancel()
+            syncIndicatorHideTask = nil
+            if !isSyncingWithCloud {
+                if immediate {
+                    syncIndicatorShowTask?.cancel()
+                    syncIndicatorShowTask = nil
+                    isSyncingWithCloud = true
+                } else if syncIndicatorShowTask == nil {
+                    let delay = passiveSyncShowDelayNanos
+                    syncIndicatorShowTask = Task { @MainActor [weak self] in
+                        try? await Task.sleep(nanoseconds: delay)
+                        guard let self, !Task.isCancelled else { return }
+                        self.syncIndicatorShowTask = nil
+                        if !self.activeCloudKitEventIDs.isEmpty && !self.isSyncingWithCloud {
+                            self.isSyncingWithCloud = true
+                        }
+                    }
+                }
+            }
+            return
+        }
+        
+        syncIndicatorShowTask?.cancel()
+        syncIndicatorShowTask = nil
+        if isSyncingWithCloud {
+            if immediate {
+                syncIndicatorHideTask?.cancel()
+                syncIndicatorHideTask = nil
+                isSyncingWithCloud = false
+            } else if syncIndicatorHideTask == nil {
+                let delay = passiveSyncHideDelayNanos
+                syncIndicatorHideTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: delay)
+                    guard let self, !Task.isCancelled else { return }
+                    self.syncIndicatorHideTask = nil
+                    if !self.isPerformingInitialMerge && !self.isManualSyncInFlight && self.activeCloudKitEventIDs.isEmpty && self.isSyncingWithCloud {
+                        self.isSyncingWithCloud = false
+                    }
+                }
+            }
+        }
     }
     
     private func waitForInitialCloudImport(timeoutSeconds: TimeInterval) async {
@@ -769,28 +910,51 @@ public final class CloudSyncManager: ObservableObject {
         }
     }
     
-    private func verifyICloudAccountStatus() async {
+    private func verifyICloudAccountStatus(force: Bool = false) async {
+        guard !isVerifyingAccountStatus else { return }
+        let now = Date()
+        guard !Self.shouldThrottleVerification(
+            lastVerifiedAt: lastAccountVerificationDate,
+            now: now,
+            cooldown: accountVerificationCooldown,
+            force: force
+        ) else {
+            return
+        }
+        isVerifyingAccountStatus = true
+        defer {
+            isVerifyingAccountStatus = false
+            lastAccountVerificationDate = Date()
+        }
+        
         let container = CKContainer(identifier: Self.cloudKitContainerIdentifier)
         do {
             let status = try await container.accountStatus()
             guard isICloudSyncEnabled else { return }
+            let resolvedError: String?
             switch status {
             case .available:
-                break
+                resolvedError = nil
             case .noAccount:
-                syncStatusError = "No iCloud account is signed in on this device. Sign in to iCloud in System Settings / Settings to sync capsules."
+                resolvedError = "No iCloud account is signed in on this device. Sign in to iCloud in System Settings / Settings to sync capsules."
             case .restricted:
-                syncStatusError = "iCloud access is restricted on this device (Screen Time or MDM profile)."
+                resolvedError = "iCloud access is restricted on this device (Screen Time or MDM profile)."
             case .temporarilyUnavailable:
-                syncStatusError = "Your iCloud account is temporarily unavailable. Please verify your iCloud settings and try again."
+                resolvedError = "Your iCloud account is temporarily unavailable. Please verify your iCloud settings and try again."
             case .couldNotDetermine:
-                syncStatusError = "Could not verify iCloud account status. Check your internet connection and iCloud permissions."
+                resolvedError = "Could not verify iCloud account status. Check your internet connection and iCloud permissions."
             @unknown default:
-                break
+                resolvedError = nil
+            }
+            if let resolvedError, syncStatusError != resolvedError {
+                syncStatusError = resolvedError
             }
         } catch {
             guard isICloudSyncEnabled else { return }
-            syncStatusError = "Unable to verify iCloud status: \(error.localizedDescription)"
+            let message = "Unable to verify iCloud status: \(error.localizedDescription)"
+            if syncStatusError != message {
+                syncStatusError = message
+            }
         }
     }
     

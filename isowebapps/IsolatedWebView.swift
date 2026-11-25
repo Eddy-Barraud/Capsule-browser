@@ -204,9 +204,9 @@ final class CapsuleLifecycleController: ObservableObject {
     
     var capsuleName: String = ""
     var isEphemeral: Bool = false
-    var softSleepDelay: TimeInterval = 0.15
-    var deepSleepDelay: TimeInterval = 5.0
-    var audioRecheckInterval: TimeInterval = 10.0
+    var evaluationDebounceDelay: TimeInterval = 0.15
+    var sleepDelay: TimeInterval = CapsuleSleepPolicy.defaultSleepTimeoutSeconds
+    var audioRecheckInterval: TimeInterval = 30.0
     var canDeepSleepProvider: (() -> Bool)?
     var onBeforeDeepSleep: (() -> Void)?
     var onWindowWillClose: (() -> Void)?
@@ -215,7 +215,7 @@ final class CapsuleLifecycleController: ObservableObject {
     nonisolated(unsafe) private var tabGroupObservation: NSKeyValueObservation?
     nonisolated(unsafe) private var windowTabGroupObservation: NSKeyValueObservation?
     nonisolated(unsafe) private var sleepWakeWorkItem: DispatchWorkItem?
-    nonisolated(unsafe) private var deepSleepWorkItem: DispatchWorkItem?
+    nonisolated(unsafe) private var sleepWorkItem: DispatchWorkItem?
     nonisolated(unsafe) private var audioRecheckWorkItem: DispatchWorkItem?
     nonisolated(unsafe) private var activityAssertionToken: NSObjectProtocol?
     private var hasBeenPresented: Bool = false
@@ -335,7 +335,7 @@ final class CapsuleLifecycleController: ObservableObject {
         sleepWakeWorkItem?.cancel()
         sleepWakeWorkItem = nil
         guard !isClosed else { return }
-        let resolvedDelay = delay ?? softSleepDelay
+        let resolvedDelay = delay ?? evaluationDebounceDelay
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
                 self?.sleepWakeWorkItem = nil
@@ -404,7 +404,7 @@ final class CapsuleLifecycleController: ObservableObject {
         case .awake(let claimForegroundActivity):
             wakeUp(forceImmediate: false, claimForegroundActivity: claimForegroundActivity)
         case .sleep:
-            enterSoftSleepAndScheduleDeepSleep()
+            scheduleSleepAfterTimeout()
         }
     }
     
@@ -412,8 +412,8 @@ final class CapsuleLifecycleController: ObservableObject {
         guard !isClosed else { return }
         sleepWakeWorkItem?.cancel()
         sleepWakeWorkItem = nil
-        deepSleepWorkItem?.cancel()
-        deepSleepWorkItem = nil
+        sleepWorkItem?.cancel()
+        sleepWorkItem = nil
         audioRecheckWorkItem?.cancel()
         audioRecheckWorkItem = nil
         
@@ -421,7 +421,7 @@ final class CapsuleLifecycleController: ObservableObject {
         
         if sleepState == .deepSleeping {
             #if DEBUG
-            print("[CapsuleLifecycle] Waking up from deep sleep: '\(capsuleName)'")
+            print("[CapsuleLifecycle] Waking up from sleep: '\(capsuleName)'")
             #endif
             sleepState = .awake
             webViewGeneration &+= 1
@@ -440,38 +440,22 @@ final class CapsuleLifecycleController: ObservableObject {
         }
     }
     
-    private func enterSoftSleepAndScheduleDeepSleep() {
+    private func scheduleSleepAfterTimeout() {
         guard !isClosed else { return }
         releaseForegroundActivityToken()
         if sleepState == .deepSleeping {
             return
         }
         
-        if let webView, webView.hasActiveAudioPlayback {
-            sleepState = .softSleeping
-            deepSleepWorkItem?.cancel()
-            deepSleepWorkItem = nil
-            scheduleAudioOrBlockerRecheck()
-            return
-        }
-        
-        if sleepState != .softSleeping {
-            sleepState = .softSleeping
-            webView?.applySoftSleep()
-            if let dataStore = webView?.configuration.websiteDataStore {
-                WebKitMemoryManager.shared.purgeMemoryCache(for: dataStore)
-            }
-        }
-        
-        if deepSleepWorkItem == nil {
+        if sleepWorkItem == nil {
             let work = DispatchWorkItem { [weak self] in
                 MainActor.assumeIsolated {
-                    self?.deepSleepWorkItem = nil
-                    self?.enterDeepSleepIfEligible()
+                    self?.sleepWorkItem = nil
+                    self?.enterSleepIfEligible()
                 }
             }
-            deepSleepWorkItem = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + deepSleepDelay, execute: work)
+            sleepWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + sleepDelay, execute: work)
         }
     }
     
@@ -487,7 +471,7 @@ final class CapsuleLifecycleController: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + audioRecheckInterval, execute: work)
     }
     
-    private func enterDeepSleepIfEligible() {
+    private func enterSleepIfEligible() {
         guard !isClosed else { return }
         guard let snapshot = currentSnapshot(), CapsuleSleepPolicy.evaluate(snapshot) == .sleep else {
             evaluateSleepWakeStatus()
@@ -519,6 +503,7 @@ final class CapsuleLifecycleController: ObservableObject {
         currentCoordinator?.flushCookiesNow()
         onBeforeDeepSleep?()
         
+        webView.applySoftSleep()
         sleepState = .deepSleeping
         self.webView = nil
         self.coordinator = nil
@@ -528,7 +513,7 @@ final class CapsuleLifecycleController: ObservableObject {
         window?.contentView?.layoutSubtreeIfNeeded()
         
         #if DEBUG
-        print("[CapsuleLifecycle] Deep sleep (RAM freed) for '\(capsuleName)'")
+        print("[CapsuleLifecycle] Slept capsule after \(Int(sleepDelay))s timer (RAM freed) for '\(capsuleName)'")
         #endif
     }
     
@@ -568,8 +553,8 @@ final class CapsuleLifecycleController: ObservableObject {
     private func cancelAllTimers() {
         sleepWakeWorkItem?.cancel()
         sleepWakeWorkItem = nil
-        deepSleepWorkItem?.cancel()
-        deepSleepWorkItem = nil
+        sleepWorkItem?.cancel()
+        sleepWorkItem = nil
         audioRecheckWorkItem?.cancel()
         audioRecheckWorkItem = nil
     }
@@ -600,7 +585,7 @@ final class CapsuleLifecycleController: ObservableObject {
     
     deinit {
         sleepWakeWorkItem?.cancel()
-        deepSleepWorkItem?.cancel()
+        sleepWorkItem?.cancel()
         audioRecheckWorkItem?.cancel()
         tabGroupObservation?.invalidate()
         windowTabGroupObservation?.invalidate()

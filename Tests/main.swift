@@ -1,6 +1,7 @@
 import Foundation
 import WebKit
 import SwiftData
+import CoreData
 import CloudKit
 #if os(macOS)
 import AppKit
@@ -880,6 +881,18 @@ func testCloudSyncMergeAndConflictDetection() {
     
     let quotaError = NSError(domain: CKErrorDomain, code: CKError.Code.quotaExceeded.rawValue)
     assert(CloudSyncManager.isTransientOrIgnorableCloudKitEventError(quotaError) == false, "CKError.quotaExceeded must NOT be ignored")
+    
+    // Sync indicator event filtering & verification throttling
+    assert(CloudSyncManager.shouldTrackCloudKitEventTypeForSyncIndicator(.setup) == false, "Setup events must not blink the sync indicator")
+    assert(CloudSyncManager.shouldTrackCloudKitEventTypeForSyncIndicator(.import) == true, "Import events must be tracked")
+    assert(CloudSyncManager.shouldTrackCloudKitEventTypeForSyncIndicator(.export) == true, "Export events must be tracked")
+    assert(CloudSyncManager.shouldTrackCloudKitEventTypeForSyncIndicator(nil) == false, "Nil event type must not be tracked")
+    
+    let now = Date()
+    assert(CloudSyncManager.shouldThrottleVerification(lastVerifiedAt: nil, now: now, cooldown: 30, force: false) == false, "First verification must not be throttled")
+    assert(CloudSyncManager.shouldThrottleVerification(lastVerifiedAt: now.addingTimeInterval(-5), now: now, cooldown: 30, force: false) == true, "Verification within cooldown must be throttled")
+    assert(CloudSyncManager.shouldThrottleVerification(lastVerifiedAt: now.addingTimeInterval(-5), now: now, cooldown: 30, force: true) == false, "Forced manual verification must bypass cooldown")
+    assert(CloudSyncManager.shouldThrottleVerification(lastVerifiedAt: now.addingTimeInterval(-35), now: now, cooldown: 30, force: false) == false, "Verification after cooldown expires must run")
     
     print("✓ testCloudSyncMergeAndConflictDetection passed!")
 }
@@ -1790,6 +1803,8 @@ func testWindowClosePolicyAcrossModes() {
 
 func testCapsuleSleepPolicyMatrix() {
     print("Running testCapsuleSleepPolicyMatrix...")
+    
+    assert(CapsuleSleepPolicy.defaultSleepTimeoutSeconds == 300, "Default sleep timer must be 5 minutes (300 seconds)")
     
     // Coverage helper checks
     let backFrame = CGRect(x: 100, y: 100, width: 1000, height: 700)

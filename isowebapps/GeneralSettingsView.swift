@@ -181,6 +181,16 @@ struct GeneralSettingsView: View {
     
     // MARK: - macOS Layout
     #if os(macOS)
+    private var iCloudSyncStatusSubtitle: String {
+        if let lastSynced = syncManager.lastSuccessfulSyncDate {
+            return "Last synced \(lastSynced.formatted(date: .abbreviated, time: .shortened))"
+        }
+        if syncManager.isSyncingWithCloud {
+            return "Checking iCloud capsules..."
+        }
+        return "iCloud sync active"
+    }
+    
     private var macOSLayout: some View {
         VStack(spacing: 0) {
             // Pinned Header
@@ -222,12 +232,16 @@ struct GeneralSettingsView: View {
                                 
                                 if syncManager.isSyncingWithCloud {
                                     ProgressView()
-                                        .scaleEffect(0.65)
+                                        .controlSize(.small)
+                                        .frame(width: 14, height: 14)
                                     Text("Checking iCloud capsules...")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
                             }
+                            .frame(height: 20, alignment: .leading)
+                            .animation(nil, value: syncManager.isSyncingWithCloud)
                             
                             Text(
                                 syncManager.isICloudSyncEnabled
@@ -237,10 +251,12 @@ struct GeneralSettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             
-                            if syncManager.isICloudSyncEnabled, let lastSynced = syncManager.lastSuccessfulSyncDate {
-                                Text("Last synced \(lastSynced.formatted(date: .abbreviated, time: .shortened))")
+                            if syncManager.isICloudSyncEnabled {
+                                Text(iCloudSyncStatusSubtitle)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .frame(height: 14, alignment: .leading)
                             }
                             
                             if let errorMessage = syncManager.syncStatusError {
@@ -289,7 +305,8 @@ struct GeneralSettingsView: View {
                             if syncManager.isResettingICloudData {
                                 HStack(spacing: 8) {
                                     ProgressView()
-                                        .scaleEffect(0.65)
+                                        .controlSize(.small)
+                                        .frame(width: 14, height: 14)
                                     Text(syncManager.resetStatusMessage ?? "Resetting iCloud data...")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
@@ -396,7 +413,7 @@ struct GeneralSettingsView: View {
                     ) {
                         Toggle("Sleeping Tabs & Background Throttling", isOn: $sleepingTabsEnabled)
                             .toggleStyle(.checkbox)
-                        Text("Freezes background tabs and inactive windows to reduce CPU and memory usage, dedicating system resources to the active capsule.")
+                        Text("Puts background tabs and inactive windows to sleep after 5 minutes to reduce CPU and memory usage, freeing RAM while dedicating system resources to the active capsule.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -681,10 +698,14 @@ struct GeneralSettingsView: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
-                    } else if syncManager.isICloudSyncEnabled, let lastSynced = syncManager.lastSuccessfulSyncDate {
-                        Text("Last synced \(lastSynced.formatted(date: .abbreviated, time: .shortened))")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                    } else if syncManager.isICloudSyncEnabled {
+                        Text(
+                            syncManager.lastSuccessfulSyncDate.map {
+                                "Last synced \($0.formatted(date: .abbreviated, time: .shortened))"
+                            } ?? "iCloud sync active"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     }
                     
                     if let errorMessage = syncManager.syncStatusError {
